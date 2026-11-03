@@ -3,8 +3,11 @@
 A self-hosted dashboard for your home server: system stats, Docker containers, ZFS pools,
 drive health, files and service checks in one page.
 
-> **Status: in development.** LabKeel runs well on its original server, but it isn't ready for
+> **Status: in development.** LabKeel is in early stages of development, and isn't ready for
 > general use yet. Expect breaking changes until version 1.0.
+
+> [!Current Version]
+> LabKeel is currently in version 0.0.1a
 
 ## What it does
 
