@@ -3,8 +3,7 @@
 A self-hosted dashboard for your home server: system stats, Docker containers, ZFS pools,
 drive health, files and service checks in one page.
 
-> [!Important]
-> LabKeel is in early stages of development, currently in version 0.0.1a, and isn't ready for
+> **Status: in development.** LabKeel runs well on its original server, but it isn't ready for
 > general use yet. Expect breaking changes until version 1.0.
 
 ## What it does
@@ -16,13 +15,14 @@ drive health, files and service checks in one page.
 - **Files**: browse, upload, edit, move and delete files, with a trash you can restore from
 - **Services**: links to everything you run, each with a live up/down check
 - **Alerts**: to ntfy or Discord when something needs attention
-- **Sign-in**: password or passkey, over HTTPS by default
+- **Accounts**: admins and view-only accounts, passwords or passkeys, over HTTPS by default
 
 ## Information
 
 LabKeel can restart your server, change ZFS pools and edit files. It needs privileged access
-to the machine to do that. Keep it off the open internet, use a long password, and only give
-the password to people you'd trust with full control of the server.
+to the machine to do that, so those features start switched off; turn on only the ones you need.
+Keep it off the open internet, and only make admin accounts for people you'd trust with full
+control of the server. See [SECURITY.md](SECURITY.md) for how it's protected.
 
 ## Try it
 
@@ -35,14 +35,18 @@ cp docker-compose.example.yml docker-compose.yml
 mkdir -p config && cp config.example.json config/config.json
 ```
 
-Edit `docker-compose.yml`: set `DASH_USER` and `DASH_PASS`, choose the folders to show under
-`/browse`, and replace the `image:` line with `build: .`. Then:
+Edit `docker-compose.yml`: choose the folders to show under `/browse`, turn on the features you
+want, and replace the `image:` line with `build: .`. Then:
 
 ```sh
 docker compose up -d --build
+docker logs labkeel        # shows a one-time set-up code
 ```
 
-Open `https://<your server's address>:8787` and sign in.
+Open `https://<your server's address>:8787`, enter the set-up code, and create your admin account.
+Add more accounts, admin or view-only, from **Account** in the sidebar.
+
+Forgot your password? On the server: `docker exec -it labkeel python accounts.py passwd <name>`.
 
 ## Development
 
