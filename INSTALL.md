@@ -7,21 +7,180 @@ No YAML wizardry needed. Let's set sail.
 
 ---
 
-## 1. Check you've got the essentials
+## 1. Get the essentials
 
-You need:
+LabKeel needs three things on the machine it watches:
 
-- **A Linux machine** to watch. A home server, a mini PC or a Raspberry Pi are all fine.
-- **Docker Engine with the Compose plugin.** Check with:
-  ```sh
-  docker compose version
-  ```
-  If that prints a version, you're good. If not, follow [Docker's install guide](https://docs.docker.com/engine/install/).
-- **git**, to fetch the code (`git --version` to check).
+| What | Why | Check you have it |
+| --- | --- | --- |
+| **Docker Engine** | runs LabKeel | `docker --version` |
+| **Docker Compose plugin** | starts it with one command | `docker compose version` |
+| **git** | fetches the code, and updates later | `git --version` |
+
+If all three print a version, skip ahead to [step 2](#2-grab-the-code). Everything else LabKeel uses
+(Python, drive-health tools and so on) comes packed inside its own image.
 
 > **Heads up:** use Docker *Engine*, not Docker *Desktop*. Desktop runs containers inside a hidden
 > virtual machine, so LabKeel would end up proudly reporting that VM's stats instead of your server's.
 > Rootless Docker and Podman can't give it the access it needs either.
+
+Missing something? Open the box for your system. Each one installs the **latest** Docker straight from
+Docker's own repository (your distribution's built-in `docker.io` package is often well behind), plus git.
+
+<details>
+<summary><b>Ubuntu</b> 22.04, 24.04, 26.04 or 26.10 (also Linux Mint and Pop!_OS)</summary>
+
+First clear out any old or unofficial Docker packages, so they don't clash:
+
+```sh
+sudo apt remove $(dpkg --get-selections docker.io docker-compose docker-compose-v2 docker-doc docker-buildx podman-docker containerd runc | cut -f1)
+```
+
+Add Docker's repository:
+
+```sh
+sudo apt update
+sudo apt install ca-certificates curl git
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+```
+
+Install Docker and Compose:
+
+```sh
+sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+Docker starts by itself, and on every boot from now on.
+
+</details>
+
+<details>
+<summary><b>Debian</b> 12 or 13 (also Raspberry Pi OS 64-bit)</summary>
+
+> **Raspberry Pi owners:** you need the **64-bit** Raspberry Pi OS. Docker stopped making new versions
+> for the 32-bit one, so if `uname -m` says `armv7l`, it's time for a fresh 64-bit install.
+
+First clear out any old or unofficial Docker packages:
+
+```sh
+sudo apt remove $(dpkg --get-selections docker.io docker-compose docker-doc podman-docker containerd runc | cut -f1)
+```
+
+Add Docker's repository:
+
+```sh
+sudo apt update
+sudo apt install ca-certificates curl git
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+```
+
+Install Docker and Compose:
+
+```sh
+sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+Docker starts by itself, and on every boot from now on.
+
+</details>
+
+<details>
+<summary><b>Fedora</b> 43, 44 or 45</summary>
+
+Clear out any old Docker packages:
+
+```sh
+sudo dnf remove docker docker-client docker-client-latest docker-common docker-latest \
+  docker-latest-logrotate docker-logrotate docker-selinux docker-engine-selinux docker-engine
+```
+
+Add Docker's repository, install everything, and start Docker (now and on every boot):
+
+```sh
+sudo dnf install git
+sudo dnf config-manager addrepo --from-repofile https://download.docker.com/linux/fedora/docker-ce.repo
+sudo dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+```
+
+If it asks you to accept a GPG key, check it matches the fingerprint on
+[Docker's Fedora page](https://docs.docker.com/engine/install/fedora/) before saying yes.
+
+</details>
+
+<details>
+<summary>Something else?</summary>
+
+Docker's [install page](https://docs.docker.com/engine/install/) covers other distributions. Install
+**Docker Engine** with the **docker-compose-plugin**, plus git from your package manager, then come back here.
+
+</details>
+
+### Make sure Docker works
+
+```sh
+sudo docker run hello-world
+```
+
+A cheerful "Hello from Docker!" means you're ready.
+
+### Optional: use Docker without typing `sudo`
+
+The rest of this guide leaves out `sudo` before `docker`. To do the same, add yourself to the `docker` group:
+
+```sh
+sudo groupadd docker          # fine if it says the group already exists
+sudo usermod -aG docker $USER
+newgrp docker                 # or sign out and back in
+```
+
+Membership of the `docker` group is as powerful as root, so only add people you'd trust with the whole
+machine. Prefer not to? Just keep putting `sudo` in front of each `docker` command.
+
+### Optional: Tailscale, for a trusted HTTPS address
+
+With Tailscale, LabKeel gets a real certificate for a name like `server.your-tailnet.ts.net`, so browsers
+won't warn and passkeys just work. Install it and join your tailnet:
+
+```sh
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up             # prints a link: open it to sign in
+```
+
+Then turn on HTTPS for your tailnet, once: in the [Tailscale admin console](https://console.tailscale.com/admin/dns),
+open **DNS**, make sure **MagicDNS** is on, and under **HTTPS Certificates** choose **Enable HTTPS**.
+
+> HTTPS certificates are listed in public logs, so Tailscale publishes your machine names and tailnet name
+> there. If a machine name gives away something private, rename it first.
+
+Install Tailscale directly on the machine, not in a container: LabKeel asks the machine's own Tailscale
+for its certificate.
 
 ---
 
@@ -107,9 +266,9 @@ A new code is made each time LabKeel starts, so if you see several, use the newe
 
 In your browser, go to `https://<your server's address>:8787`.
 
-- **With Tailscale:** use `https://<device-name>.<tailnet>.ts.net:8787`. If HTTPS certificates are turned
-  on for your tailnet (Tailscale admin console → **DNS** → **HTTPS Certificates**), LabKeel fetches a
-  proper certificate by itself and your browser won't complain.
+- **With Tailscale:** use `https://<device-name>.<tailnet>.ts.net:8787`. With HTTPS turned on for your
+  tailnet (see [step 1](#optional-tailscale-for-a-trusted-https-address)), LabKeel fetches a proper
+  certificate by itself and your browser won't complain.
 - **Without Tailscale:** use the server's IP address or name. Your browser will warn that the connection
   "isn't private". That's LabKeel's own certificate, not a pirate. Choose **Advanced → Continue** once on
   each device.
@@ -144,6 +303,9 @@ docker compose up -d --build
 ```
 
 Your accounts, settings and history stay put.
+
+Docker and git update with the rest of your system (`sudo apt upgrade`, or `sudo dnf upgrade` on Fedora).
+Since Docker now comes from Docker's own repository, that keeps you on the latest version too.
 
 ---
 
