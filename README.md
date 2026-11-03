@@ -3,8 +3,7 @@
 A self-hosted dashboard for your home server: system stats, Docker containers, ZFS pools,
 drive health, files and service checks in one page.
 
-> [!IMPORTANT]
-> LabKeel is currently set to v0.0.1b, and isn't ready for
+> **Status: in development.** LabKeel runs well on its original server, but it isn't ready for
 > general use yet. Expect breaking changes until version 1.0.
 
 ## What it does
@@ -25,29 +24,20 @@ to the machine to do that, so those features start switched off; turn on only th
 Keep it off the open internet, and only make admin accounts for people you'd trust with full
 control of the server. See [SECURITY.md](SECURITY.md) for how it's protected.
 
-## Try it
+## Install
 
-You'll need Docker with Compose on a Linux machine.
+You'll need a Linux machine with Docker. The short version:
 
 ```sh
-git clone https://github.com/labkeel/labkeel.git
-cd labkeel
+git clone https://github.com/smfstr1/labkeel.git && cd labkeel
 cp docker-compose.example.yml docker-compose.yml
 mkdir -p config && cp config.example.json config/config.json
-```
-
-Edit `docker-compose.yml`: choose the folders to show under `/browse`, turn on the features you
-want, and replace the `image:` line with `build: .`. Then:
-
-```sh
 docker compose up -d --build
-docker logs labkeel        # shows a one-time set-up code
+docker logs labkeel        # your one-time set-up code
 ```
 
-Open `https://<your server's address>:8787`, enter the set-up code, and create your admin account.
-Add more accounts, admin or view-only, from **Account** in the sidebar.
-
-Forgot your password? On the server: `docker exec -it labkeel python accounts.py passwd <name>`.
+Then open `https://<your server's address>:8787`. The friendly, step-by-step version, including
+updating and uninstalling, is in **[INSTALL.md](INSTALL.md)**.
 
 ## Development
 
