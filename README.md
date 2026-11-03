@@ -3,7 +3,7 @@
 A self-hosted dashboard for your home server: system stats, Docker containers, ZFS pools,
 drive health, files and service checks in one page.
 
-> [!Important] LabKeel is currently set to v0.0.1b, and isn't ready for
+> [!important] LabKeel is currently set to v0.0.1b, and isn't ready for
 > general use yet. Expect breaking changes until version 1.0.
 
 ## What it does
