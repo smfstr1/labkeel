@@ -6,7 +6,7 @@ drive health, files and service checks in one page.
 > **Status: in development.** LabKeel is in early stages of development, and isn't ready for
 > general use yet. Expect breaking changes until version 1.0.
 
-> [!Current Version]
+> [!Important]
 > LabKeel is currently in version 0.0.1a
 
 ## What it does
