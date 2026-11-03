@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Set up</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/app-icon.png">
+<meta name="theme-color" content="#151b23">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Homelab">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='5' width='26' height='22' rx='5' fill='%2316202A'/%3E%3Crect x='7' y='10' width='18' height='4' rx='2' fill='%236FA8EE'/%3E%3Crect x='7' y='18' width='18' height='4' rx='2' fill='%234CC2AE'/%3E%3Ccircle cx='22' cy='12' r='1.2' fill='%2316202A'/%3E%3Ccircle cx='22' cy='20' r='1.2' fill='%2316202A'/%3E%3C/svg%3E">
+<style>
+@font-face { font-family: "Hanken Grotesk"; font-style: normal; font-weight: 400; font-display: swap; src: url(/assets/hanken-grotesk-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "Hanken Grotesk"; font-style: normal; font-weight: 500; font-display: swap; src: url(/assets/hanken-grotesk-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: "Hanken Grotesk"; font-style: normal; font-weight: 600; font-display: swap; src: url(/assets/hanken-grotesk-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: "Hanken Grotesk"; font-style: normal; font-weight: 700; font-display: swap; src: url(/assets/hanken-grotesk-latin-700-normal.woff2) format("woff2"); }
+:root {
+  --bg: #16202A; --panel: #1D2935; --panel-2: #22303E; --rule: #2C3A48; --rule-2: #3A4B5C;
+  --text: #E4ECF2; --muted: #8EA0B1; --faint: #62778A; --accent: #6FA8EE; --good: #5BC98A; --warn: #EDB54A; --bad: #EF6A5C; --focus: #9CC6FF;
+  --sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #EEF2F5; --panel: #FFFFFF; --panel-2: #F5F8FA; --rule: #DCE3E9; --rule-2: #C6D0D9;
+    --text: #16202A; --muted: #556676; --faint: #7D8D9C; --accent: #2F72C9; --good: #23955A; --warn: #B77B0E; --bad: #CC3B2D; --focus: #2F72C9; color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #EEF2F5; --panel: #FFFFFF; --panel-2: #F5F8FA; --rule: #DCE3E9; --rule-2: #C6D0D9;
+  --text: #16202A; --muted: #556676; --faint: #7D8D9C; --accent: #2F72C9; --good: #23955A; --warn: #B77B0E; --bad: #CC3B2D; --focus: #2F72C9; color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body { background: var(--bg); color: var(--text); font: 15px/1.45 var(--sans); -webkit-font-smoothing: antialiased;
+  display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.box { width: 100%; max-width: 380px; background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 26px 24px 22px; }
+.host { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 17px; margin-bottom: 18px; }
+.host i { width: 8px; height: 8px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 22%, transparent); }
+h1 { font-size: 24px; margin: 0 0 18px; letter-spacing: -.01em; }
+form { display: flex; flex-direction: column; gap: 14px; }
+label.f { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; color: var(--muted); }
+input[type=text], input[type=password] { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--rule-2); border-radius: 8px; padding: 10px 12px; font-size: 16px; }
+.pw { position: relative; display: flex; }
+.pw input { flex: 1; padding-right: 64px; min-width: 0; }
+.pw button { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--muted); font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.pw button:hover { color: var(--text); }
+.check { display: flex; align-items: center; gap: 9px; font-size: 14.5px; }
+.check input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
+button.go { font: inherit; font-weight: 600; background: var(--accent); color: var(--bg); border: 0; border-radius: 8px; padding: 11px; cursor: pointer; margin-top: 4px; }
+button.go:hover { background: color-mix(in srgb, var(--accent) 85%, var(--text)); }
+button.go[disabled] { opacity: .65; cursor: default; }
+button.pk { font: inherit; font-weight: 600; background: none; color: var(--text); border: 1px solid var(--rule, #3a4553); border-radius: 8px; padding: 10px; cursor: pointer; width: 100%; margin-top: 10px; }
+button.pk:hover { border-color: var(--accent); }
+button.pk[hidden] { display: none; }
+.err { color: var(--bad); font-size: 14px; margin: 0; }
+.err:empty { display: none; }
+.note { font-size: 13px; color: var(--muted); margin: 16px 0 0; display: flex; gap: 8px; align-items: baseline; }
+.note b { font-weight: 600; }
+.note.warn { color: var(--warn); }
+.note::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; transform: translateY(-1px); }
+.note.ok::before { background: var(--good); }
+.lede { color: var(--muted); margin: -8px 0 18px; font-size: 14.5px; }
+.hint { color: var(--muted); font-size: 13px; margin: 0; }
+code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--panel-2); border: 1px solid var(--rule); border-radius: 4px; padding: 1px 5px; color: var(--text); }
+input.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; text-transform: uppercase; }
+details { margin-top: 18px; font-size: 13.5px; color: var(--muted); }
+details summary { cursor: pointer; }
+details p { margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<main class="box">
+  <div class="host"><i aria-hidden="true" style="background:var(--warn)"></i><span>Set up the dashboard</span></div>
+  <h1>Create the admin account</h1>
+  <p class="lede">This account can control the whole server, so the set-up needs a one-time code from the dashboard's log.</p>
+  <form id="f" novalidate>
+    <label class="f">Set-up code
+      <input type="text" id="code" class="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX" required>
+    </label>
+    <p class="hint">Find it with <code>docker logs &lt;container name&gt;</code> on the server.</p>
+    <label class="f">Username <input type="text" id="u" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+    <label class="f">Password
+      <span class="pw"><input type="password" id="p" autocomplete="new-password" required><button type="button" id="show" aria-label="Show password">Show</button></span>
+    </label>
+    <label class="f">Password again <input type="password" id="p2" autocomplete="new-password" required></label>
+    <p class="hint" id="rule">At least 12 characters. A few unrelated words make a strong, memorable password.</p>
+    <p class="err" id="err" role="alert"></p>
+    <button class="go" type="submit" id="go">Create account and sign in</button>
+  </form>
+  <details>
+    <summary>Other ways to set up</summary>
+    <p>From the server: <code>docker exec -it &lt;container&gt; python accounts.py add &lt;name&gt; --role admin</code></p>
+    <p>Or in docker-compose.yml: <code>DASH_USER</code> with <code>DASH_PASS_HASH</code> (made with <code>python accounts.py hash</code>).</p>
+  </details>
+</main>
+<script>
+// First-run set-up: makes the first admin account (POST /api/setup) with the one-time code the dashboard
+// prints in its log, then signs in and opens the dashboard.
+"use strict";
+try { const t = localStorage.getItem("hd-theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+const $ = (s) => document.querySelector(s);
+$("#show").addEventListener("click", () => {
+  const on = $("#p").type === "password";
+  $("#p").type = $("#p2").type = on ? "text" : "password";
+  $("#show").textContent = on ? "Hide" : "Show";
+});
+fetch("/api/setup-info").then(r => r.json()).then(d => {
+  if (!d.needed) location.replace("/");
+  else if (d.min_password) $("#rule").textContent = `At least ${d.min_password} characters. A few unrelated words make a strong, memorable password.`;
+}).catch(() => {});
+$("#f").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = $("#err");
+  err.textContent = "";
+  if ($("#p").value !== $("#p2").value) { err.textContent = "The two passwords don't match."; return; }
+  $("#go").disabled = true;
+  try {
+    const r = await fetch("/api/setup", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: $("#code").value, username: $("#u").value, password: $("#p").value }) });
+    if (r.ok) { location.replace("/"); return; }
+    let msg = `Couldn't set up (${r.status})`;
+    try { const j = await r.json(); if (j.error) msg = j.error; } catch {}
+    err.textContent = msg;
+  } catch { err.textContent = "Couldn't reach the dashboard. Try again."; }
+  $("#go").disabled = false;
+});
+</script>
+</body>
+</html>
