@@ -1,10 +1,11 @@
-# Copy this file to docker-compose.yml, change what's marked, then run:  docker compose up -d
+# Copy this file to docker-compose.yml, change what's marked, then run:  docker compose up -d --build
 # Open https://<this machine's address>:8787 and follow the set-up page. It asks for a one-time code
 # from the log:  docker logs labkeel
 
 services:
   labkeel:
-    image: ghcr.io/labkeel/labkeel:latest   # or build it yourself: replace this line with  build: .
+    build: .                                  # builds from this folder (docker compose up -d --build)
+    # image: ghcr.io/smfstr1/labkeel:latest   # once releases are published: use this line instead of build
     container_name: labkeel
     restart: unless-stopped
 

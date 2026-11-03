@@ -20,7 +20,7 @@ from fastapi import APIRouter, Body, HTTPException, Request
 router = APIRouter()
 _lock = threading.RLock()     # state.json and settings.json; never held during network calls
 _ev_lock = threading.Lock()   # events.json only, so logging never waits behind anything slow
-ALLOW_REBOOT = os.environ.get("DASH_ALLOW_REBOOT", "1") == "1"
+ALLOW_REBOOT = os.environ.get("DASH_ALLOW_REBOOT", "0") == "1"  # off unless turned on: restarting the machine is a big power to hand out
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 # Every setting and its default, by Settings section. settings.json only holds what you've changed;
@@ -352,7 +352,7 @@ def _send(title, message, tag, urgent):
 # --------------------------------------------------------------------------- reboot
 def do_reboot(reason, shutdown=False):
     """Restart (or shut down) the machine: logs it, sends an alert, notes why so the 'back online' message can
-    say, then asks systemd. Nothing happens with DASH_ALLOW_REBOOT=0."""
+    say, then asks systemd. Nothing happens unless DASH_ALLOW_REBOOT=1."""
     host = M().HOST_INFO.get("hostname")
     log("restart", f"{'Shutting down' if shutdown else 'Restarting'} the server: {reason}")
     if load_settings()["alerts"]["restarts"]:
@@ -365,7 +365,7 @@ def do_reboot(reason, shutdown=False):
         st["restart_pending"] = {"t": time.time(), "reason": reason}
         _write("state.json", st)
     if not ALLOW_REBOOT:
-        log("error", f"{'Shut-down' if shutdown else 'Restart'} not carried out: DASH_ALLOW_REBOOT is off")
+        log("error", f"{'Shut-down' if shutdown else 'Restart'} not carried out: DASH_ALLOW_REBOOT=1 isn't set")
         return
     time.sleep(5)  # let the log write and the alert leave
     cmds = (["systemctl", "poweroff"], ["poweroff"]) if shutdown else (["systemctl", "reboot"], ["reboot"])
@@ -824,7 +824,7 @@ def _status(s):
     m = M()
     return {"timezone": str(z), "next_restart": nxt, "waiting": bool(nxt and st.get("restart_waiting") == nxt),
             "busy_now": busy, "notes": notes, "reboot_required": req, "reboot_pkgs": pkgs,
-            "uptime": time.time() - psutil.boot_time(), "auth": bool(m.AUTH_USER and m.AUTH_PASS),
+            "uptime": time.time() - psutil.boot_time(), "auth": sys.modules["security"].enabled(),
             "can_reboot": m.HOST_NS and ALLOW_REBOOT, "cleanup_next": cnext, "cleanup_last": st.get("cleanup_last"),
             "open_alerts": [v["title"] for v in (st.get("alerts") or {}).values() if v.get("sent")],
             "quiet_now": quiet_now(s["alerts"]), "held_alerts": len(st.get("held_alerts") or []),

@@ -23,10 +23,6 @@ HOST = os.environ.get("DASH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DASH_PORT", "8787"))
 LOG_LEVEL = os.environ.get("DASH_LOG_LEVEL", "warning")
 MAX_CONNECTIONS = int(os.environ.get("DASH_MAX_CONNECTIONS", "512"))
-# With DASH_TLS=off behind a proxy such as Caddy: the proxy's address. Only then are its X-Forwarded-For
-# (the real client, for the wrong-password limit) and X-Forwarded-Proto headers believed. Without it,
-# anything on this machine could claim to be any address.
-TRUSTED_PROXY = os.environ.get("DASH_TRUSTED_PROXY", "").strip()
 MAX_PER_CLIENT = 64   # a browser opens about 6; this only stops one address hogging the server
 HELLO_TIMEOUT = 10    # seconds a new connection gets to start talking (and to send a whole http:// request)
 IDLE_TIMEOUT = 120    # an open connection with nothing moving in either direction is closed
@@ -174,14 +170,18 @@ def front_handler(internal_port):
 
 
 def _warn_if_open():
-    """A warning in the log when sign-in is off or not set up."""
+    """Notes in the log about sign-in: the one-time set-up code until there's an account, and warnings."""
+    import accounts
     if security.enabled():
         return
     if security.open_ok():
         print("WARNING: sign-in is off (DASH_ALLOW_NO_AUTH=1). Anyone who can reach this port can use the dashboard. "
               "It only answers to this machine's own names and addresses (add others with DASH_HOSTNAMES).", flush=True)
     else:
-        print("Sign-in isn't set up: the dashboard will only show a set-up page until DASH_USER and DASH_PASS are set.", flush=True)
+        print("=" * 72, flush=True)
+        print("  No account yet. Open the dashboard in your browser to set one up.", flush=True)
+        print(f"  One-time set-up code:  {accounts.setup_code()}", flush=True)
+        print("=" * 72, flush=True)
 
 
 async def run():
@@ -189,8 +189,9 @@ async def run():
     _warn_if_open()
     if tls.MODE == "off":
         print(f"Dashboard on http://{HOST}:{PORT} (HTTPS is off: DASH_TLS=off)", flush=True)
-        config = uvicorn.Config(main.app, host=HOST, port=PORT, proxy_headers=bool(TRUSTED_PROXY),
-                                forwarded_allow_ips=TRUSTED_PROXY or None, limit_concurrency=MAX_CONNECTIONS,
+        # forwarded headers from DASH_TRUSTED_PROXY are handled by security.ProxyHeaders, which also keeps
+        # the proxy's own address (sign-in by proxy header needs to know the request came from the proxy)
+        config = uvicorn.Config(main.app, host=HOST, port=PORT, proxy_headers=False, limit_concurrency=MAX_CONNECTIONS,
                                 log_level=LOG_LEVEL, access_log=False, server_header=False)
         await uvicorn.Server(config).serve()
         return

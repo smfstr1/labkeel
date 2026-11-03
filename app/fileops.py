@@ -8,7 +8,7 @@ top-level folders themselves are never changed. Changes ask for the password aga
 10 minutes), since writing files is a big step up from reading them.
 
 Folders mounted read-only (`:ro` in docker-compose.yml) stay read-only: the page says so, and nothing
-here can get round it. DASH_FILES_WRITE=0 turns all of this off.
+here can get round it. None of it works unless DASH_FILES_WRITE=1 turns it on.
 
 Sections below: checks shared by everything; creating and editing; resumable uploads; searching;
 renaming, moving and copying; the background jobs that move or copy between drives; the Trash.
@@ -35,7 +35,7 @@ from starlette.requests import ClientDisconnect
 
 router = APIRouter()
 
-WRITE = os.environ.get("DASH_FILES_WRITE", "1") != "0"
+WRITE = os.environ.get("DASH_FILES_WRITE", "0") == "1"  # off unless turned on: the file browser starts read-only
 TRASH = ".dashboard-trash"  # the hidden Trash folder at the top of each drive or dataset
 TRASH_DAYS = int(os.environ.get("DASH_TRASH_DAYS", "30"))
 # no limit on how big an upload may be, unless you set one (in GB); free space is always checked
@@ -81,10 +81,10 @@ def _guard(request, body=None):
     """Before any change: changing files must be on, sign-in must be on (or DASH_FILES_WRITE=1 said explicitly),
     and the password confirmed (once every 10 minutes)."""
     if not WRITE:
-        raise HTTPException(403, "Changing files is turned off (DASH_FILES_WRITE=0)")
+        raise HTTPException(403, "Changing files is turned off. An admin can turn it on with DASH_FILES_WRITE=1")
     if not S().enabled() and os.environ.get("DASH_FILES_WRITE") != "1":
         # with sign-in off, anyone who can reach the page could change files: only if you've said so explicitly
-        raise HTTPException(403, "Changing files needs sign-in (DASH_USER and DASH_PASS). "
+        raise HTTPException(403, "Changing files needs sign-in (set up an account). "
                                  "To allow it without, set DASH_FILES_WRITE: \"1\".")
     S().confirm_password(request, (body or {}).get("password") if isinstance(body, dict) else None)
 
@@ -544,7 +544,7 @@ async def api_up_chunk(request: Request, id: str, offset: int):
     """One piece of an upload, written where it belongs in the partly-uploaded file. Whatever arrives
     counts, even if the connection drops part-way, so the next try carries on from there."""
     if not WRITE:
-        raise HTTPException(403, "Changing files is turned off (DASH_FILES_WRITE=0)")
+        raise HTTPException(403, "Changing files is turned off. An admin can turn it on with DASH_FILES_WRITE=1")
     u = _up_get(id, request)
     if u["state"] != "uploading":
         raise HTTPException(409, "That upload has finished already")

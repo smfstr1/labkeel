@@ -64,8 +64,6 @@ except ImportError:  # pragma: no cover
 CONFIG_PATH = os.environ.get("DASH_CONFIG", "/config/config.json")
 BROWSE_ROOT = Path(os.environ.get("DASH_BROWSE_ROOT", "/browse"))
 HOST_NS = os.environ.get("DASH_HOST_NS", "1") == "1"  # run df/zpool/lsblk inside the host mount namespace
-AUTH_USER = os.environ.get("DASH_USER") or None  # sign-in is on when both of these are set
-AUTH_PASS = os.environ.get("DASH_PASS") or None
 SMART_INTERVAL = int(os.environ.get("DASH_SMART_INTERVAL", "600"))  # seconds between drive health checks
 STATIC = Path(__file__).parent / "static"
 
@@ -158,7 +156,8 @@ import security  # noqa: E402
 
 app.middleware("http")(security.guard)
 app.add_middleware(security.Compress)
-app.add_middleware(security.BodyLimit)  # outermost: counts bytes even for chunked uploads
+app.add_middleware(security.BodyLimit)  # counts bytes even for chunked uploads
+app.add_middleware(security.ProxyHeaders)  # outermost: who's really on the other end (see security.py)
 app.include_router(security.router)
 
 
@@ -986,7 +985,7 @@ def private_from_mounts(mounts, labels, alone_in_project, browse_root="/browse",
     own.update(files)
     workdir = labels.get("com.docker.compose.project.working_dir")
     if workdir:
-        own.add(f"{workdir.rstrip('/')}/.env")  # compose reads variables (like DASH_PASS) from here
+        own.add(f"{workdir.rstrip('/')}/.env")  # compose reads variables (like DASH_PASS_HASH) from here
         if alone_in_project:  # the dashboard has a folder of its own: hide all of it
             own.add(workdir)
     out = set()
@@ -1643,16 +1642,19 @@ def api_health():
 
 
 @app.get("/api/meta")
-def api_meta():
+def api_meta(request: Request):
     """What the page needs once at start: the title, the file browser's top folders (and which can be changed),
-    whether sign-in is on, and the refresh rate."""
+    whether sign-in is on, who's signed in, and the refresh rate."""
+    u = security.current_user(request)
+    viewer = bool(u and u["role"] != "admin")
     roots = []
-    if BROWSE_ROOT.exists():
+    if BROWSE_ROOT.exists() and not viewer:
         roots = sorted(e.name for e in BROWSE_ROOT.iterdir() if e.is_dir())
     cfg = load_config()
     root = BROWSE_ROOT.resolve() if BROWSE_ROOT.exists() else BROWSE_ROOT
     return {"title": cfg.get("title") or HOST_INFO["hostname"], "file_roots": roots, "config_error": cfg.get("_error"),
-            "auth": security.enabled(), "refresh_ms": refresh_ms(), "file_write": fileops.WRITE,
+            "auth": security.enabled(), "refresh_ms": refresh_ms(), "file_write": fileops.WRITE and not viewer,
+            "user": {"name": u["name"], "role": u["role"], "via": u.get("via"), "source": u.get("source")} if u else None,
             "file_writable": {r: _writable(root / r, root) for r in roots}}
 
 

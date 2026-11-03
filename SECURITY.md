@@ -35,7 +35,7 @@ mount. Treat an admin account like a root password.
 
 - Keep LabKeel off the open internet. Use a VPN such as Tailscale or WireGuard, or a reverse proxy with its own sign-in.
 - Give out admin accounts sparingly; use viewer accounts for everyone else.
-- If you set an admin in `docker-compose.yml`, use `DASH_PASS_HASH`, not `DASH_PASS`, so the password isn't stored there in plain text.
+- If you set an admin in `docker-compose.yml`, it's with `DASH_PASS_HASH`, a hash rather than the password itself. A plain-text `DASH_PASS` isn't accepted.
 - Forgot the password? On the server: `docker exec -it labkeel python accounts.py passwd <name>`.
 
 ## Checking it yourself

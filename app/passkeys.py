@@ -39,6 +39,11 @@ def U():
     return sys.modules["upkeep"]
 
 
+def A():
+    """The accounts module."""
+    return sys.modules["accounts"]
+
+
 def W():
     """The webauthn package, imported when first needed so a dashboard built without it still starts."""
     try:
@@ -114,6 +119,33 @@ def _public(k):
     return {x: k.get(x) for x in ("id", "name", "created", "last_used", "rp_id", "device")}
 
 
+def owner(k):
+    """The account a passkey belongs to. Passkeys added before there were several accounts belong to the
+    admin from docker-compose.yml, or else the first admin."""
+    if k.get("user"):
+        return k["user"]
+    admins = A().admins()
+    env = next((u for u in admins if u.get("source") == "env"), None)
+    return (env or (admins[0] if admins else {})).get("id")
+
+
+def _me(request):
+    """The signed-in account, if it can have passkeys (one with a local password, not proxy-only)."""
+    u = S().current_user(request)
+    if not u or u.get("source") not in ("local", "env"):
+        raise HTTPException(409, "Passkeys are for accounts with a dashboard password.")
+    return u
+
+
+def forget_user(uid):
+    """An account was removed: its passkeys go too."""
+    with _lock:
+        keys = _load()
+        left = [k for k in keys if owner(k) != uid]
+        if len(left) != len(keys):
+            _save(left)
+
+
 def available(request):
     """Whether the sign-in page should offer a passkey here."""
     try:
@@ -132,12 +164,17 @@ def api_list(request: Request):
         why = None
     except HTTPException as e:
         rp_id, why = None, e.detail
-    return {"items": [_public(k) for k in _load()], "here": rp_id, "unavailable": why}
+    u = S().current_user(request)
+    mine = [_public(k) for k in _load() if u and owner(k) == u["id"]]
+    if u and u.get("source") not in ("local", "env"):
+        why = why or "Passkeys are for accounts with a dashboard password."
+    return {"items": mine, "here": rp_id, "unavailable": why}
 
 
 @router.post("/api/passkeys/register/options")
 def api_register_options(request: Request, body: dict = Body(default={})):
     """Step 1 of adding a passkey: the challenge for the browser to make a new passkey with."""
+    me = _me(request)
     S().confirm_password(request, body.get("password"))  # adding a way in asks for the password first
     w = W()
     from webauthn.helpers.structs import (AuthenticatorSelectionCriteria, PublicKeyCredentialDescriptor,
@@ -146,13 +183,13 @@ def api_register_options(request: Request, body: dict = Body(default={})):
     keys = _load()
     if len(keys) >= MAX_KEYS:
         raise HTTPException(409, f"There are already {MAX_KEYS} passkeys. Remove one you don't use first.")
-    user = M().AUTH_USER or "admin"
     opts = w.generate_registration_options(
-        rp_id=rp_id, rp_name=f"{M().HOST_INFO.get('hostname') or 'Homelab'} dashboard", user_name=user,
-        user_id=user.encode()[:64], user_display_name=user,
+        rp_id=rp_id, rp_name=f"{M().HOST_INFO.get('hostname') or 'Homelab'} dashboard", user_name=me["name"],
+        user_id=me["id"].encode(), user_display_name=me["name"],
         authenticator_selection=AuthenticatorSelectionCriteria(resident_key=ResidentKeyRequirement.REQUIRED,
                                                                user_verification=UserVerificationRequirement.REQUIRED),
-        exclude_credentials=[PublicKeyCredentialDescriptor(id=w.base64url_to_bytes(k["id"])) for k in keys if k.get("rp_id") == rp_id])
+        exclude_credentials=[PublicKeyCredentialDescriptor(id=w.base64url_to_bytes(k["id"])) for k in keys
+                             if k.get("rp_id") == rp_id and owner(k) == me["id"]])
     return {"ticket": _ticket(opts.challenge, "register", rp_id, S().client_ip(request), S()._session_key(request)),
             "options": json.loads(w.options_to_json(opts))}
 
@@ -160,6 +197,7 @@ def api_register_options(request: Request, body: dict = Body(default={})):
 @router.post("/api/passkeys/register/verify")
 def api_register_verify(request: Request, body: dict = Body(...)):
     """Step 2 of adding a passkey: check what the browser made, and keep its public key."""
+    me = _me(request)
     w = W()
     rp_id, origin = where(request)
     challenge = _take(body.get("ticket"), "register", rp_id, S()._session_key(request))
@@ -170,7 +208,7 @@ def api_register_verify(request: Request, body: dict = Body(...)):
         raise HTTPException(400, f"That passkey couldn't be checked: {e}")
     name = str(body.get("name") or "").strip()[:60] or "Passkey"
     key = {"id": w.helpers.bytes_to_base64url(v.credential_id), "public_key": w.helpers.bytes_to_base64url(v.credential_public_key),
-           "sign_count": v.sign_count, "rp_id": rp_id, "name": name, "created": time.time(), "last_used": None,
+           "sign_count": v.sign_count, "rp_id": rp_id, "name": name, "created": time.time(), "last_used": None, "user": me["id"],
            "device": str(getattr(v, "credential_device_type", "") or "").split(".")[-1].lower() or None}
     with _lock:
         keys = _load()
@@ -178,7 +216,7 @@ def api_register_verify(request: Request, body: dict = Body(...)):
             raise HTTPException(409, "That passkey is already added")
         keys.append(key)
         _save(keys)
-    U().log("settings", f"Added a passkey ({name}) for {rp_id}")
+    U().log("settings", f"{me['name']} added a passkey ({name}) for {rp_id}")
     return {"ok": True, "item": _public(key)}
 
 
@@ -188,9 +226,10 @@ def api_rename(request: Request, body: dict = Body(...)):
     name = str(body.get("name") or "").strip()[:60]
     if not name:
         raise HTTPException(400, "A name is needed")
+    me = _me(request)
     with _lock:
         keys = _load()
-        k = next((k for k in keys if k["id"] == body.get("id")), None)
+        k = next((k for k in keys if k["id"] == body.get("id") and owner(k) == me["id"]), None)
         if not k:
             raise HTTPException(404, "No such passkey")
         k["name"] = name
@@ -201,23 +240,24 @@ def api_rename(request: Request, body: dict = Body(...)):
 @router.post("/api/passkeys/delete")
 def api_delete(request: Request, body: dict = Body(...)):
     """Remove a passkey (asks for the password, since it's a way in)."""
+    me = _me(request)
     S().confirm_password(request, body.get("password"))
     with _lock:
         keys = _load()
-        k = next((k for k in keys if k["id"] == body.get("id")), None)
+        k = next((k for k in keys if k["id"] == body.get("id") and owner(k) == me["id"]), None)
         if not k:
             raise HTTPException(404, "No such passkey")
         _save([x for x in keys if x["id"] != k["id"]])
-    U().log("settings", f"Removed the passkey {k['name']}")
+    U().log("settings", f"{me['name']} removed the passkey {k['name']}")
     return {"ok": True}
 
 
 # --------------------------------------------------------------------------- using
-def _options(request, purpose, key=None):
-    """A challenge for signing in or confirming with any passkey added for this address."""
+def _options(request, purpose, key=None, uid=None):
+    """A challenge for signing in (any passkey added for this address) or confirming (your own)."""
     w = W()
     rp_id, _ = where(request)
-    mine = [k for k in _load() if k.get("rp_id") == rp_id]
+    mine = [k for k in _load() if k.get("rp_id") == rp_id and (uid is None or owner(k) == uid)]
     if not mine:
         raise HTTPException(404, "No passkeys have been added for this address yet")
     from webauthn.helpers.structs import UserVerificationRequirement
@@ -225,15 +265,17 @@ def _options(request, purpose, key=None):
     return {"ticket": _ticket(opts.challenge, purpose, rp_id, S().client_ip(request), key), "options": json.loads(w.options_to_json(opts))}
 
 
-def _check(request, body, purpose, key=None):
-    """Checks a passkey answer. Returns the passkey used, or raises (a failure counts as a wrong password)."""
+def _check(request, body, purpose, key=None, uid=None):
+    """Checks a passkey answer (for confirming: one of this account's own). Returns the passkey used, or
+    raises (a failure counts as a wrong password)."""
     w = W()
     rp_id, origin = where(request)
     challenge = _take(body.get("ticket"), purpose, rp_id, key)
     cred = body.get("credential") if isinstance(body.get("credential"), dict) else {}
     with _lock:
         keys = _load()
-        k = next((k for k in keys if k["id"] == cred.get("id") and k.get("rp_id") == rp_id), None)
+        k = next((k for k in keys if k["id"] == cred.get("id") and k.get("rp_id") == rp_id
+                  and (uid is None or owner(k) == uid)), None)
     if not k:
         raise HTTPException(401, "That passkey isn't one this dashboard knows. Sign in with your password, then add it in Settings → Security.")
     try:
@@ -267,28 +309,29 @@ def api_login(request: Request, body: dict = Body(...)):
     """Step 2 of signing in with a passkey: check the answer and set the session cookie."""
     sec = S()
     ip = sec.client_ip(request)
-    wait = sec._begin_attempt(ip)
+    wait, entry = sec._begin_attempt(ip)
     if wait:
         return JSONResponse({"error": f"Too many failed sign-ins. Try again in {max(1, round(wait / 60))} minutes."}, status_code=429)
     try:
         k = _check(request, body, "login")
+        user = A().by_id(owner(k) or "")
+        if not user:
+            raise HTTPException(401, "That passkey's account isn't there any more.")
     except HTTPException as e:
-        sec._failed(ip)
+        sec._failed(ip, entry, "(passkey)")
         return JSONResponse({"error": e.detail}, status_code=e.status_code)
-    sec._succeeded(ip)
-    remember = bool(body.get("remember"))
-    token, exp = sec.make_session(remember)
+    sec._succeeded(ip, entry, user["name"])
     resp = JSONResponse({"ok": True})
-    resp.set_cookie(sec.cookie_name(request), token, max_age=(exp - int(time.time())) if remember else None,
-                    httponly=True, secure=sec.is_https(request), samesite="strict", path="/")
-    U().log("settings", f"Signed in with the passkey {k['name']}")
+    sec.set_session_cookie(resp, request, user, bool(body.get("remember")))
+    U().log("settings", f"{user['name']} signed in with the passkey {k['name']}")
     return resp
 
 
 @router.post("/api/passkeys/confirm/options")
 def api_confirm_options(request: Request):
     """For the 'enter your password' prompt: confirm with a passkey instead."""
-    return _options(request, "confirm", S()._session_key(request))
+    me = _me(request)
+    return _options(request, "confirm", S()._session_key(request), me["id"])
 
 
 @router.post("/api/passkeys/confirm")
@@ -296,14 +339,15 @@ def api_confirm(request: Request, body: dict = Body(...)):
     """Confirm a big change with a passkey: counts as giving the password for the next 10 minutes."""
     sec = S()
     ip = sec.client_ip(request)
-    wait = sec._begin_attempt(ip)
+    me = _me(request)
+    wait, entry = sec._begin_attempt(ip)
     if wait:
         raise HTTPException(429, f"Too many failed tries. Try again in {max(1, round(wait / 60))} minutes.")
     try:
-        _check(request, body, "confirm", sec._session_key(request))
+        _check(request, body, "confirm", sec._session_key(request), me["id"])
     except HTTPException:
-        sec._failed(ip)
+        sec._failed(ip, entry, me["name"])
         raise
-    sec._succeeded(ip)
+    sec._succeeded(ip, entry, me["name"])
     sec.elevate(request)
     return {"ok": True}

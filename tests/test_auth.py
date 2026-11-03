@@ -78,15 +78,17 @@ def test_sign_out_everywhere(client, anon):
 
 def test_tampered_or_junk_cookie(client):
     name = security.SECURE_COOKIE
-    sid, exp, sig = client.cookies[name].split(".")
-    for bad in (f"{sid}.{int(exp) + 9999}.{sig}", f"{sid}.{exp}.{'0' * 64}", "junk", "a.b.c", "x" * 500):
+    uid, sid, exp, sig = client.cookies[name].split(".")
+    for bad in (f"{uid}.{sid}.{int(exp) + 9999}.{sig}", f"{uid}.{sid}.{exp}.{'0' * 64}", f"{'1' * 16}.{sid}.{exp}.{sig}",
+                f"{sid}.{exp}.{sig}", "junk", "a.b.c.d", "x" * 500, f"{uid}.{sid}.{exp}.{sig}.extra"):
         client.cookies.clear()
         client.cookies.set(name, bad)
         assert client.get("/api/system").status_code == 401, bad
 
 
 def test_expired_session(monkeypatch):
-    token, exp = security.make_session(False)
+    import accounts
+    token, exp = security.make_session(accounts.by_name("admin"), False)
     assert security.valid(token)
     monkeypatch.setattr(security.time, "time", lambda: exp + 1)
     assert not security.valid(token)
@@ -115,21 +117,16 @@ def test_security_headers(client):
     assert client.get("/api/system").headers["cache-control"] == "no-store"
 
 
-def test_setup_page_when_no_password(anon, monkeypatch):
-    import main
-    monkeypatch.setattr(main, "AUTH_USER", None)
-    monkeypatch.setattr(main, "AUTH_PASS", None)
+def test_setup_page_when_no_account(anon, no_accounts, monkeypatch):
     monkeypatch.setattr(security, "ALLOW_NO_AUTH", False)
-    r = anon.get("/")
-    assert r.status_code == 503 and "Set a password" in r.text
+    r = anon.get("/", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/setup"
+    assert "Create the admin account" in anon.get("/setup").text
     assert anon.get("/api/system").status_code == 503
     assert anon.get("/api/health").status_code == 200
 
 
-def test_open_mode_only_answers_to_own_names(anon, monkeypatch):
-    import main
-    monkeypatch.setattr(main, "AUTH_USER", None)
-    monkeypatch.setattr(main, "AUTH_PASS", None)
+def test_open_mode_only_answers_to_own_names(anon, no_accounts, monkeypatch):
     monkeypatch.setattr(security, "ALLOW_NO_AUTH", True)
     assert anon.get("/api/system").status_code == 200  # "localhost"
     r = anon.get("/api/system", headers={"host": "rebind.evil.example"})

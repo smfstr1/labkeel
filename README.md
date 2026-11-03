@@ -24,20 +24,29 @@ to the machine to do that, so those features start switched off; turn on only th
 Keep it off the open internet, and only make admin accounts for people you'd trust with full
 control of the server. See [SECURITY.md](SECURITY.md) for how it's protected.
 
-## Install
+## Try it
 
-You'll need a Linux machine with Docker. The short version:
+You'll need Docker with Compose on a Linux machine.
 
 ```sh
-git clone https://github.com/smfstr1/labkeel.git && cd labkeel
+git clone https://github.com/smfstr1/labkeel.git
+cd labkeel
 cp docker-compose.example.yml docker-compose.yml
 mkdir -p config && cp config.example.json config/config.json
-docker compose up -d --build
-docker logs labkeel        # your one-time set-up code
 ```
 
-Then open `https://<your server's address>:8787`. The friendly, step-by-step version, including
-updating and uninstalling, is in **[INSTALL.md](INSTALL.md)**.
+Edit `docker-compose.yml`: choose the folders to show under `/browse` and turn on the features you
+want. Then:
+
+```sh
+docker compose up -d --build
+docker logs labkeel        # shows a one-time set-up code
+```
+
+Open `https://<your server's address>:8787`, enter the set-up code, and create your admin account.
+Add more accounts, admin or view-only, from **Account** in the sidebar.
+
+Forgot your password? On the server: `docker exec -it labkeel python accounts.py passwd <name>`.
 
 ## Development
 

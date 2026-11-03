@@ -881,9 +881,9 @@ def _zerr(r):
 
 def _run(args):
     """Run a zpool command that changes a pool, then have everything read the pools afresh. Refused with
-    DASH_ZFS_WRITE=0."""
+    DASH_ZFS_WRITE isn't 1."""
     if not sys.modules["zfsmgr"].WRITE:
-        raise HTTPException(403, "Pool changes are turned off for this dashboard (DASH_ZFS_WRITE=0).")
+        raise HTTPException(403, "Pool changes are turned off for this dashboard. An admin can turn them on with DASH_ZFS_WRITE=1.")
     r = host(args, timeout=120)
     if r.returncode != 0:
         raise HTTPException(409, _zerr(r))

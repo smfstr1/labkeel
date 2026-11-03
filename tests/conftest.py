@@ -23,6 +23,10 @@ for d in ("data", "config", "certs", "browse"):
 
 USER, PASSWORD = "admin", "correct-horse-battery-staple"
 
+from argon2 import PasswordHasher  # noqa: E402
+
+PASSWORD_HASH = PasswordHasher().hash(PASSWORD)
+
 os.environ.update({
     "DASH_DATA": str(TMP / "data"),
     "DASH_CONFIG": str(TMP / "config" / "config.json"),
@@ -30,8 +34,10 @@ os.environ.update({
     "DASH_BROWSE_ROOT": str(TMP / "browse"),
     "DASH_HOST_NS": "0",
     "DASH_USER": USER,
-    "DASH_PASS": PASSWORD,
+    "DASH_PASS_HASH": PASSWORD_HASH,
     "DASH_ALLOW_REBOOT": "0",
+    "DASH_FILES_WRITE": "1",
+    "DASH_ZFS_WRITE": "1",
 })
 
 import main  # noqa: E402
@@ -89,3 +95,33 @@ def config():
 
     yield write
     write('{"title": "Test lab"}')
+
+
+@pytest.fixture
+def no_accounts(monkeypatch, tmp_path):
+    """No accounts at all: no admin from the environment and an empty users.json in a folder of its own."""
+    import accounts
+    monkeypatch.setattr(accounts, "_env", lambda: None)
+    monkeypatch.setattr(accounts, "DATA_DIR", tmp_path)
+    accounts._cache.update(sig=None, users=[])
+    accounts._setup["code"] = None
+    yield accounts
+    accounts._cache.update(sig=None, users=[])
+    accounts._setup["code"] = None
+
+
+@pytest.fixture
+def users(monkeypatch, tmp_path):
+    """The environment's admin, plus a users.json of this test's own to add accounts to."""
+    import accounts
+    monkeypatch.setattr(accounts, "DATA_DIR", tmp_path)
+    accounts._cache.update(sig=None, users=[])
+    yield accounts
+    accounts._cache.update(sig=None, users=[])
+
+
+def sign_in(name, password, client=None, **kw):
+    c = client or TestClient(main.app, base_url="https://localhost", **kw)
+    r = c.post("/api/login", json={"username": name, "password": password})
+    assert r.status_code == 200, r.text
+    return c

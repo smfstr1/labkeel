@@ -76,6 +76,8 @@ button, input, select { font: inherit; color: inherit; }
 .rail-foot { margin-top: auto; padding: 0 8px; font-size: 12.5px; color: var(--faint); display: flex; flex-direction: column; gap: 8px; }
 .linkbtn { background: none; border: 0; padding: 0; color: var(--muted); cursor: pointer; text-align: left; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--rule-2); }
 .linkbtn:hover { color: var(--text); }
+a.linkbtn { font-size: inherit; }
+body.viewer .nav a[data-view="files"], body.viewer .nav a[data-view="settings"] { display: none; }
 main { min-width: 0; padding: 28px 32px 60px; max-width: 1480px; }
 .view-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
 h1 { font-size: 28px; line-height: 1.15; margin: 0; letter-spacing: -.015em; font-weight: 700; }
@@ -854,6 +856,7 @@ dialog.dlg::backdrop { background: rgb(5 10 15 / .5); }
     </nav>
     <div class="rail-foot">
       <span id="uptime"></span>
+      <a class="linkbtn hidden" id="account-link" href="/account">Account</a>
       <button class="linkbtn hidden" id="signout-btn" type="button">Sign out</button>
       <button class="linkbtn" id="theme-btn" type="button"><svg class="tb-ic" width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 0 0 0 14z" fill="currentColor"/></svg><span class="tb-text">Switch to light theme</span></button>
     </div>
@@ -1420,6 +1423,7 @@ applyTheme(getTheme());
 function route() {
   const raw = location.hash.slice(1) || "overview";
   const [v, arg] = raw.split(/:(.*)/s);
+  if (document.body.classList.contains("viewer") && ["files", "settings"].includes(v)) { location.replace("#overview"); return; }
   currentView = views.includes(v) ? v : "overview";
   views.forEach(n => $("#view-" + n).classList.toggle("hidden", n !== currentView));
   const navView = currentView === "pool" ? "storage" : currentView;  // a pool's page sits under Storage
@@ -3021,7 +3025,7 @@ const PoolV = {
         ${w ? `<div><button class="btn small" type="button" data-pv="savesched" data-arg="${what}">Save schedule</button></div>` : ""}</div>`;
     };
     const ssd = d.members.some(m => m.section === "data" && !m.rotational);
-    return `${w ? "" : `<div class="banner">Pool changes are turned off for this dashboard (DASH_ZFS_WRITE=0), so this page is read-only.</div>`}
+    return `${w ? "" : `<div class="banner">Pool changes are turned off for this dashboard (turn them on with DASH_ZFS_WRITE=1), so this page is read-only.</div>`}
       <section class="set"><div class="set-head"><div><h2>Scrub</h2><p class="muted set-lede">Reads every block in the pool, checks it against its checksum, and repairs anything that has quietly gone bad from the other drives. Once a month is usual.</p></div></div>
         <div class="set-body"><div id="mt-scrub">${this.scrubStatus()}</div>${sched("scrub")}</div></section>
       <section class="set"><div class="set-head"><div><h2>TRIM</h2><p class="muted set-lede">Tells SSDs which blocks are free, which keeps them fast and helps them last. Hard drives don't need it.</p></div>
@@ -3743,7 +3747,7 @@ const Files = {
   renderMode() {
     const ro = this.roots.length && !this.writable;
     $("#f-write").hidden = !this.writable;
-    $("#f-mode").textContent = !S.meta?.file_write ? "Read-only (changing files is turned off with DASH_FILES_WRITE=0)."
+    $("#f-mode").textContent = !S.meta?.file_write ? "Read-only (turn on changing files with DASH_FILES_WRITE=1)."
       : this.writable ? "You can change files here. Deleted things go to the Trash for 30 days."
       : ro && (S.meta.file_writable || {})[this.current.split("/")[0]] === false ? `${this.current.split("/")[0]} is mounted read-only (:ro in docker-compose.yml).`
       : "Read-only here.";
@@ -4529,10 +4533,15 @@ const Settings = {
     else if (t.mode === "custom") conn = ["good", "Encrypted with your certificate", `Valid until ${esc(until)}${t.domain ? ` for <span class="mono">${esc(t.domain)}</span>` : ""}.`];
     else if (t.mode === "self-signed") conn = ["warn", "Encrypted, with the dashboard's own certificate", "Browsers warn about it until you accept it once on each device. For a trusted certificate, turn on HTTPS on the DNS page of the Tailscale admin console. The dashboard switches over within 10 minutes." + (t.error && !/turned off/.test(t.error) ? ` (${esc(t.error)})` : "")];
     else conn = ["good", "Encrypted by your reverse proxy", "HTTPS is handled in front of the dashboard, for example by Caddy."];
+    const a = d.accounts || {}, n = (k, w) => `${a[k]} ${w}${a[k] === 1 ? "" : "s"}`;
     const auth = d.auth
-      ? ["good", "Sign-in required", "After 5 wrong passwords, sign-in from that address pauses for 15 minutes and you get an alert."]
-      : ["bad", "No sign-in", "Anyone who can reach this page can restart the server and change settings. Set <span class=\"mono\">DASH_USER</span> and <span class=\"mono\">DASH_PASS</span> in docker-compose.yml."];
-    $("#sec-list").innerHTML = [conn, auth].map(([lvl, title, text]) => `<div class="sec-row"><span class="dot ${lvl}"></span><div><b>${title}</b><p>${text}</p></div></div>`).join("");
+      ? ["good", "Sign-in required", `${n("admins", "admin")} and ${n("viewers", "viewer")}. Passwords are stored only as Argon2id hashes. After 5 wrong passwords, sign-in from that address pauses for 15 minutes and you get an alert. <a href="/account">Manage accounts</a>.`]
+      : ["bad", "No sign-in", "Anyone who can reach this page can restart the server and change settings. Remove <span class=\"mono\">DASH_ALLOW_NO_AUTH</span> from docker-compose.yml to set up an account."];
+    const rows = [conn, auth];
+    if (a.pass_leftover) rows.push(["warn", "Old password setting left over", "<span class=\"mono\">DASH_PASS</span> is no longer used, but it still holds a password in plain text in docker-compose.yml. Remove it."]);
+    if (d.proxy?.on) rows.push(["good", "Sign-in through your proxy", `Your reverse proxy signs people in and passes their name in <span class="mono">${esc(d.proxy.header)}</span>. Only requests from <span class="mono">DASH_TRUSTED_PROXY</span> are believed.`]);
+    if (d.hsts) rows.push(["good", "HTTPS only", "Browsers are told to always use https:// for this address (DASH_HSTS)."]);
+    $("#sec-list").innerHTML = rows.map(([lvl, title, text]) => `<div class="sec-row"><span class="dot ${lvl}"></span><div><b>${title}</b><p>${text}</p></div></div>`).join("");
     $("#sec-foot").hidden = !d.auth;
   },
   async load() {
@@ -4694,8 +4703,13 @@ $("#signout-btn").addEventListener("click", () => signOut(false));
 /* ---------- boot ---------- */
 (async () => {
   route();
-  try { S.meta = await api("/api/meta"); $("#signout-btn").classList.toggle("hidden", !S.meta.auth); if (S.meta.config_error) $("#global-banner").innerHTML = `<div class="banner bad">${esc(S.meta.config_error)}</div>`;
-    if (!S.meta.auth) $("#auth-banner").innerHTML = `<div class="banner bad">Sign-in is off, so anyone who can reach this address can use the dashboard. Set <span class="mono">DASH_USER</span> and <span class="mono">DASH_PASS</span> in docker-compose.yml to turn it on.</div>`; } catch {}
+  try { S.meta = await api("/api/meta"); $("#signout-btn").classList.toggle("hidden", !S.meta.auth); $("#account-link").classList.toggle("hidden", !S.meta.auth);
+    if (S.meta.user) $("#account-link").textContent = S.meta.user.name;
+    if (S.meta.user && S.meta.user.role !== "admin") {  // a viewer: status pages only (the server enforces this too)
+      document.body.classList.add("viewer");
+      if (["files", "settings"].includes(currentView)) location.hash = "#overview";
+    } if (S.meta.config_error) $("#global-banner").innerHTML = `<div class="banner bad">${esc(S.meta.config_error)}</div>`;
+    if (!S.meta.auth) $("#auth-banner").innerHTML = `<div class="banner bad">Sign-in is off, so anyone who can reach this address can use the dashboard. Remove <span class="mono">DASH_ALLOW_NO_AUTH</span> from docker-compose.yml and restart it to set up an account.</div>`; } catch {}
   applyRefresh(S.meta?.refresh_ms || 2000);
   poll(loadSystem, () => S.refreshMs);
   poll(loadAttention, 15000);
