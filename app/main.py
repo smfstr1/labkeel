@@ -1385,9 +1385,10 @@ def _reason(e):
 
 
 def check_service(svc):
-    """Returns {state: up|degraded|down|unknown, detail, latency, info}."""
+    """Returns {state: up|degraded|down|unknown, detail, latency, info}. In what's checked, {gateway} is the
+    router and {host} is this machine itself (127.0.0.1), since the checks run here."""
     gw = default_gateway()
-    sub = lambda v: v.replace("{gateway}", gw or "router-not-found") if isinstance(v, str) else v
+    sub = lambda v: v.replace("{gateway}", gw or "router-not-found").replace("{host}", "127.0.0.1") if isinstance(v, str) else v
     url = sub(svc.get("url"))
     chk = svc.get("check")
     if chk is None:
@@ -1452,26 +1453,53 @@ def check_service(svc):
     return res
 
 
+_LINK_HOST_RE = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
+
+
+def link_host(request=None):
+    """What {host} becomes in a service's link: the name or address the browser used to reach the dashboard
+    (a service on this machine is reachable the same way), or this machine's name when there's no browser."""
+    name = security.host_name(request) if request is not None else ""
+    if name and _LINK_HOST_RE.match(name):
+        return name
+    if name:
+        try:
+            socket.inet_pton(socket.AF_INET6, name)
+            return f"[{name}]"
+        except OSError:
+            pass
+    return HOST_INFO.get("hostname") or "localhost"
+
+
+def enabled_service(s):
+    """A service from config.json that's turned on: it has a name, and "enabled" isn't false. The ready-made
+    examples in config.example.json all start with "enabled": false."""
+    return isinstance(s, dict) and s.get("name") and s.get("enabled", True) is not False
+
+
 @app.get("/api/services")
-def api_services(fresh: bool = False):
-    """Each service from config.json with its status. All checked at once, at most every 20 s unless ?fresh=true."""
+def api_services(request: Request = None, fresh: bool = False):
+    """Each service from config.json that's turned on, with its status. All checked at once, at most every 20 s
+    unless ?fresh=true. "{host}" in a link becomes the name this browser used to reach the dashboard."""
     with _svc_lock:
-        if not fresh and _svc_cache["data"] and time.time() - _svc_cache["t"] < 20:
-            return _svc_cache["data"]
-        cfg = load_config()
-        svcs = [s for s in (cfg.get("services") or []) if isinstance(s, dict) and s.get("name")]
-        with ThreadPoolExecutor(max_workers=16) as ex:
-            results = list(ex.map(check_service, svcs))
-        names = load_overrides().get("services", {})
-        gw = default_gateway() or "router-not-found"
-        items = []
-        for s, r in zip(svcs, results):
-            item = {k: s.get(k) for k in ("name", "description", "icon", "group", "container")}
-            item.update(url=(s.get("url") or "").replace("{gateway}", gw) or None, display=names.get(s["name"]), status=r)
-            items.append(item)
-        data = {"items": items, "error": cfg.get("_error"), "title": cfg.get("title")}
-        _svc_cache.update(data=data, t=time.time())
-        return data
+        if fresh or not _svc_cache["data"] or time.time() - _svc_cache["t"] >= 20:
+            cfg = load_config()
+            listed = [s for s in (cfg.get("services") or []) if isinstance(s, dict) and s.get("name")]
+            svcs = [s for s in listed if enabled_service(s)]
+            with ThreadPoolExecutor(max_workers=16) as ex:
+                results = list(ex.map(check_service, svcs))
+            names = load_overrides().get("services", {})
+            gw = default_gateway() or "router-not-found"
+            items = []
+            for s, r in zip(svcs, results):
+                item = {k: s.get(k) for k in ("name", "description", "icon", "group", "container")}
+                item.update(url=(s.get("url") or "").replace("{gateway}", gw) or None, display=names.get(s["name"]), status=r)
+                items.append(item)
+            _svc_cache.update(data={"items": items, "error": cfg.get("_error"), "title": cfg.get("title"),
+                                    "turned_off": len(listed) - len(svcs)}, t=time.time())
+        data = _svc_cache["data"]
+    host = link_host(request)
+    return {**data, "items": [{**i, "url": i["url"].replace("{host}", host)} if i.get("url") else i for i in data["items"]]}
 
 
 # --------------------------------------------------------------------------- display names

@@ -20,6 +20,14 @@
 - **`DASH_PASS` is removed.** The admin set in `docker-compose.yml` now needs `DASH_PASS_HASH`, an Argon2id hash,
   so a password is never stored there in plain text. A leftover `DASH_PASS` is ignored, with a warning.
 
+### Added
+- **Ready-made services.** `config.example.json` has templates for 22 popular apps (Plex, Jellyfin, Immich,
+  the *arr apps, Home Assistant, Pi-hole, Minecraft and more), all off until you set `"enabled": true`,
+  plus a blank one for your own. A new install no longer opens on a page of red "down" tiles.
+- `"enabled": false` on any service hides it and stops its checks.
+- `{host}` in a service's link becomes the address LabKeel was opened at, and in its check, the machine itself.
+- `docs/services.md` explains every field, placeholder and check.
+
 ### Fixed
 - Restoring a Trash item whose copy had gone crashed, and deleting it for good did nothing.
 - The dashboard's config folder wasn't hidden from the file browser when mounted as a folder.

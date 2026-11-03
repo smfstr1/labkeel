@@ -1,42 +1,65 @@
 {
+  "_help": [
+    "Services: ready-made examples for popular apps, all turned off. Set \"enabled\": true on the ones you run.",
+    "{host} in a link becomes the address you opened LabKeel at, so links work from any device. Checks run on this machine.",
+    "Using a different port? Change it in both \"url\" and \"check\". The last example is a blank to copy for your own.",
+    "Every field is explained in docs/services.md."
+  ],
+
   "title": "My Homelab",
 
   "services": [
-    {
-      "name": "Router",
-      "description": "Admin page",
-      "icon": "R",
-      "group": "Network",
-      "url": "http://{gateway}"
-    },
-    {
-      "name": "Media server",
-      "description": "Checked over HTTP, and down if its container stops",
-      "group": "Media",
-      "container": "jellyfin",
-      "url": "http://192.168.1.10:8096",
-      "check": { "type": "http", "url": "http://127.0.0.1:8096/health", "timeout": 6 }
-    },
-    {
-      "name": "Database",
-      "description": "Only checks that the port is open",
-      "group": "Apps",
-      "check": { "type": "tcp", "host": "127.0.0.1", "port": 5432 }
-    },
-    {
-      "name": "Minecraft Bedrock",
-      "description": "Shows players online",
-      "group": "Games",
-      "container": "bedrock",
-      "check": { "type": "bedrock", "port": 19132 }
-    },
-    {
-      "name": "Backup job",
-      "description": "Up while its container is running",
-      "group": "Apps",
-      "container": "backup",
-      "check": { "type": "none" }
-    }
+    { "name": "Plex", "group": "Media", "description": "Movies, TV and music", "enabled": false,
+      "url": "http://{host}:32400/web", "check": { "type": "http", "url": "http://{host}:32400/identity" } },
+    { "name": "Jellyfin", "group": "Media", "description": "Movies, TV and music", "enabled": false,
+      "url": "http://{host}:8096", "check": { "type": "http", "url": "http://{host}:8096/health" } },
+    { "name": "Immich", "group": "Media", "description": "Photos and videos", "enabled": false,
+      "url": "http://{host}:2283", "check": { "type": "http", "url": "http://{host}:2283/api/server/ping" } },
+    { "name": "Audiobookshelf", "group": "Media", "description": "Audiobooks and podcasts", "enabled": false,
+      "url": "http://{host}:13378" },
+    { "name": "Navidrome", "group": "Media", "description": "Music streaming", "enabled": false,
+      "url": "http://{host}:4533" },
+
+    { "name": "Sonarr", "group": "Downloads", "description": "TV shows", "enabled": false,
+      "url": "http://{host}:8989" },
+    { "name": "Radarr", "group": "Downloads", "description": "Movies", "enabled": false,
+      "url": "http://{host}:7878" },
+    { "name": "Lidarr", "group": "Downloads", "description": "Music", "enabled": false,
+      "url": "http://{host}:8686" },
+    { "name": "Prowlarr", "group": "Downloads", "description": "Indexers", "enabled": false,
+      "url": "http://{host}:9696" },
+    { "name": "qBittorrent", "group": "Downloads", "description": "Torrents", "enabled": false,
+      "url": "http://{host}:8080" },
+
+    { "name": "Home Assistant", "group": "Home", "description": "Smart home", "enabled": false,
+      "url": "http://{host}:8123" },
+    { "name": "Paperless-ngx", "group": "Home", "description": "Scanned documents", "enabled": false,
+      "url": "http://{host}:8000" },
+    { "name": "Syncthing", "group": "Home", "description": "File sync between devices", "enabled": false,
+      "url": "http://{host}:8384" },
+
+    { "name": "Router", "group": "Network", "description": "Your router's admin page", "enabled": false,
+      "url": "http://{gateway}" },
+    { "name": "Pi-hole", "group": "Network", "description": "Ad blocking for the whole network", "enabled": false,
+      "url": "http://{host}/admin" },
+    { "name": "Nginx Proxy Manager", "group": "Network", "description": "Reverse proxy", "enabled": false,
+      "url": "http://{host}:81" },
+    { "name": "Portainer", "group": "Network", "description": "Docker management", "enabled": false,
+      "url": "https://{host}:9443" },
+
+    { "name": "Uptime Kuma", "group": "Monitoring", "description": "Uptime checks", "enabled": false,
+      "url": "http://{host}:3001" },
+    { "name": "Grafana", "group": "Monitoring", "description": "Graphs and dashboards", "enabled": false,
+      "url": "http://{host}:3000", "check": { "type": "http", "url": "http://{host}:3000/api/health" } },
+
+    { "name": "Minecraft (Java)", "group": "Games", "description": "Game server", "enabled": false,
+      "check": { "type": "tcp", "host": "{host}", "port": 25565 } },
+    { "name": "Minecraft (Bedrock)", "group": "Games", "description": "Game server, with players online", "enabled": false,
+      "check": { "type": "bedrock", "port": 19132 } },
+
+    { "name": "My app", "group": "Other", "description": "Copy this one for anything not listed above", "enabled": false,
+      "icon": "M", "url": "http://{host}:8000", "container": "my-app",
+      "check": { "type": "http", "url": "http://{host}:8000/health", "timeout": 6 } }
   ],
 
   "files": {
@@ -45,7 +68,5 @@
     "hide": []
   },
 
-  "drive_labels": {
-    "S6XXNX0R123456": "Fast NVMe (bay 1)"
-  }
+  "drive_labels": {}
 }

@@ -11,14 +11,18 @@ No YAML wizardry needed. Let's set sail.
 
 LabKeel needs three things on the machine it watches:
 
-| What | Why | Check you have it |
-| --- | --- | --- |
-| **Docker Engine** | runs LabKeel | `docker --version` |
-| **Docker Compose plugin** | starts it with one command | `docker compose version` |
-| **git** | fetches the code, and updates later | `git --version` |
+| What | Why | Check you have it | You want to see |
+| --- | --- | --- | --- |
+| **Docker Engine** | runs LabKeel | `docker --version` | `Docker version 2…` |
+| **Docker Compose plugin** | starts it with one command | `docker compose version` | `Docker Compose version v2…` or later |
+| **git** | fetches the code, and updates later | `git --version` | any version |
 
-If all three print a version, skip ahead to [step 2](#2-grab-the-code). Everything else LabKeel uses
+If all three look right, skip ahead to [step 2](#2-grab-the-code). Everything else LabKeel uses
 (Python, drive-health tools and so on) comes packed inside its own image.
+
+> **Impostor alert:** if you see `Emulate Docker CLI using podman`, a `podman` version number, or
+> `docker-compose` 1.x, that's Podman or an old Compose standing in for Docker. LabKeel needs the real thing:
+> follow the box for your system below, which swaps the stand-ins out for you.
 
 > **Heads up:** use Docker *Engine*, not Docker *Desktop*. Desktop runs containers inside a hidden
 > virtual machine, so LabKeel would end up proudly reporting that VM's stats instead of your server's.
@@ -224,8 +228,10 @@ up in the Files page:
 
 Not sure? Leave them at `0`. You can watch everything without them, and switch them on later.
 
-**Optional:** list the things you run in `config/config.json`, so the Services page can link to them and
-check they're up. The example file shows a few kinds to copy from.
+**Optional: switch on your services.** `config/config.json` comes with ready-made tiles for popular apps
+(Plex, Jellyfin, Immich, Home Assistant, Pi-hole and friends), all switched off. Set `"enabled": true` on
+the ones you run, and they'll appear on the Services page with a link and a live up/down light. There's a
+blank one at the bottom for anything else. [docs/services.md](docs/services.md) has the details.
 
 ---
 
@@ -315,6 +321,7 @@ Since Docker now comes from Docker's own repository, that keeps you on the lates
 | --- | --- |
 | It keeps restarting, and the log says "address already in use" | Something else is using port 8787. Add `- DASH_PORT=8788` under `environment:`. |
 | Browser says the connection isn't private | Expected without a trusted certificate. Continue once, or turn on Tailscale HTTPS (step 6). |
+| "Emulate Docker CLI using podman", or "Error while fetching server API version" | That's Podman or an old Compose, not Docker. Install Docker as in [step 1](#1-get-the-essentials). |
 | Lost the set-up code | Run `docker logs labkeel` again, or `docker compose restart` for a fresh one. |
 | Forgot your password | `docker exec -it labkeel python accounts.py passwd <your name>` |
 | "Too many wrong passwords" | Wait 15 minutes, or `docker compose restart`. |

@@ -3591,11 +3591,16 @@ function renderServices() {
       <div class="li"><span class="dot ${svcState(s)}"></span>
       ${s.url ? `<a class="grow" href="${esc(s.url)}" target="_blank" rel="noopener">${esc(sname(s))}</a>` : `<span class="grow">${esc(sname(s))}</span>`}
       <span class="end" title="${svcLine(s).replace(/"/g, "&quot;")}">${svcShort(s)}</span></div>`).join("")
-      : `<div class="li muted">No services listed yet. Add them to config.json.</div>`;
+      : `<div class="li muted">No services turned on yet. See the Services page.</div>`;
   }
   if (currentView !== "services") return;
   let html = d.error ? `<div class="banner bad">${esc(d.error)}</div>` : "";
-  if (!items.length) { $("#svc-body").innerHTML = html + `<div class="empty">No services listed yet. Add them to the <span class="mono">services</span> list in config.json.</div>`; return; }
+  if (!items.length) {
+    $("#svc-body").innerHTML = html + (d.turned_off
+      ? `<div class="empty">No services turned on yet. <span class="mono">config.json</span> has ${d.turned_off} ready-made examples for popular apps: set <span class="mono">"enabled": true</span> on the ones you run, or add your own. See <span class="mono">docs/services.md</span>.</div>`
+      : `<div class="empty">No services listed yet. Add them to the <span class="mono">services</span> list in config.json (see <span class="mono">docs/services.md</span>).</div>`);
+    return;
+  }
   const groups = new Map();
   for (const s of items) { const k = s.group || ""; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(s); }
   for (const [g, list] of groups) {
