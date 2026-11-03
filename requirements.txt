@@ -12,6 +12,8 @@ docker==7.2.0
 psutil==7.2.2
 # Time zone data for schedules, in case the image has none of its own (Python's zoneinfo falls back to it)
 tzdata==2026.6
+# Passwords: stored only as Argon2id hashes
+argon2-cffi==25.1.0
 # HTTPS: reading certificates and making a self-signed one
 cryptography==50.0.2
 # Passkeys (WebAuthn): checking what the browser's passkey sends
