@@ -18,7 +18,7 @@ drive health, files and service checks in one page.
 - **Alerts**: to ntfy or Discord when something needs attention
 - **Sign-in**: password or passkey, over HTTPS by default
 
-## Important
+## Information
 
 LabKeel can restart your server, change ZFS pools and edit files. It needs privileged access
 to the machine to do that. Keep it off the open internet, use a long password, and only give
