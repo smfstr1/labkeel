@@ -33,6 +33,21 @@ to the machine to do that, so those features start switched off; turn on only th
 Keep it off the open internet, and only make admin accounts for people you'd trust with full
 control of the server. See [SECURITY.md](SECURITY.md) for how it's protected.
 
+## Screenshots
+
+| | |
+| --- | --- |
+| ![Containers grouped by compose project, with an Update badge on the ones with a newer image](docs/screenshots/containers.png) | ![A container's logs, with how to update it](docs/screenshots/container-logs.png) |
+| **Containers**: grouped by project, with update checks | **Logs**: live, searchable, with the update command |
+| ![The file browser in a Movies folder](docs/screenshots/files.png) | ![Service tiles with live up/down checks](docs/screenshots/services.png) |
+| **Files**: browse, upload, move, with a trash | **Services**: every app, with a live check |
+| ![Settings showing a LabKeel update ready to install](docs/screenshots/labkeel-update.png) | ![The activity log, naming who did what](docs/screenshots/activity.png) |
+| **Updates itself** from Settings | **Activity log**: who did what, and when |
+
+<p align="center"><img src="docs/screenshots/phone.png" alt="LabKeel on a phone" width="300"></p>
+
+The screenshots show a demo machine with sample containers, files and history.
+
 ## Install
 
 You'll need a Linux machine with Docker. The short version:
