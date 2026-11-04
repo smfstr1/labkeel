@@ -9,8 +9,6 @@
   drive health, files and service checks in one page.
 </p>
 
-Simple, lightweight, and open-source, LabKeel is a hardware and docker dashboard, created so users can enjoy home-labbing, maintain hardware, and keep information local and secure all through a GUI.
-
 > [!IMPORTANT]
 > LabKeel is in early stages of development, and isn't ready for
 > general use yet. Expect breaking changes until version 1.0.
@@ -27,6 +25,8 @@ Simple, lightweight, and open-source, LabKeel is a hardware and docker dashboard
 - **Accounts**: admins and view-only accounts, passwords or passkeys, over HTTPS by default
 
 ## Information
+
+Simple, lightweight, and open-source, LabKeel is a hardware and docker dashboard, created so users can enjoy home-labbing, maintain hardware, and keep information local and secure, all through a GUI.
 
 LabKeel can restart your server, change ZFS pools and edit files. It needs privileged access
 to the machine to do that, so those features start switched off; turn on only the ones you need.
