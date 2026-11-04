@@ -1,7 +1,13 @@
-# LabKeel
+<p align="center">
+  <img src="docs/images/labkeel-logo.png" alt="LabKeel logo" width="180">
+</p>
 
-A self-hosted dashboard for your home lab: system stats, Docker containers, ZFS pools,
-drive health, files and service checks in one page.
+<h1 align="center">LabKeel</h1>
+
+<p align="center">
+  A self-hosted dashboard for your home lab: system stats, Docker containers, ZFS pools,<br>
+  drive health, files and service checks in one page.
+</p>
 
 A simple, lightweight, open-source hardware and docker dashboard, created so users can enjoy homelabbing, maintain hardware, and keep information local and secure all through a GUI.
 
