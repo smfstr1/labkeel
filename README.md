@@ -42,7 +42,7 @@ git clone https://github.com/smfstr1/labkeel.git && cd labkeel
 cp docker-compose.example.yml docker-compose.yml
 mkdir -p config && cp config.example.json config/config.json
 docker compose up -d --build
-docker logs labkeel        # your one-time set-up code
+docker logs labkeel        # this is your one-time lab set-up code
 ```
 
 Then open `https://<your server's address>:8787`. The friendly, step-by-step version, including
