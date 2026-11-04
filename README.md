@@ -64,3 +64,5 @@ commands switched off.
 
 See [LICENSE](LICENSE). The bundled fonts, Hanken Grotesk and JetBrains Mono, are under the
 SIL Open Font License; their licences are in `app/static/fonts`.
+
+'**Lab**' is what it's supporting, '**Keel**' like the Keel of a ship! (Google it.)
