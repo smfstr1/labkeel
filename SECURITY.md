@@ -18,7 +18,7 @@ mount. Treat an admin account like a root password.
 | --- | --- |
 | Locked by default | Every request passes one gatekeeper; only the sign-in, set-up, health check and static files are public. New routes are protected automatically, and the tests sweep every route to check. |
 | First run | Nothing works until an account exists. The set-up page needs a one-time code printed in the container's log, so whoever reaches the page first can't claim it. |
-| Passwords | Stored only as salted Argon2id hashes in `data/users.json` (readable by its owner only). At least 12 characters; common passwords refused. |
+| Passwords | Stored only as salted Argon2id hashes in `data/users.json` (readable by its owner only), or given as a hash in `DASH_PASS_HASH`. Never accepted or stored as readable text. At least 12 characters; common passwords refused. |
 | Roles | **Admin**: everything. **Viewer**: the status pages only; no changes, files, container logs, process list or settings. Enforced on the server for every request. |
 | Sign-in limits | 5 wrong passwords from one address pause it for 15 minutes (with an alert); 100 from everywhere together pause all sign-in. Signing in to one account doesn't reset guesses at another. Sign-ins take the same time whether or not the name exists. |
 | Sessions | Signed cookies tied to the account: `__Host-` prefixed, Secure, HttpOnly, SameSite=Strict. A new password or role ends that account's other sessions; signing out revokes the cookie even if it was copied. |
@@ -28,14 +28,14 @@ mount. Treat an admin account like a root password.
 | Pages | A strict Content Security Policy: only each page's own script may run. No framing. Uploaded web pages are shown as text, never run. |
 | File browser | Can't leave the mounted folders, follow links out of them, or open SSH keys, `.env` files, ZFS snapshot folders or LabKeel's own data. Changing files is off unless `DASH_FILES_WRITE=1`. |
 | Off by default | File changes, ZFS changes, and restarting the machine each need turning on. |
-| HTTPS | On by default (TLS 1.2 and 1.3 only). Plain `http://` is redirected. HSTS is opt-in (`DASH_HSTS=1`) because it applies to every port on the host name. |
+| HTTPS only | Sign-in only happens over HTTPS (TLS 1.2 and 1.3). Plain `http://` is redirected to HTTPS, or, with HTTPS turned off, refused: only the health check answers. Behind a proxy, its word that the visitor used HTTPS is only taken from `DASH_TRUSTED_PROXY`. HSTS is opt-in (`DASH_HSTS=1`) because it applies to every port on the host name. |
 | Behind a proxy | Forwarded addresses, and sign-in by header, are only believed from `DASH_TRUSTED_PROXY`. |
 
 ## Your part
 
 - Keep LabKeel off the open internet. Use a VPN such as Tailscale or WireGuard, or a reverse proxy with its own sign-in.
 - Give out admin accounts sparingly; use viewer accounts for everyone else.
-- If you set an admin in `docker-compose.yml`, it's with `DASH_PASS_HASH`, a hash rather than the password itself. A plain-text `DASH_PASS` isn't accepted.
+- If you set an admin in `docker-compose.yml`, it's with `DASH_PASS_HASH`: a hash, never the password itself.
 - Forgot the password? On the server: `docker exec -it labkeel python accounts.py passwd <name>`.
 
 ## Checking it yourself

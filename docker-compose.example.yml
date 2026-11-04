@@ -33,7 +33,8 @@ services:
 
       # Optional
       # - DASH_PORT=8787
-      # - DASH_TLS=auto          # auto | tailscale | self-signed | off (off = plain HTTP behind your own proxy)
+      # - DASH_TLS=auto          # auto | tailscale | self-signed | off (off = plain HTTP behind your own HTTPS
+      #                          # proxy, which then needs DASH_TRUSTED_PROXY: sign-in only happens over HTTPS)
       # - DASH_HSTS=1            # tell browsers to always use https:// for this name. Only if nothing else
       #                          # on the same host name uses plain http:// (HSTS covers every port)
       # - DASH_UPLOAD_MAX_GB=10  # largest single upload; leave out for no limit

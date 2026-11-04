@@ -8,8 +8,8 @@ Where accounts come from
       docker exec -it labkeel python accounts.py passwd sam        (a forgotten password)
 - Optionally one admin from the environment: DASH_USER with DASH_PASS_HASH, an Argon2id hash from
   `python accounts.py hash`. It can't be changed or removed from the dashboard: change it in
-  docker-compose.yml. Changing it signs that account out everywhere. (A plain-text DASH_PASS is no
-  longer accepted, so a password is never stored readable in the compose file.)
+  docker-compose.yml. Changing it signs that account out everywhere. Passwords are only ever stored as
+  hashes, never as text anyone could read.
 
 Roles
 - admin:  everything.
@@ -104,10 +104,6 @@ def _env():
     name = (os.environ.get("DASH_USER") or "").strip()
     phash = (os.environ.get("DASH_PASS_HASH") or "").strip()
     acct = None
-    if os.environ.get("DASH_PASS"):
-        print("DASH_PASS is no longer used: remove it from docker-compose.yml (it holds a password in plain text). "
-              "Use DASH_PASS_HASH instead (make one with: python accounts.py hash), or an account from the set-up page.",
-              flush=True)
     if phash and not phash.startswith("$argon2"):
         print("DASH_PASS_HASH isn't an Argon2 hash (make one with: python accounts.py hash); ignoring it.", flush=True)
         phash = ""

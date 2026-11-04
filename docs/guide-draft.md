@@ -132,13 +132,22 @@ dash.sam-server.<your-tailnet>.ts.net {
 
 ### Sign-in
 
-Set `DASH_USER` and `DASH_PASS` in `docker-compose.yml` to require a sign-in. You get a sign-in page, and a cookie keeps you signed in for 12 hours, or 30 days if you tick the box.
+The first time you open LabKeel it asks you to create an admin account, using a one-time code from its log
+(`docker logs labkeel`). More accounts, admin or view-only, are added on the Account page. Passwords are
+stored only as Argon2id hashes, never as readable text. A cookie keeps you signed in for 12 hours, or 30
+days if you tick the box.
 
-Without them, the dashboard shows only a set-up page explaining what to add (the Docker health check still works). It opens without a password only if you set `DASH_ALLOW_NO_AUTH: "1"`; listening on 127.0.0.1 alone is no longer enough, because other containers on the host network, a reverse proxy or a malicious web page (by DNS rebinding) can all reach 127.0.0.1. With sign-in off, every page shows a red "Sign-in is off" banner, and the dashboard only answers to this machine's own names and IP addresses; add any other name you use with `DASH_HOSTNAMES: "dash.example.ts.net"` (comma-separated).
+An admin can also be set in `docker-compose.yml` with `DASH_USER` and `DASH_PASS_HASH`, a hash made with
+`docker exec -it labkeel python accounts.py hash`. There is no way to give LabKeel a password as plain text.
+
+Sign-in only happens over HTTPS. Over plain `http://`, LabKeel shows only a page explaining how to turn
+HTTPS on (the Docker health check still works).
+
+It opens without any sign-in only if you set `DASH_ALLOW_NO_AUTH: "1"` and have no accounts; listening on 127.0.0.1 alone is no longer enough, because other containers on the host network, a reverse proxy or a malicious web page (by DNS rebinding) can all reach 127.0.0.1. With sign-in off, every page shows a red "Sign-in is off" banner, and the dashboard only answers to this machine's own names and IP addresses; add any other name you use with `DASH_HOSTNAMES: "dash.example.ts.net"` (comma-separated).
 
 - After 5 wrong passwords from one address within 15 minutes, sign-in from that address pauses for 15 minutes, and you get an alert if alerts are set up. Each try is counted the moment it arrives, so sending many at once doesn't get extra guesses. If 100 wrong passwords arrive from all addresses together within 15 minutes, every sign-in pauses for a while (a `docker compose restart` clears it).
-- Settings → Security has **Sign out** and **Sign out everywhere**. Signing out ends that session on the server too, so a copy of its cookie stops working at once. Sign out everywhere replaces the key that signs sessions, so every existing session stops working. Changing `DASH_PASS` also signs everyone out.
-- **Behind Caddy or another proxy**, set `DASH_TRUSTED_PROXY: "127.0.0.1"` (the proxy's address) so the dashboard sees each visitor's real address for the wrong-password pause. Without it, forwarded addresses are ignored, so nobody can fake one.
+- Settings → Security has **Sign out** and **Sign out everywhere**. Signing out ends that session on the server too, so a copy of its cookie stops working at once. Sign out everywhere replaces the key that signs sessions, so every existing session stops working. Changing an account's password signs that account out everywhere else.
+- **Behind Caddy or another proxy**, set `DASH_TRUSTED_PROXY: "127.0.0.1"` (the proxy's address). LabKeel then believes the proxy about each visitor's real address (for the wrong-password pause) and about their connection being HTTPS (without which it won't sign anyone in). Forwarded headers from anywhere else are ignored, so nobody can fake them.
 
 Keep `docker-compose.yml` readable only by you, since it holds the password: `chmod 600 docker-compose.yml`.
 

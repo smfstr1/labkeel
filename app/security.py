@@ -17,6 +17,8 @@ that one cookie stops working even if it was copied.
 
 Every request goes through guard() below, which is locked by default: a page or API that isn't on the
 short public list needs a signed-in account, and a viewer account only gets the read-only status APIs.
+Nothing but the health check is served over plain HTTP: sign-in only happens over HTTPS (LabKeel's own,
+or a trusted proxy's, see DASH_TRUSTED_PROXY).
 """
 import asyncio
 import base64
@@ -654,6 +656,20 @@ def _security_headers(resp, request, path):
     return resp
 
 
+INSECURE_MSG = ("This connection isn't encrypted, so LabKeel won't sign anyone in over it. Remove DASH_TLS=off, "
+                "or behind a reverse proxy that uses HTTPS, set DASH_TRUSTED_PROXY to the proxy's address.")
+
+
+def _insecure_response(path):
+    """Everything over plain HTTP (with sign-in on, or still to be set up): passwords and session cookies
+    would travel readable, so nothing is served."""
+    if path.startswith("/api/"):
+        return JSONResponse({"error": INSECURE_MSG}, status_code=403)
+    r = page("insecure.html")
+    r.status_code = 403
+    return r
+
+
 def _setup_response(path):
     """What everything answers with until there's an account: the set-up page, or an error for the API."""
     if path.startswith("/api/"):
@@ -666,6 +682,9 @@ async def guard(request: Request, call_next):
     sign-in is off, blocking requests sent from other websites, the size limit, sign-in, and what a
     viewer may do. Then adds the security headers to whatever the app answered."""
     path = request.url.path
+    if not is_https(request) and path != "/api/health" and not open_ok():
+        # sign-in only over HTTPS: passwords, set-up codes and session cookies never travel readable
+        return _security_headers(_insecure_response(path), request, path)
     if needs_setup():
         if path not in SETUP_PATHS and not path.startswith(PUBLIC_PREFIXES):
             return _security_headers(_setup_response(path), request, path)
@@ -816,8 +835,7 @@ def security_status(request: Request):
             "tls": sys.modules["tls"].public_state(), "hsts": HSTS and is_https(request),
             "accounts": {"admins": sum(1 for u in users if u["role"] == "admin"),
                          "viewers": sum(1 for u in users if u["role"] == "viewer"),
-                         "env": any(u.get("source") == "env" for u in users),
-                         "pass_leftover": bool(os.environ.get("DASH_PASS"))},
+                         "env": any(u.get("source") == "env" for u in users)},
             "proxy": {"on": proxy_auth_on(), "header": PROXY_HEADER or None}}
 
 

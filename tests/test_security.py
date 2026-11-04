@@ -167,7 +167,6 @@ def test_hash_from_environment(monkeypatch):
     saved = accounts._dummy.pop("env", None)
     monkeypatch.setenv("DASH_USER", "envy")
     monkeypatch.setenv("DASH_PASS_HASH", h)
-    monkeypatch.delenv("DASH_PASS", raising=False)
     try:
         u = accounts._env()
         assert u["name"] == "envy" and accounts.verify(u["hash"], OTHER) and not accounts.verify(u["hash"], PASSWORD)
@@ -175,30 +174,20 @@ def test_hash_from_environment(monkeypatch):
         accounts._dummy["env"] = saved
 
 
-def test_plain_password_in_environment_is_not_accepted(monkeypatch, capsys):
+def test_user_name_alone_is_not_an_account(monkeypatch):
     saved = accounts._dummy.pop("env", None)
     monkeypatch.setenv("DASH_USER", "envy")
-    monkeypatch.setenv("DASH_PASS", OTHER)
     monkeypatch.delenv("DASH_PASS_HASH", raising=False)
     try:
-        assert accounts._env() is None
-        assert "DASH_PASS is no longer used" in capsys.readouterr().out
+        assert accounts._env() is None  # only a hash makes an account from docker-compose.yml
     finally:
         accounts._dummy["env"] = saved
-
-
-def test_leftover_plain_password_is_ignored_and_flagged(monkeypatch, client):
-    monkeypatch.setenv("DASH_PASS", "something-old")
-    assert client.get("/api/security").json()["accounts"]["pass_leftover"] is True
-    # the admin from DASH_PASS_HASH still signs in with its own password, not the leftover one
-    assert https().post("/api/login", json={"username": USER, "password": "something-old"}).status_code == 401
 
 
 def test_bad_hash_in_environment_is_ignored(monkeypatch):
     saved = accounts._dummy.pop("env", None)
     monkeypatch.setenv("DASH_USER", "envy")
     monkeypatch.setenv("DASH_PASS_HASH", "plaintext-not-a-hash")
-    monkeypatch.delenv("DASH_PASS", raising=False)
     try:
         assert accounts._env() is None  # no account rather than one with a broken hash
     finally:
@@ -503,3 +492,47 @@ def test_command_line_lists_and_refuses_unknown_names(tmp_path):
     assert r.returncode == 0 and "No accounts yet" in r.stdout
     r = subprocess.run([sys.executable, app, "passwd", "ghost"], env=env, capture_output=True, text=True, timeout=60)
     assert r.returncode == 1 and "no account called ghost" in r.stderr
+
+
+# --------------------------------------------------------------------------- sign-in only over HTTPS
+def plain(**kw):
+    return TestClient(main.app, base_url="http://localhost", **kw)
+
+
+@pytest.mark.parametrize("method,path", [("GET", "/"), ("GET", "/login"), ("GET", "/api/system"), ("POST", "/api/login"),
+                                         ("POST", "/api/setup"), ("GET", "/account")])
+def test_nothing_over_plain_http(method, path):
+    r = plain().request(method, path, json={"username": USER, "password": PASSWORD}, follow_redirects=False)
+    assert r.status_code == 403, (path, r.status_code)
+    assert "set-cookie" not in r.headers
+    assert "encrypted" in r.text
+
+
+def test_plain_http_explains_itself():
+    r = plain().get("/")
+    assert "isn't encrypted" in r.text and "DASH_TRUSTED_PROXY" in r.text
+    assert "script-src 'none'" in r.headers["content-security-policy"]
+
+
+def test_health_check_still_works_over_plain_http():
+    assert plain().get("/api/health").status_code == 200  # so Docker can tell LabKeel is running
+
+
+def test_setup_refused_over_plain_http(no_accounts, monkeypatch):
+    monkeypatch.setattr(security, "ALLOW_NO_AUTH", False)
+    r = plain().post("/api/setup", json={"code": accounts.setup_code(), "username": "sam", "password": STRONG})
+    assert r.status_code == 403 and not accounts.exist()
+
+
+def test_https_claim_only_believed_from_the_proxy(proxy):
+    r = plain(client=("10.0.0.99", 1)).post("/api/login", json={"username": USER, "password": PASSWORD},
+                                             headers={"X-Forwarded-Proto": "https"})
+    assert r.status_code == 403  # anyone can send that header; only DASH_TRUSTED_PROXY is believed
+    r = plain(client=PROXY).post("/api/login", json={"username": USER, "password": PASSWORD},
+                                 headers={"X-Forwarded-Proto": "https"})
+    assert r.status_code == 200
+
+
+def test_open_mode_has_no_passwords_so_plain_http_is_allowed(no_accounts, monkeypatch):
+    monkeypatch.setattr(security, "ALLOW_NO_AUTH", True)
+    assert plain().get("/api/system").status_code == 200

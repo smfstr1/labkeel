@@ -172,6 +172,10 @@ def front_handler(internal_port):
 def _warn_if_open():
     """Notes in the log about sign-in: the one-time set-up code until there's an account, and warnings."""
     import accounts
+    if tls.MODE == "off" and not security.TRUSTED:
+        print("WARNING: HTTPS is off (DASH_TLS=off) and no DASH_TRUSTED_PROXY is set, so LabKeel will refuse every "
+              "sign-in: it only signs people in over HTTPS. Remove DASH_TLS=off, or set DASH_TRUSTED_PROXY to your "
+              "HTTPS reverse proxy's address.", flush=True)
     if security.enabled():
         return
     if security.open_ok():

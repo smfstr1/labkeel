@@ -18,7 +18,9 @@
 - Sign-in takes the same time whether or not the user name exists.
 - Passkeys belong to an account; confirming a big change only accepts your own.
 - **`DASH_PASS` is removed.** The admin set in `docker-compose.yml` now needs `DASH_PASS_HASH`, an Argon2id hash,
-  so a password is never stored there in plain text. A leftover `DASH_PASS` is ignored, with a warning.
+  so a password is never stored there in plain text.
+- **Sign-in only over HTTPS.** Over plain HTTP, LabKeel answers only its health check and a page explaining
+  how to turn HTTPS on. Behind a reverse proxy, set `DASH_TRUSTED_PROXY` so its HTTPS is recognised.
 
 ### Added
 - **Ready-made services.** `config.example.json` has templates for 22 popular apps (Plex, Jellyfin, Immich,
@@ -38,3 +40,5 @@
 2. Replace `DASH_PASS` with `DASH_PASS_HASH` (from `docker exec -it <container> python accounts.py hash`),
    writing each `$` as `$$`, or remove both and create an account on the set-up page.
 3. Everyone signs in once more (the session cookie's format changed). Existing passkeys keep working.
+4. If you run with `DASH_TLS=off` behind a proxy, set `DASH_TRUSTED_PROXY` to the proxy's address, or
+   nobody can sign in.

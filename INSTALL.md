@@ -149,10 +149,11 @@ Docker's [install page](https://docs.docker.com/engine/install/) covers other di
 ### Make sure Docker works
 
 ```sh
-sudo docker run hello-world
+sudo docker run --rm hello-world
 ```
 
-A cheerful "Hello from Docker!" means you're ready.
+A cheerful "Hello from Docker!" means you're ready. (`--rm` tidies the test container away afterwards,
+so it doesn't linger on LabKeel's Containers page with a silly random name.)
 
 ### Optional: use Docker without typing `sudo`
 
@@ -185,6 +186,80 @@ open **DNS**, make sure **MagicDNS** is on, and under **HTTPS Certificates** cho
 
 Install Tailscale directly on the machine, not in a container: LabKeel asks the machine's own Tailscale
 for its certificate.
+
+### Optional: ZFS, for pools of drives
+
+ZFS joins several drives into one **pool** that keeps your data safe if a drive dies. LabKeel shows your
+pools, their health, datasets and snapshots, and (if you allow it) can create and manage them.
+
+**Do you need it?** Only if you already use ZFS, or have spare drives to pool together. A machine with one
+drive has nothing to pool, so you can happily skip this: LabKeel simply hides its ZFS pages. Check whether
+it's already installed with `zpool version`.
+
+<details>
+<summary><b>Ubuntu</b></summary>
+
+ZFS is built into Ubuntu's kernel, so it's one command:
+
+```sh
+sudo apt install zfsutils-linux
+```
+
+</details>
+
+<details>
+<summary><b>Debian 13</b></summary>
+
+Debian keeps ZFS in its `contrib` section and builds it for your kernel as it installs, which takes a few
+minutes. Add the backports repository (for a newer ZFS) and tell apt to prefer it for ZFS:
+
+```sh
+sudo tee /etc/apt/sources.list.d/trixie-backports.list <<EOF
+deb http://deb.debian.org/debian trixie-backports main contrib non-free-firmware
+EOF
+sudo tee /etc/apt/preferences.d/90_zfs <<EOF
+Package: src:zfs-linux
+Pin: release n=trixie-backports
+Pin-Priority: 990
+EOF
+sudo apt update
+sudo apt install linux-headers-$(dpkg --print-architecture)
+sudo apt install zfs-dkms zfsutils-linux
+```
+
+For Debian 12 or Raspberry Pi OS, follow [OpenZFS's Debian guide](https://openzfs.github.io/openzfs-docs/Getting%20Started/Debian/).
+
+</details>
+
+<details>
+<summary><b>Fedora</b></summary>
+
+ZFS comes from the OpenZFS project's own repository and is built for your kernel:
+
+```sh
+sudo dnf install -y https://zfsonlinux.org/fedora/zfs-release-3-1$(rpm --eval "%{dist}").noarch.rpm
+sudo dnf install -y kernel-devel-$(uname -r | awk -F'-' '{print $1}')
+sudo dnf install -y zfs
+sudo modprobe zfs
+```
+
+Fedora moves to new kernels quickly. If `modprobe zfs` fails, your kernel is newer than ZFS supports yet:
+wait for a ZFS update, or boot the previous kernel. See [OpenZFS's Fedora guide](https://openzfs.github.io/openzfs-docs/Getting%20Started/Fedora/index.html).
+
+</details>
+
+Then, to let LabKeel create and change pools rather than just watch them, set `DASH_ZFS_WRITE=1` in
+step 3. Its **New pool** button only offers drives that are completely unused (not your system drive, and
+not USB), so it can't wipe the wrong thing.
+
+> **Just want a look?** Make a small practice pool stored in a file. It's safe to delete afterwards:
+>
+> ```sh
+> truncate -s 2G /var/tmp/zfs-test.img
+> sudo zpool create testpool /var/tmp/zfs-test.img
+> ```
+>
+> When you're done: `sudo zpool destroy testpool && rm /var/tmp/zfs-test.img`
 
 ---
 
@@ -322,6 +397,7 @@ Since Docker now comes from Docker's own repository, that keeps you on the lates
 | It keeps restarting, and the log says "address already in use" | Something else is using port 8787. Add `- DASH_PORT=8788` under `environment:`. |
 | Browser says the connection isn't private | Expected without a trusted certificate. Continue once, or turn on Tailscale HTTPS (step 6). |
 | "Emulate Docker CLI using podman", or "Error while fetching server API version" | That's Podman or an old Compose, not Docker. Install Docker as in [step 1](#1-get-the-essentials). |
+| "This connection isn't encrypted" | LabKeel only signs people in over HTTPS. Use the `https://` address, remove `DASH_TLS=off`, or behind a reverse proxy set `DASH_TRUSTED_PROXY`. |
 | Lost the set-up code | Run `docker logs labkeel` again, or `docker compose restart` for a fresh one. |
 | Forgot your password | `docker exec -it labkeel python accounts.py passwd <your name>` |
 | "Too many wrong passwords" | Wait 15 minutes, or `docker compose restart`. |

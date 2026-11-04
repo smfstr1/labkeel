@@ -4543,7 +4543,6 @@ const Settings = {
       ? ["good", "Sign-in required", `${n("admins", "admin")} and ${n("viewers", "viewer")}. Passwords are stored only as Argon2id hashes. After 5 wrong passwords, sign-in from that address pauses for 15 minutes and you get an alert. <a href="/account">Manage accounts</a>.`]
       : ["bad", "No sign-in", "Anyone who can reach this page can restart the server and change settings. Remove <span class=\"mono\">DASH_ALLOW_NO_AUTH</span> from docker-compose.yml to set up an account."];
     const rows = [conn, auth];
-    if (a.pass_leftover) rows.push(["warn", "Old password setting left over", "<span class=\"mono\">DASH_PASS</span> is no longer used, but it still holds a password in plain text in docker-compose.yml. Remove it."]);
     if (d.proxy?.on) rows.push(["good", "Sign-in through your proxy", `Your reverse proxy signs people in and passes their name in <span class="mono">${esc(d.proxy.header)}</span>. Only requests from <span class="mono">DASH_TRUSTED_PROXY</span> are believed.`]);
     if (d.hsts) rows.push(["good", "HTTPS only", "Browsers are told to always use https:// for this address (DASH_HSTS)."]);
     $("#sec-list").innerHTML = rows.map(([lvl, title, text]) => `<div class="sec-row"><span class="dot ${lvl}"></span><div><b>${title}</b><p>${text}</p></div></div>`).join("");
