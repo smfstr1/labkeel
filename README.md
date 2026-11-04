@@ -1,13 +1,15 @@
 # LabKeel
 
-A self-hosted dashboard for your home server: system stats, Docker containers, ZFS pools,
+A self-hosted dashboard for your home lab: system stats, Docker containers, ZFS pools,
 drive health, files and service checks in one page.
+
+A simple, lightweight, open-source hardware and docker dashboard, created so users can enjoy homelabbing, maintain hardware, and keep information local and secure all through a GUI.
 
 > [!IMPORTANT]
 > LabKeel is in early stages of development, and isn't ready for
 > general use yet. Expect breaking changes until version 1.0.
 
-## What it does
+## What it does, out the box
 
 - **Overview**: CPU, memory, network, temperatures, GPU and power, with history
 - **Containers**: see, start, stop and restart Docker containers, and read their logs
