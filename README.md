@@ -9,7 +9,7 @@
   drive health, files and service checks in one page.
 </p>
 
-A simple, lightweight, open-source hardware and docker dashboard, created so users can enjoy homelabbing, maintain hardware, and keep information local and secure all through a GUI.
+Simple, lightweight, and open-source, LabKeel is a hardware and docker dashboard, created so users can enjoy home-labbing, maintain hardware, and keep information local and secure all through a GUI.
 
 > [!IMPORTANT]
 > LabKeel is in early stages of development, and isn't ready for
