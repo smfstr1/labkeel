@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/labkeel-logo.png" alt="LabKeel logo" width="180">
+  <img src="images/labkeel-logo.png" alt="LabKeel logo" width="180">
 </p>
 
 <h1 align="center">LabKeel</h1>
