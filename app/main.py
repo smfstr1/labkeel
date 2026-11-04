@@ -26,11 +26,12 @@ smart_poller here, plus each module's own loop. They read the host every few sec
 is open and slow right down when nobody is looking.
 
 Everything the dashboard remembers is in the data folder (DASH_DATA, /data in the container):
-settings.json, state.json, events.json (activity log), overrides.json (names you've given things),
+settings.json, state.json, labkeel.db (activity log and update checks, see db.py), overrides.json (names you've given things),
 drivecare.json, zfs.json, trash.json, moves.json, uploads.json, passkeys.json, revoked.json,
 session.key, history.db (charts), app-icon.png and tls/ (certificates).
 """
 import fnmatch
+import asyncio
 import json
 import mimetypes
 import os
@@ -46,19 +47,15 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import deque
+from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from pathlib import Path
 
 import psutil
-from fastapi import Body, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from version import USER_AGENT, VERSION
+from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-
-try:
-    import docker
-except ImportError:  # pragma: no cover
-    docker = None
 
 # --------------------------------------------------------------------------- config
 CONFIG_PATH = os.environ.get("DASH_CONFIG", "/config/config.json")
@@ -71,9 +68,32 @@ STATIC = Path(__file__).parent / "static"
 DEFAULT_DENY = [".ssh", ".gnupg", ".aws", ".kube", ".password-store", ".env", "*.env",
                 "*.pem", "*.key", "id_rsa*", "id_ed25519*", "id_ecdsa*", ".docker", ".git-credentials"]
 
-ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")  # colour codes in container logs
 
-app = FastAPI(title="Homelab Dashboard", docs_url=None, redoc_url=None, openapi_url=None)  # no API description published
+@asynccontextmanager
+async def lifespan(_app):
+    """Start-up and shut-down. The background threads keep the readings fresh (they call blocking tools and
+    Docker's blocking SDK, so threads suit them); work that's mostly waiting on the network runs as asyncio
+    tasks, which are cancelled cleanly when LabKeel stops."""
+    for fn in (system_sampler, containers.poller, smart_poller):
+        threading.Thread(target=fn, daemon=True, name=fn.__name__).start()
+    upkeep.start()
+    metrics.start()
+    drivecare.start()
+    zfsmgr.start()
+    fileops.start()
+    selfupdate.resume()  # finish reporting an update that replaced the previous LabKeel
+    tasks = [asyncio.create_task(t(), name=t.__module__ + "." + t.__name__) for t in BACKGROUND_TASKS]
+    try:
+        yield
+    finally:
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+BACKGROUND_TASKS = []  # async functions run for as long as LabKeel does (modules add theirs below)
+app = FastAPI(title="LabKeel", docs_url=None, redoc_url=None, openapi_url=None,  # no API description published
+              lifespan=lifespan)
 
 
 _config = {"sig": None, "data": {}, "deny": None}
@@ -137,21 +157,8 @@ def run_bounded(cmd, timeout=15):
     return subprocess.CompletedProcess(cmd, p.returncode, out, err)
 
 
-def parse_docker_time(s):
-    """Docker's timestamp text (nanoseconds, 'Z' for UTC) as a Unix time, or None for 'never' (0001-01-01)."""
-    if not s or s.startswith("0001-"):
-        return None
-    try:
-        s = s.replace("Z", "+00:00")
-        m = re.match(r"^(.*\.\d{6})\d*(\+.*)$", s)
-        if m:
-            s = m.group(1) + m.group(2)
-        return datetime.fromisoformat(s).timestamp()
-    except ValueError:
-        return None
-
-
 # --------------------------------------------------------------------------- sign-in
+import containers  # noqa: E402
 import security  # noqa: E402
 
 app.middleware("http")(security.guard)
@@ -159,6 +166,7 @@ app.add_middleware(security.Compress)
 app.add_middleware(security.BodyLimit)  # counts bytes even for chunked uploads
 app.add_middleware(security.ProxyHeaders)  # outermost: who's really on the other end (see security.py)
 app.include_router(security.router)
+app.include_router(containers.router)
 
 
 # --------------------------------------------------------------------------- system sampler
@@ -338,255 +346,6 @@ def api_system(history: bool = False, since: float | None = None):
             cut = time.time() - SPARK_WINDOW
             out["history"] = [h for h in _sys["history"] if h["t"] >= cut and (since is None or h["t"] > since)]
     return out
-
-
-# --------------------------------------------------------------------------- docker
-_dc = None
-_dc_lock = threading.Lock()
-_containers = {"items": [], "error": None, "updated": 0}
-
-
-def dclient():
-    """The Docker client, made on first use (and again after an error, in case Docker restarted)."""
-    global _dc
-    with _dc_lock:
-        if _dc is None:
-            if docker is None:
-                raise RuntimeError("docker python package missing")
-            _dc = docker.from_env(timeout=10)
-        return _dc
-
-
-_cpu_prev = {}            # container id -> (container cpu total, system cpu total) from the last poll
-_one_shot = {"ok": True}  # Docker 20.10+ can answer stats instantly instead of sampling for a second
-
-
-def _container_stats(c):
-    """One container's CPU %, memory, network and disk totals from Docker's stats. CPU % is worked out from the
-    change since the previous reading."""
-    try:
-        if _one_shot["ok"]:
-            try:
-                s = c.stats(stream=False, one_shot=True)
-            except (TypeError, docker.errors.InvalidVersion, docker.errors.APIError):
-                _one_shot["ok"] = False
-                s = c.stats(stream=False)
-        else:
-            s = c.stats(stream=False)
-    except Exception:
-        return {}
-    cpu, pre = s.get("cpu_stats") or {}, s.get("precpu_stats") or {}
-    tot, sysu = (cpu.get("cpu_usage") or {}).get("total_usage"), cpu.get("system_cpu_usage")
-    if pre.get("system_cpu_usage"):  # the slow path gives us the previous sample
-        prev = ((pre.get("cpu_usage") or {}).get("total_usage", 0), pre["system_cpu_usage"])
-    else:
-        prev = _cpu_prev.get(c.id)
-    if tot is not None and sysu:
-        _cpu_prev[c.id] = (tot, sysu)
-    cd = (tot - prev[0]) if prev and tot is not None else 0
-    sd = (sysu - prev[1]) if prev and sysu else 0
-    cpu_pct = (cd / sd) * 100 if sd > 0 and cd >= 0 else 0.0  # % of whole host
-    mem = s.get("memory_stats") or {}
-    st = mem.get("stats") or {}
-    inactive = st.get("inactive_file", st.get("total_inactive_file", 0))
-    used = max(mem.get("usage", 0) - inactive, 0)
-    rx = tx = 0
-    for n in (s.get("networks") or {}).values():
-        rx += n.get("rx_bytes", 0)
-        tx += n.get("tx_bytes", 0)
-    br = bw = 0
-    for e in ((s.get("blkio_stats") or {}).get("io_service_bytes_recursive") or []):
-        op = (e.get("op") or "").lower()
-        if op == "read":
-            br += e.get("value", 0)
-        elif op == "write":
-            bw += e.get("value", 0)
-    return {"cpu": round(cpu_pct, 2), "mem": used, "mem_limit": mem.get("limit", 0),
-            "net_rx": rx, "net_tx": tx, "blk_read": br, "blk_write": bw,
-            "pids": (s.get("pids_stats") or {}).get("current")}
-
-
-def _ports(attrs):
-    """A container's published ports as [{host, container, ip}], without duplicates (IPv4 and IPv6 bindings)."""
-    out, seen = [], set()
-    for cport, binds in ((attrs.get("NetworkSettings") or {}).get("Ports") or {}).items():
-        for b in binds or []:
-            key = (b.get("HostPort"), cport)
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append({"host": b.get("HostPort"), "container": cport, "ip": b.get("HostIp")})
-    return out
-
-
-_stats_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="ctr-stats")
-_inspected = {}  # container id -> (what the list said about it, when, its full details)
-
-
-def _details(cl, c):
-    """A container's full details (Docker's inspect), asked for again only when the container list shows
-    a change (started, stopped, health, exit code) or once a minute, rather than for every container
-    every few seconds."""
-    a = c.attrs
-    status = a.get("Status") or ""
-    health = re.search(r"\((healthy|unhealthy|health: starting)\)", status)
-    code = re.match(r"Exited \((-?\d+)\)", status)
-    key = (a.get("State") if isinstance(a.get("State"), str) else None, health.group(1) if health else None,
-           code.group(1) if code else None, a.get("Created"))
-    hit = _inspected.get(c.id)
-    if hit and hit[0] == key and time.time() - hit[1] < 60:
-        return hit[2]
-    full = cl.api.inspect_container(c.id)
-    _inspected[c.id] = (key, time.time(), full)
-    return full
-
-
-def container_poller():
-    """Every 3 s while a dashboard page is open; otherwise every 10 s without CPU and memory figures
-    (those every 30 s), which is all the crash and restart alerts need."""
-    prev, last_stats, stats = {}, 0.0, {}
-    while True:
-        viewing = time.time() - _viewing["t"] < 15
-        try:
-            cl = dclient()
-            cs = cl.containers.list(all=True, sparse=True)
-            now = time.time()
-            fresh = viewing or now - last_stats >= 30
-            if fresh:
-                running = [c for c in cs if c.attrs.get("State") == "running"]
-                stats = dict(zip([c.id for c in running], _stats_pool.map(_container_stats, running)))
-                last_stats = now
-            items = []
-            for c in cs:
-                try:
-                    a = _details(cl, c)
-                except docker.errors.NotFound:
-                    continue  # removed between the list and the look (a compose re-create): skip, not a failed poll
-                state = a.get("State") or {}
-                labels = (a.get("Config") or {}).get("Labels") or {}
-                st = dict(stats.get(c.id) or {}) if state.get("Running") else {}
-                p = prev.get(c.id)
-                if st and fresh and "net_rx" in st:  # network speed since the last time the figures were read
-                    if p and now > p["t"]:
-                        dt = now - p["t"]
-                        st["net_rx_rate"] = max(0, (st["net_rx"] - p["net_rx"]) / dt)
-                        st["net_tx_rate"] = max(0, (st["net_tx"] - p["net_tx"]) / dt)
-                    prev[c.id] = {"t": now, "net_rx": st["net_rx"], "net_tx": st["net_tx"],
-                                  "rx_rate": st.get("net_rx_rate"), "tx_rate": st.get("net_tx_rate")}
-                elif st and p:
-                    st["net_rx_rate"], st["net_tx_rate"] = p.get("rx_rate"), p.get("tx_rate")
-                started = parse_docker_time(state.get("StartedAt"))
-                nets = (a.get("NetworkSettings") or {}).get("Networks") or {}
-                items.append({
-                    "id": c.id[:12],
-                    "name": (a.get("Name") or "").lstrip("/") or c.id[:12],
-                    "image": (a.get("Config") or {}).get("Image"),
-                    "state": state.get("Status"),
-                    "health": (state.get("Health") or {}).get("Status"),
-                    "exit_code": state.get("ExitCode"),
-                    "started": started,
-                    "uptime": (now - started) if started and state.get("Running") else None,
-                    "restarts": a.get("RestartCount", 0),
-                    "project": labels.get("com.docker.compose.project"),
-                    "service": labels.get("com.docker.compose.service"),
-                    "network_mode": (a.get("HostConfig") or {}).get("NetworkMode"),
-                    "ports": _ports(a),
-                    "ip": next((n.get("IPAddress") for n in nets.values() if n.get("IPAddress")), None),
-                    "exposed": list(((a.get("NetworkSettings") or {}).get("Ports") or {}).keys()),
-                    "mounts": [m["Source"] for m in a.get("Mounts") or [] if m.get("Source")],  # host folders it uses
-                    "stats": st,
-                })
-            alive = {c.id for c in cs}
-            for d in (prev, _inspected, _cpu_prev, stats):  # forget containers that are gone
-                for k in [k for k in d if k not in alive]:
-                    d.pop(k, None)
-            _containers.update(items=items, error=None, updated=now)
-        except Exception as e:
-            _containers.update(error=f"{type(e).__name__}: {e}", updated=time.time())
-            global _dc
-            with _dc_lock:
-                _dc = None
-            time.sleep(5)
-        time.sleep(3 if viewing else 10)
-
-
-@app.get("/api/containers")
-def api_containers():
-    """Every container with its state and figures (from container_poller), and the names you've given them."""
-    names = load_overrides().get("containers", {})
-    return {**_containers, "items": [dict(c, display=names.get(c["name"]), is_self=bool(SELF_ID) and SELF_ID.startswith(c["id"]))
-                                     for c in _containers["items"]]}
-
-
-@app.get("/api/containers/{cid}/logs")
-def api_container_logs(cid: str, tail: int = Query(300, ge=10, le=5000)):
-    """The last lines of a container's log, as plain text with the colour codes taken out."""
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+", cid):
-        raise HTTPException(400, "bad id")
-    try:
-        c = dclient().containers.get(cid)
-        raw = c.logs(tail=tail, timestamps=True)
-    except Exception as e:
-        raise HTTPException(404, str(e))
-    return PlainTextResponse(ANSI_RE.sub("", raw.decode("utf-8", "replace")))
-
-
-def _self_container_id():
-    """This dashboard's own container ID (Docker bind-mounts /etc/hostname etc. from its folder)."""
-    try:
-        with open("/proc/self/mountinfo") as f:
-            m = re.search(r"/(?:docker/)?containers/([0-9a-f]{64})/", f.read())
-            return m.group(1) if m else None
-    except OSError:
-        return None
-
-
-SELF_ID = _self_container_id()
-_action_lock = threading.Lock()
-_busy = set()
-
-
-@app.post("/api/containers/{cid}/action")
-def api_container_action(cid: str, body: dict = Body(...)):
-    """Start, stop or restart a container. The dashboard can restart itself (it answers first, then goes) but not
-    stop itself."""
-    action = body.get("action")
-    if action not in ("restart", "stop", "start"):
-        raise HTTPException(400, "action must be restart, stop or start")
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+", cid):
-        raise HTTPException(400, "bad id")
-    try:
-        c = dclient().containers.get(cid)
-    except Exception as e:
-        raise HTTPException(404, f"No such container: {e}")
-    name = load_overrides().get("containers", {}).get(c.name) or c.name
-    is_self = bool(SELF_ID) and c.id == SELF_ID
-    if is_self and action == "stop":
-        raise HTTPException(409, "The dashboard can't stop itself, or there'd be no way to start it again from here.")
-    if is_self and action == "restart":
-        upkeep.log("container", f"Restarted {name} (the dashboard) from the dashboard")
-        threading.Timer(1.0, lambda: c.restart(timeout=10)).start()  # answer first, then go
-        return {"ok": True, "self": True}
-    with _action_lock:
-        if c.id in _busy:
-            raise HTTPException(409, f"{name} is already being {action}ed")
-        _busy.add(c.id)
-    try:
-        if action == "start":
-            c.start()
-        else:
-            getattr(c, action)(timeout=30)  # 30 s to shut down cleanly (game servers save their world)
-    except Exception as e:
-        msg = getattr(e, "explanation", None) or str(e)
-        upkeep.log("error", f"Couldn't {action} {name}: {msg}")
-        raise HTTPException(500, f"Couldn't {action} {name}: {msg}")
-    finally:
-        with _action_lock:
-            _busy.discard(c.id)
-    upkeep.mark_stopped_on_purpose(c.name, action == "stop")
-    verb = {"restart": "Restarted", "stop": "Stopped", "start": "Started"}[action]
-    upkeep.log("container", f"{verb} {name} from the dashboard")
-    return {"ok": True}
 
 
 # --------------------------------------------------------------------------- storage
@@ -1011,11 +770,11 @@ def private_paths():
         return _private["paths"]
     found, ok = set(), True
     try:
-        if SELF_ID and docker is not None:
-            c = dclient().containers.get(SELF_ID)
+        if containers.SELF_ID and containers.docker is not None:
+            c = containers.dclient().containers.get(containers.SELF_ID)
             labels = (c.attrs.get("Config") or {}).get("Labels") or {}
             proj = labels.get("com.docker.compose.project")
-            alone = bool(proj) and len(dclient().containers.list(all=True, filters={"label": f"com.docker.compose.project={proj}"})) <= 1
+            alone = bool(proj) and len(containers.dclient().containers.list(all=True, filters={"label": f"com.docker.compose.project={proj}"})) <= 1
             for q in private_from_mounts(c.attrs.get("Mounts") or [], labels, alone, str(BROWSE_ROOT), str(DATA_DIR),
                                          str(CONFIG_PATH), str(tls.USER_CERTS)):
                 found.add(Path(q))
@@ -1331,7 +1090,7 @@ def default_gateway():
 
 def find_container(ref):
     """A container from the latest poll by its name or compose service name, or None."""
-    for c in _containers["items"]:
+    for c in containers.state["items"]:
         if ref in (c["name"], c.get("service")):
             return c
     return None
@@ -1345,10 +1104,10 @@ def _http_probe(url, timeout):
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (homelab-dash)"})
+    req = urllib.request.Request(url, headers={"User-Agent": f"Mozilla/5.0 ({USER_AGENT})"})
     try:
         try:
-            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:  # http(s) only, checked above  # nosec B310
                 code = r.status
         except urllib.error.HTTPError as e:
             code = e.code
@@ -1403,8 +1162,8 @@ def check_service(svc):
     if svc.get("container"):
         ctr = find_container(svc["container"])
         if ctr is None:
-            res["detail"] = "Docker not reachable" if _containers.get("error") else f"No container named {svc['container']}"
-            res["state"] = "unknown" if _containers.get("error") else "down"
+            res["detail"] = "Docker not reachable" if containers.state.get("error") else f"No container named {svc['container']}"
+            res["state"] = "unknown" if containers.state.get("error") else "down"
             return res
         if ctr["state"] != "running":
             res.update(state="down", detail=f"Container {ctr['state']}" + (f" ({ctr['exit_code']})" if ctr["state"] == "exited" else ""))
@@ -1680,7 +1439,7 @@ def api_meta(request: Request):
         roots = sorted(e.name for e in BROWSE_ROOT.iterdir() if e.is_dir())
     cfg = load_config()
     root = BROWSE_ROOT.resolve() if BROWSE_ROOT.exists() else BROWSE_ROOT
-    return {"title": cfg.get("title") or HOST_INFO["hostname"], "file_roots": roots, "config_error": cfg.get("_error"),
+    return {"title": cfg.get("title") or HOST_INFO["hostname"], "version": VERSION, "file_roots": roots, "config_error": cfg.get("_error"),
             "auth": security.enabled(), "refresh_ms": refresh_ms(), "file_write": fileops.WRITE and not viewer,
             "user": {"name": u["name"], "role": u["role"], "via": u.get("via"), "source": u.get("source")} if u else None,
             "file_writable": {r: _writable(root / r, root) for r in roots}}
@@ -1795,15 +1554,9 @@ app.include_router(drivecare.router)
 app.include_router(zfsmgr.router)
 app.include_router(fileops.router)
 app.include_router(passkeys.router)
-
-
-@app.on_event("startup")
-def _start():
-    """At start-up: the background threads that keep the readings fresh."""
-    for fn in (system_sampler, container_poller, smart_poller):
-        threading.Thread(target=fn, daemon=True, name=fn.__name__).start()
-    upkeep.start()
-    metrics.start()
-    drivecare.start()
-    zfsmgr.start()
-    fileops.start()
+import updates  # noqa: E402  (is a newer image out for each container?)
+app.include_router(updates.router)
+BACKGROUND_TASKS.append(updates.scheduler)
+import selfupdate  # noqa: E402  (updating LabKeel itself, from Settings)
+app.include_router(selfupdate.router)
+BACKGROUND_TASKS.append(selfupdate.scheduler)

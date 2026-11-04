@@ -20,6 +20,8 @@ from pathlib import Path
 import psutil
 from fastapi import APIRouter, Query
 
+import containers
+
 router = APIRouter()
 POWERCAP = Path(os.environ.get("DASH_POWERCAP", "/sys/class/powercap"))
 GPU_INTERVAL_MS = 5000
@@ -522,7 +524,7 @@ def redact(cmd):
 def _containers_by_id():
     """{short container id: display name} for every container."""
     out = {}
-    for c in M().api_containers()["items"]:
+    for c in containers.api_containers()["items"]:
         out[c["id"][:12]] = c.get("display") or c["name"]
     return out
 
@@ -613,11 +615,12 @@ def api_history(range: str = Query("day", pattern="^(hour|day|week|month)$")):
     with _db_lock:
         c = db()
         if table == "m1":
-            rows = c.execute("SELECT k, (t / ?) * ? AS b, AVG(v), MAX(v) FROM m1 WHERE t >= ? AND " + WANTED + " GROUP BY k, b ORDER BY b", (step, step, start)).fetchall()
+            # WANTED is a fixed string in this file, never anything from a request
+            rows = c.execute("SELECT k, (t / ?) * ? AS b, AVG(v), MAX(v) FROM m1 WHERE t >= ? AND " + WANTED + " GROUP BY k, b ORDER BY b", (step, step, start)).fetchall()  # nosec B608
             e = c.execute("SELECT COUNT(*), SUM(v), MAX(v), MIN(t) FROM m1 WHERE k = 'p_meas' AND t >= ?", (start,)).fetchone()
             minutes, wsum, wmax = e[0] or 0, e[1] or 0.0, e[2]
         else:
-            rows = c.execute("SELECT k, (t / ?) * ? AS b, SUM(v * n) / SUM(n), MAX(v) FROM m10 WHERE t >= ? AND " + WANTED + " GROUP BY k, b ORDER BY b", (step, step, start)).fetchall()
+            rows = c.execute("SELECT k, (t / ?) * ? AS b, SUM(v * n) / SUM(n), MAX(v) FROM m10 WHERE t >= ? AND " + WANTED + " GROUP BY k, b ORDER BY b", (step, step, start)).fetchall()  # nosec B608
             e = c.execute("SELECT SUM(n), SUM(v * n), MAX(v), MIN(t) FROM m10 WHERE k = 'p_meas' AND t >= ?", (start,)).fetchone()
             minutes, wsum, wmax = e[0] or 0, e[1] or 0.0, e[2]
         oldest = c.execute("SELECT MIN(t) FROM m1").fetchone()[0]

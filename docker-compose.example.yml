@@ -8,6 +8,14 @@ services:
     # image: ghcr.io/smfstr1/labkeel:latest   # once releases are published: use this line instead of build
     container_name: labkeel
     restart: unless-stopped
+    stop_grace_period: 30s                    # time to finish what it's doing (an upload, a move) before stopping
+
+    # Docker keeps a container's log forever unless told otherwise: keep the last 3 × 10 MB
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
     # Why these three are needed:
     #   network_mode: host  shows the machine's real network cards and traffic, not the container's

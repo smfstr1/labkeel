@@ -16,6 +16,7 @@ Temporary names used while working (hidden from the file browser by main.WORKING
   .dash-upload-<id>.part   a file still being uploaded
   .dash-edit-<id>.tmp      an edited text file being saved
   .dash-moving-<id>        a copy being made by a move or copy job"""
+import contextvars
 import errno
 import json
 import os
@@ -229,11 +230,12 @@ def _log(text):
 
 _burst = {}  # top folder -> {files, folders, bytes, replaced, first, timer}
 _burst_lock = threading.Lock()
+UPLOAD_LOG_DELAY = 10  # seconds of quiet before a burst of uploads is written to the activity log
 
 
 def _note_upload(rel, name, size, replaced, folder=False):
     """Uploads arriving together (a folder of 500 photos, say) go in the activity log as one line,
-    written once they stop for 10 seconds, instead of 500 lines pushing everything else out."""
+    written once they stop for UPLOAD_LOG_DELAY seconds, instead of 500 lines pushing everything else out."""
     key = "/".join(rel.split("/")[:2])
     with _burst_lock:
         b = _burst.get(key)
@@ -244,7 +246,8 @@ def _note_upload(rel, name, size, replaced, folder=False):
         b["replaced"] += bool(replaced)
         if b["timer"]:
             b["timer"].cancel()
-        b["timer"] = threading.Timer(10, _flush_upload, args=(key,))
+        # the summary is logged later, on a timer thread: give it this request's context (who uploaded)
+        b["timer"] = threading.Timer(UPLOAD_LOG_DELAY, contextvars.copy_context().run, args=(_flush_upload, key))
         b["timer"].daemon = True
         b["timer"].start()
 
@@ -908,7 +911,8 @@ def _queue(srel, name, drel, src_real, dest_real, st, kind="move", final=None):
     final = final or name
     job = {"id": jid, "kind": kind, "name": name, "final": final, "from": f"{srel}/{name}", "to": f"{drel}/{final}", "dir": _stat.S_ISDIR(st.st_mode),
            "src": str(src_real), "dest": str(dest_real), "tmp": f".dash-moving-{jid}",
-           "state": "queued", "done": 0, "total": None, "files": 0, "error": None, "created": time.time(), "finished": None, "cancel": False}
+           "state": "queued", "done": 0, "total": None, "files": 0, "error": None, "created": time.time(), "finished": None, "cancel": False,
+           "by": sys.modules["security"].ACTOR.get()}  # who asked, for the activity log when it finishes later
     with _jobs_lock:
         _jobs[jid] = job
         _save_jobs()
@@ -920,7 +924,7 @@ def _queue(srel, name, drel, src_real, dest_real, st, kind="move", final=None):
 
 def _public(j):
     """What the Moves panel sees of a job (not its real paths)."""
-    return {k: v for k, v in j.items() if k not in ("src", "dest", "tmp", "cancel")}
+    return {k: v for k, v in j.items() if k not in ("src", "dest", "tmp", "cancel", "by")}
 
 
 @router.get("/api/files/jobs")
@@ -1173,17 +1177,31 @@ def _run(j):
             _save_jobs()
 
 
+def run_queued():
+    """Run every queued job, one at a time, oldest first. Each is logged as the person who queued it."""
+    actor = sys.modules["security"].ACTOR
+    while True:
+        with _jobs_lock:
+            nxt = next((j for j in sorted(_jobs.values(), key=lambda j: j["created"]) if j["state"] == "queued"), None)
+        if not nxt:
+            return
+        token = actor.set(nxt.get("by"))
+        try:
+            _run(nxt)
+        finally:
+            actor.reset(token)
+
+
 def _worker():
-    """Background thread: runs queued jobs one at a time, oldest first."""
+    """Background thread: waits for jobs (woken by _queue, or every 30 s) and runs them."""
     while True:
         _wake.wait(30)
         _wake.clear()
-        while True:
-            with _jobs_lock:
-                nxt = next((j for j in sorted(_jobs.values(), key=lambda j: j["created"]) if j["state"] == "queued"), None)
-            if not nxt:
-                break
-            _run(nxt)
+        try:
+            run_queued()
+        except Exception as e:  # never let one bad job stop the queue for good
+            _log(f"The move queue hit an error: {type(e).__name__}: {e}")
+            time.sleep(5)
 
 
 def _load_jobs():

@@ -22,6 +22,7 @@ or a trusted proxy's, see DASH_TRUSTED_PROXY).
 """
 import asyncio
 import base64
+import contextvars
 import hashlib
 import hmac
 import ipaddress
@@ -57,6 +58,9 @@ _fails = {}  # address -> [[time, account name or None], ...] of recent wrong pa
 _lock = threading.Lock()
 _key_lock = threading.Lock()
 _key = None  # the session-signing key, loaded once (see _secret)
+# Who's behind the request being handled ({"user", "ip"}), for the activity log. Set by guard(); background
+# work has none. A ContextVar follows the request into the thread that runs its endpoint.
+ACTOR = contextvars.ContextVar("labkeel_actor", default=None)
 
 
 def M():
@@ -559,7 +563,7 @@ def confirm_password(request: Request, password):
 # --------------------------------------------------------------------------- what a viewer may do
 # Read-only status pages. Not files, container logs, processes (their command lines can hold secrets),
 # settings, the activity log, or anything that lists drives that could be wiped.
-VIEWER_GET = re.compile(r"^/api/(system|meta|containers|storage|drives|services|attention|gpu|history|health|security|"
+VIEWER_GET = re.compile(r"^/api/(system|meta|containers|updates|storage|drives|services|attention|gpu|history|health|security|"
                         r"drivecare|login-info|account|passkeys|zfs/pool/[^/]+(/(datasets|snapshots|history))?)$")
 VIEWER_POST = {"/api/logout", "/api/account/password", "/api/passkeys/register/options", "/api/passkeys/register/verify",
                "/api/passkeys/rename", "/api/passkeys/delete", "/api/passkeys/confirm/options", "/api/passkeys/confirm"}
@@ -719,6 +723,8 @@ async def guard(request: Request, call_next):
         if role(request) != "admin" and not viewer_allowed(request.method, path):
             return _security_headers(JSONResponse({"error": "Your account can only view the dashboard, not change things "
                                                             "or open this."}, status_code=403), request, path)
+    u = current_user(request)
+    ACTOR.set({"user": (u or {}).get("name") or None, "ip": client_ip(request)})
     resp = await call_next(request)
     return _security_headers(resp, request, path)
 
@@ -786,6 +792,7 @@ async def login(request: Request):
         await asyncio.sleep(1)  # slows down guessing
         return JSONResponse({"error": _wrong_msg(n, "That username and password don't match.")}, status_code=401)
     _succeeded(ip, entry, u["name"])
+    ACTOR.set({"user": u["name"], "ip": ip})
     await asyncio.to_thread(accounts.rehash_if_needed, u, pw)
     u = accounts.by_id(u["id"]) or u
     resp = JSONResponse({"ok": True})
@@ -872,6 +879,7 @@ async def setup(request: Request):
         _succeeded(ip, entry, "(set-up)")
         return JSONResponse({"error": str(e)}, status_code=400)
     _succeeded(ip, entry, "(set-up)")
+    ACTOR.set({"user": u["name"], "ip": ip})
     _log(f"Set up the dashboard: made the first admin, {u['name']}")
     resp = JSONResponse({"ok": True})
     set_session_cookie(resp, request, u, False)

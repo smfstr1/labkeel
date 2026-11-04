@@ -21,6 +21,8 @@ from datetime import datetime, timedelta
 import psutil
 from fastapi import APIRouter, Body, HTTPException, Request
 
+import containers
+
 router = APIRouter()
 WRITE = os.environ.get("DASH_ZFS_WRITE", "0") == "1"  # off unless turned on: pool changes can erase everything
 TICK = int(os.environ.get("DASH_ZFS_TICK", "60"))  # seconds between checks for snapshots, scrubs and TRIMs that are due
@@ -305,14 +307,14 @@ def _overlaps(a, b):
 
 def _is_self(c):
     """Whether a container from the list is the dashboard itself."""
-    return bool(M().SELF_ID) and M().SELF_ID.startswith(c["id"])
+    return bool(containers.SELF_ID) and containers.SELF_ID.startswith(c["id"])
 
 
 def container_mounts(include_self=False):
     """[(display name, host folder)] for every running container's mounts (not the dashboard's own)."""
     names = M().load_overrides().get("containers", {})
     out = []
-    for c in M()._containers.get("items") or []:
+    for c in containers.state.get("items") or []:
         if c.get("state") != "running" or (_is_self(c) and not include_self):
             continue
         for src in c.get("mounts") or []:
@@ -328,7 +330,7 @@ def users_of(paths):
 
 def self_uses(paths):
     """The dashboard's own folders (a /browse volume, say) that are on these paths."""
-    mine = [src for c in M()._containers.get("items") or [] if _is_self(c) for src in c.get("mounts") or []]
+    mine = [src for c in containers.state.get("items") or [] if _is_self(c) for src in c.get("mounts") or []]
     return sorted({src for src in mine for p in paths if p and _overlaps(src, p)})
 
 
@@ -339,7 +341,7 @@ def docker_root():
     """Where Docker keeps its own files (asked every 10 minutes)."""
     if time.time() - _docker_root["t"] > 600:
         try:
-            _docker_root["v"] = M().dclient().info().get("DockerRootDir")
+            _docker_root["v"] = containers.dclient().info().get("DockerRootDir")
         except Exception:
             _docker_root["v"] = None
         _docker_root["t"] = time.time()

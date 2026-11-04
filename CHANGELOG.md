@@ -23,6 +23,22 @@
   how to turn HTTPS on. Behind a reverse proxy, set `DASH_TRUSTED_PROXY` so its HTTPS is recognised.
 
 ### Added
+- **LabKeel updates itself.** Settings → LabKeel shows the version, checks for a new one (the new commits on
+  the branch you cloned, or a newer image) and installs it: `git pull` and `docker compose up -d --build`,
+  run on the host by systemd so they survive LabKeel restarting. Admins only, asks for the password, and the
+  activity log says who updated it and how it went. A failed update leaves the old version running.
+- **Container update checks.** LabKeel asks each image's registry (Docker Hub, GHCR, lscr.io, Quay or any
+  OCI registry) whether its tag now points to a newer image, every 6 hours by default (Settings → Container
+  updates) or on demand with **Check for updates**. Containers that are behind get an **Update** badge and
+  their own filter, and the container's panel says how to update it. Nothing is downloaded or changed. An
+  alert for new versions can be turned on under Alerts. Only one small request per image, which doesn't
+  count towards Docker Hub's pull limit.
+- **More container controls.** Pause and resume, remove (asks for the password; volumes are kept), and the
+  same for several containers at once. A **Needs attention** filter. Logs can be searched and limited to
+  the last 15 minutes, hour or day.
+- **The activity log names who did what**, and from which address, including for things that finish later
+  (a queued file move, a batch of uploads, a restart). It's now kept in a database (`data/labkeel.db`) and
+  can be searched; the old `events.json` is imported once.
 - **Ready-made services.** `config.example.json` has templates for 22 popular apps (Plex, Jellyfin, Immich,
   the *arr apps, Home Assistant, Pi-hole, Minecraft and more), all off until you set `"enabled": true`,
   plus a blank one for your own. A new install no longer opens on a page of red "down" tiles.
@@ -30,7 +46,17 @@
 - `{host}` in a service's link becomes the address LabKeel was opened at, and in its check, the machine itself.
 - `docs/services.md` explains every field, placeholder and check.
 
+### Changed
+- Settings now holds off scheduled restarts for Minecraft players or Plex viewers only if you tick those
+  boxes (they were on by default).
+- The image is built on Python 3.13 and Debian 13 (trixie). Container logs are capped at 3 × 10 MB in the
+  example compose file.
+- CI tests on Python 3.12 and 3.13 against a real Docker, scans for risky code (bandit) and known
+  vulnerabilities (pip-audit), and starts the built image to check it's healthy. Dependabot proposes
+  dependency updates weekly.
+
 ### Fixed
+- After starting, stopping or restarting a container, the list could take a few seconds to show it.
 - Restoring a Trash item whose copy had gone crashed, and deleting it for good did nothing.
 - The dashboard's config folder wasn't hidden from the file browser when mounted as a folder.
 

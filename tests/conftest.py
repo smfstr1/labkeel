@@ -9,6 +9,8 @@ import os
 import shutil
 import sys
 import tempfile
+import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -125,3 +127,65 @@ def sign_in(name, password, client=None, **kw):
     r = c.post("/api/login", json={"username": name, "password": password})
     assert r.status_code == 200, r.text
     return c
+
+
+# --------------------------------------------------------------------------- a real Docker, when there is one
+# Tiny containers made just for the tests: from the image labkeel-test/ticker:1 if it's been built locally,
+# otherwise busybox (pulled from Docker Hub, as on GitHub's test machines). Tests using them are skipped
+# where there's no Docker.
+TICK = ["/bin/sh", "-c", "i=0; while true; do echo tick $i; i=$((i+1)); sleep 1; done"]
+
+
+def _docker():
+    import containers
+    try:
+        cl = containers.dclient()
+        cl.ping()
+        return cl
+    except Exception:
+        return None
+
+
+def _image(cl):
+    for ref in ("labkeel-test/ticker:1", "busybox:1.36"):
+        try:
+            cl.images.get(ref)
+            return ref
+        except Exception:
+            pass
+    try:
+        cl.images.pull("busybox", tag="1.36")
+        return "busybox:1.36"
+    except Exception:
+        return None
+
+
+@pytest.fixture
+def docker_cl():
+    cl = _docker()
+    if not cl or not _image(cl):
+        pytest.skip("no Docker (or no test image) here")
+    return cl
+
+
+@pytest.fixture
+def ticker(docker_cl):
+    """A running container that prints a line a second. Removed afterwards, whatever happens."""
+    made = []
+
+    def make(prefix="lk-test"):
+        c = docker_cl.containers.run(_image(docker_cl), TICK, name=f"{prefix}-{uuid.uuid4().hex[:8]}", detach=True,
+                                     labels={"labkeel.test": "1"})
+        made.append(c)
+        for _ in range(50):
+            c.reload()
+            if c.status == "running":
+                break
+            time.sleep(0.1)
+        return c
+    yield make
+    for c in made:
+        try:
+            c.remove(force=True)
+        except Exception:
+            pass

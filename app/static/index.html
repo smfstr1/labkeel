@@ -216,8 +216,20 @@ section + section { margin-top: 34px; }
 .cgroup .muted { font-weight: 400; font-size: 13px; }
 .crow.item { cursor: pointer; }
 .crow.item:hover { background: var(--panel-2); }
-.cname { min-width: 0; }
+.cname { min-width: 0; display: flex; gap: 10px; align-items: center; }
+.cname .cn { min-width: 0; }
 .cname b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.csel { width: 16px; height: 16px; flex: none; accent-color: var(--s1); cursor: pointer; }
+body.viewer .csel, body.viewer #c-bulk { display: none !important; }
+.bulkbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 14px; margin-bottom: 10px; border: 1px solid var(--rule-2); border-radius: 10px; background: var(--panel-2); position: sticky; top: 8px; z-index: 5; }
+.bulkbar b { margin-right: 6px; }
+.lg-tools { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.upd { display: inline-block; font: 600 11.5px/1.5 var(--sans); font-style: normal; padding: 0 7px; margin-left: 6px; border-radius: 99px;
+       color: var(--s1); background: color-mix(in srgb, var(--s1) 14%, transparent); vertical-align: 1px; }
+.banner.info { border-color: color-mix(in srgb, var(--s1) 40%, var(--rule)); background: color-mix(in srgb, var(--s1) 7%, var(--panel)); }
+.banner code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+body.viewer #c-check { display: none; }
+.lg-tools input { flex: 1 1 200px; }
 .cname span { display: block; font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
 .metric { font-size: 14px; }
 .metric .bar { margin-top: 4px; height: 4px; }
@@ -631,6 +643,12 @@ dialog.dlg::backdrop { background: rgb(5 10 15 / .5); }
 .sec-row .dot { margin-top: 7px; }
 .sec-row b { font-weight: 600; }
 .sec-row p { margin: 2px 0 0; font-size: 14px; color: var(--muted); max-width: 66ch; }
+.lk-changes { margin: 10px 0 0; padding-left: 18px; font-size: 13.5px; max-width: 80ch; }
+.lk-changes li { margin: 3px 0; } .lk-changes .faint { font-variant-numeric: tabular-nums; margin-right: 6px; }
+.lk-log { max-height: 280px; overflow: auto; margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; white-space: pre-wrap;
+          font: 12.5px/1.5 var(--mono); background: color-mix(in srgb, var(--muted) 9%, transparent); }
+.lk-body details summary { cursor: pointer; font-size: 13.5px; color: var(--muted); margin-top: 10px; }
+.lk-body code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
 .st-activity { max-width: 820px; margin-top: 34px; }
 .set { border: 1px solid var(--rule); background: var(--panel); border-radius: 10px; }
 .set + .set { margin-top: 16px; }
@@ -693,6 +711,7 @@ dialog.dlg::backdrop { background: rgb(5 10 15 / .5); }
 .drawer-title { font-size: 18px; font-weight: 700; word-break: break-all; }
 .drawer-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
 .drawer-body { flex: 1; overflow: auto; padding: 0; }
+.drawer-note { padding: 12px 18px 0; } .drawer-note:empty { display: none; } .drawer-note .banner { margin: 0; }
 .drawer-body pre { margin: 0; padding: 14px 18px; font: 12.5px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; }
 .drawer-body img, .drawer-body video { display: block; max-width: 100%; max-height: 80vh; margin: 18px auto; }
 .drawer-body audio { display: block; margin: 24px auto; width: 90%; }
@@ -959,12 +978,16 @@ dialog.dlg::backdrop { background: rgb(5 10 15 / .5); }
             <button type="button" data-cf="all" aria-pressed="true">All</button>
             <button type="button" data-cf="running" aria-pressed="false">Running</button>
             <button type="button" data-cf="stopped" aria-pressed="false">Stopped</button>
+            <button type="button" data-cf="attention" aria-pressed="false">Needs attention</button>
+            <button type="button" data-cf="updates" aria-pressed="false">Updates</button>
           </div>
+          <button class="btn" type="button" id="c-check">Check for updates</button>
         </div>
       </div>
       <div id="c-error"></div>
+      <div class="bulkbar hidden" id="c-bulk" role="region" aria-label="Selected containers"></div>
       <div class="ctable" id="c-table"></div>
-      <p class="faint" style="font-size:13px;margin-top:10px">CPU is a share of the whole machine. Select a container to read its logs.</p>
+      <p class="faint" style="font-size:13px;margin-top:10px">CPU is a share of the whole machine. Select a container to read its logs. <span id="c-upd-note"></span></p>
     </div>
 
     <!-- STORAGE -->
@@ -1050,6 +1073,12 @@ dialog.dlg::backdrop { background: rgb(5 10 15 / .5); }
     <div class="view hidden" id="view-settings">
       <div class="view-head"><h1>Settings</h1><span class="muted" style="font-size:13.5px" id="st-tz"></span></div>
       <div id="st-banners"></div>
+      <section class="set" aria-labelledby="lk-h">
+        <div class="set-head"><div><h2 id="lk-h">LabKeel</h2><p class="muted set-lede" id="lk-lede">This dashboard's own version, and updates for it.</p></div>
+          <span class="toolbar"><button class="btn" type="button" id="lk-check">Check for an update</button>
+            <button class="btn primary" type="button" id="lk-install" hidden>Install update…</button></span></div>
+        <div class="set-body lk-body" id="lk-body"><div class="muted">Checking…</div></div>
+      </section>
       <section class="set st-security" aria-labelledby="sec-h">
         <div class="set-head"><div><h2 id="sec-h">Security</h2><p class="muted set-lede">How access to this dashboard is protected.</p></div></div>
         <div class="set-body"><div class="sec-list" id="sec-list"><div class="muted">Checking…</div></div></div>
@@ -1083,6 +1112,19 @@ dialog.dlg::backdrop { background: rgb(5 10 15 / .5); }
                 <option value="1000">1 second</option><option value="2000">2 seconds (default)</option><option value="5000">5 seconds</option></select></label>
             </div>
             <p class="st-note" style="max-width:72ch">For the CPU, memory, network, GPU and power figures on Overview. The server only reads them this often while a dashboard page is open, so a fast setting costs nothing when nobody's looking.</p>
+          </div>
+        </section>
+        <section class="set">
+          <div class="set-head">
+            <div><h2>Container updates</h2><p class="muted set-lede">Look for newer versions of the images your containers run. Nothing is downloaded or changed: you choose when to update.</p></div>
+            <label class="switch"><input type="checkbox" name="updates.enabled"><span class="switch-ui" aria-hidden="true"></span><span class="sr">Check for container updates</span></label>
+          </div>
+          <div class="set-body" id="st-updates-body">
+            <div class="fields">
+              <label class="field"><span>Check every</span><select class="input" name="updates.hours" data-num>
+                <option value="1">Hour</option><option value="3">3 hours</option><option value="6">6 hours (default)</option><option value="12">12 hours</option><option value="24">Day</option></select></label>
+            </div>
+            <p class="st-note" style="max-width:72ch">LabKeel asks each image's registry (Docker Hub, GHCR and others) which version its tag points to now: one small request per image, which doesn't count towards Docker Hub's download limit. Images that need a login to read are skipped. To be told about new versions, tick it under Alerts.</p>
           </div>
         </section>
         <section class="set">
@@ -1173,6 +1215,7 @@ dialog.dlg::backdrop { background: rgb(5 10 15 / .5); }
               <label class="check"><input type="checkbox" name="alerts.containers"> A container crashes or keeps restarting</label>
               <label class="check"><input type="checkbox" name="alerts.services"> A service stops responding</label>
               <label class="check"><input type="checkbox" name="alerts.restarts"> The server restarts or comes back online</label>
+              <label class="check"><input type="checkbox" name="alerts.updates"> Newer images are out for your containers</label>
               <label class="check"><input type="checkbox" name="alerts.slow"> The server slows down: no readings for more than <input class="input tiny" type="number" name="alerts.slow_secs" min="5" max="300" data-num aria-label="Seconds"> seconds</label>
             </fieldset>
             <div class="subset">
@@ -1278,6 +1321,7 @@ dialog.dlg::backdrop { background: rgb(5 10 15 / .5); }
     <div style="min-width:0"><div class="drawer-title" id="drawer-title"></div><div class="drawer-sub" id="drawer-sub"></div></div>
     <div class="toolbar" id="drawer-actions"></div>
   </div>
+  <div class="drawer-note" id="drawer-note" aria-live="polite"></div>
   <div class="drawer-body" id="drawer-body"></div>
 </aside>
 
@@ -1398,7 +1442,7 @@ function hexOf(v) { // normalise css colour to #rrggbb for alpha suffixing
 
 /* ---------- state ---------- */
 const SPARK_WINDOW = 300;  // seconds shown in the small Overview graphs
-const S = { sys: null, hist: [], containers: null, storage: null, drives: null, services: null, meta: null, lastOk: 0 };
+const S = { sys: null, hist: [], containers: null, updates: null, storage: null, drives: null, services: null, meta: null, lastOk: 0 };
 const views = ["overview", "containers", "storage", "files", "services", "settings", "pool"];
 let currentView = "overview";
 
@@ -1551,7 +1595,7 @@ function renderSystem() {
 function dname(c) { return c.display || c.name; }
 function cState(c) {
   if (c.state === "running") return c.health === "unhealthy" ? "bad" : c.health === "starting" ? "warn" : "good";
-  if (c.state === "restarting") return "warn";
+  if (c.state === "restarting" || c.state === "paused") return "warn";
   if (c.state === "exited" && c.exit_code !== 0) return "bad";
   return "";
 }
@@ -2042,9 +2086,15 @@ function renderContainers() {
   $("#c-error").innerHTML = d.error ? `<div class="banner bad">Can't reach Docker: ${esc(d.error)}. Check that /var/run/docker.sock is mounted into the dashboard container.</div>` : "";
   const q = $("#c-search").value.trim().toLowerCase();
   const items = (d.items || []).filter(c =>
-    (cFilter === "all" || (cFilter === "running" ? c.state === "running" : c.state !== "running")) &&
+    (cFilter === "all" || (cFilter === "running" ? c.state === "running" : cFilter === "attention" ? ["bad", "warn"].includes(cState(c))
+                           : cFilter === "updates" ? cUpdate(c)?.status === "update" : c.state !== "running")) &&
     (!q || dname(c).toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || (c.image || "").toLowerCase().includes(q) || (c.project || "").toLowerCase().includes(q)));
-  if (!items.length) { $("#c-table").innerHTML = `<div class="empty">${d.items?.length ? "No containers match this filter." : "No containers found."}</div>`; return; }
+  Updates.note();
+  if (!items.length) {
+    $("#c-table").innerHTML = `<div class="empty">${!d.items?.length ? "No containers found." : cFilter === "updates"
+      ? (S.updates?.last ? "Every container is on the newest image its tag points to." : "Not checked yet.") : "No containers match this filter."}</div>`;
+    return;
+  }
   const groups = new Map();
   for (const c of items) { const k = c.project || "Standalone"; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); }
   const keys = [...groups.keys()].sort((a, b) => (a === "Standalone") - (b === "Standalone") || a.localeCompare(b));
@@ -2057,7 +2107,7 @@ function renderContainers() {
       const st = c.stats || {}, run = c.state === "running", cs = cState(c);
       const memPct = st.mem_limit ? st.mem / st.mem_limit * 100 : 0;
       html += `<div class="crow item${!run || cs !== "good" ? " alt" : ""}" tabindex="0" role="button" data-cid="${esc(c.id)}" aria-label="Show logs for ${esc(dname(c))}">
-        <div class="cname"><b><span class="dot cdot ${cs}"></span>${esc(dname(c))}</b><span>${c.display ? `${esc(c.name)} · ` : ""}${esc(c.image)}</span></div>
+        <div class="cname"><input type="checkbox" class="csel" data-sel="${esc(c.id)}" aria-label="Select ${esc(dname(c))}"${CSel.has(c.id) ? " checked" : ""}><div class="cn"><b><span class="dot cdot ${cs}"></span>${esc(dname(c))}${cUpdate(c)?.status === "update" ? `<em class="upd" title="${esc(cUpdate(c).detail || "A newer image is out")}">Update</em>` : ""}</b><span>${c.display ? `${esc(c.name)} · ` : ""}${esc(c.image)}</span></div></div>
         <div class="c-status"><span class="tag ${cState(c)}"><span class="dot ${cState(c)}"></span>${esc(cStateText(c))}</span>${c.restarts ? `<div class="faint" style="font-size:12px">${c.restarts} restarts</div>` : ""}</div>
         <div class="c-up muted">${run ? fmtDur(c.uptime) : "–"}</div>
         <div class="metric c-cpu">${run ? `${(st.cpu ?? 0).toFixed(1)}%<span class="mlabel"> CPU</span><div class="bar"><i class="cpu" style="width:${Math.min(100, (st.cpu || 0))}%"></i></div>` : `<span class="faint">–</span>`}</div>
@@ -2067,9 +2117,101 @@ function renderContainers() {
     }
   }
   $("#c-table").innerHTML = html;
+  Bulk.render();
 }
-$("#c-table").addEventListener("click", e => { if (e.target.closest("a")) return; const r = e.target.closest("[data-cid]"); if (r) Logs.open(r.dataset.cid); });
-$("#c-table").addEventListener("keydown", e => { const r = e.target.closest("[data-cid]"); if (r && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); Logs.open(r.dataset.cid); } });
+$("#c-table").addEventListener("click", e => { if (e.target.closest("a, input")) return; const r = e.target.closest("[data-cid]"); if (r) Logs.open(r.dataset.cid); });
+$("#c-table").addEventListener("keydown", e => { if (e.target.closest("input")) return; const r = e.target.closest("[data-cid]"); if (r && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); Logs.open(r.dataset.cid); } });
+$("#c-table").addEventListener("change", e => {
+  const box = e.target.closest(".csel"); if (!box) return;
+  if (box.checked) CSel.add(box.dataset.sel); else CSel.delete(box.dataset.sel);
+  Bulk.render();
+});
+
+// Newer images (see updates.py): a badge on each container that's behind, the Updates filter, a note under the
+// list, how to update in the container's drawer, and the "Check for updates" button (admins)
+function cUpdate(c) { return S.updates?.containers?.[c.id]; }
+async function loadUpdates() {
+  S.updates = await api("/api/updates");
+  if (changed("upd", S.updates)) { renderContainers(); Logs.renderCtl(); }
+}
+const Updates = {
+  note() {
+    const u = S.updates, el = $("#c-upd-note"); if (!el) return;
+    el.textContent = !u ? "" : u.checking ? "Checking for newer images…"
+      : u.last ? `Images checked for updates ${ago(u.last)}${u.count ? `: ${u.count} container${u.count === 1 ? " has" : "s have"} a newer one.` : "."}`
+      : u.enabled ? "Images haven't been checked for updates yet." : "";
+  },
+  banner(c) {
+    const u = cUpdate(c); if (!u || u.status === "current") return "";
+    if (u.status !== "update") return u.detail ? `<p class="faint small">Update check: ${esc(u.detail)}.</p>` : "";
+    const how = c.project && c.service
+      ? `In the folder with the <b>${esc(c.project)}</b> compose file: <code>docker compose pull ${esc(c.service)} &amp;&amp; docker compose up -d ${esc(c.service)}</code>`
+      : `Pull it with <code>docker pull ${esc(c.image)}</code>, then re-create the container with the same settings.`;
+    return `<div class="banner info"><b>${u.pulled ? "A newer image is downloaded" : "A newer image is out"}</b> for <code>${esc(c.image)}</code>.` +
+           `${u.pulled ? " Re-create the container to use it." : ""}<br>${how}</div>`;
+  },
+  async check() {
+    const b = $("#c-check"); b.disabled = true; b.textContent = "Checking…";
+    try {
+      const r = await apiSend("/api/updates/check");
+      await loadUpdates();
+      if (!r.done) { toast("Still checking. The results appear here when it's done."); return; }
+      const n = r.counts.update, bad = r.counts.error + r.counts.unknown;
+      toast((n ? `${n} image${n === 1 ? " has" : "s have"} a newer version` : "Every image is up to date") +
+            (bad ? ` (${bad} couldn't be checked)` : ""), n ? "" : "good");
+      if (n) { cFilter = "updates"; $$("[data-cf]").forEach(x => x.setAttribute("aria-pressed", x.dataset.cf === "updates")); renderContainers(); }
+    } catch (e) { if (!e.cancelled && e.message !== "Signed out") toast(e.message, "bad"); }
+    finally { b.disabled = false; b.textContent = "Check for updates"; }
+  },
+};
+$("#c-check").addEventListener("click", () => Updates.check());
+
+// Containers ticked for doing something to several at once (the bar above the list)
+const CSel = new Set();
+const Bulk = {
+  render() {
+    const have = new Set((S.containers?.items || []).map(c => c.id));
+    for (const id of [...CSel]) if (!have.has(id)) CSel.delete(id);  // gone since it was ticked
+    const bar = $("#c-bulk"), n = CSel.size;
+    bar.classList.toggle("hidden", !n);
+    if (!n) { bar.innerHTML = ""; return; }
+    if (bar.dataset.busy) return;
+    bar.innerHTML = `<b>${n} selected</b>` + [["start", "Start"], ["stop", "Stop"], ["restart", "Restart"], ["pause", "Pause"], ["unpause", "Resume"], ["remove", "Remove…"]]
+      .map(([a, label]) => `<button class="btn small${a === "remove" ? " danger" : ""}" type="button" data-bulk="${a}">${label}</button>`).join("") +
+      `<button class="linkbtn" type="button" data-bulk="clear">Clear</button>`;
+  },
+  async run(action) {
+    if (action === "clear") { CSel.clear(); renderContainers(); return; }
+    const picked = (S.containers.items || []).filter(c => CSel.has(c.id));
+    const names = picked.map(dname), n = picked.length, what = n === 1 ? names[0] : `${n} containers`;
+    const label = { start: "Start", stop: "Stop", restart: "Restart", pause: "Pause", unpause: "Resume", remove: "Remove" }[action];
+    const players = picked.flatMap(playersOn);
+    const go = async () => {
+      const bar = $("#c-bulk"); bar.dataset.busy = "1"; $$("button", bar).forEach(b => b.disabled = true);
+      try {
+        const r = await apiSend("/api/containers/bulk", { action, ids: picked.map(c => c.id), force: action === "remove" });
+        const failed = r.results.filter(x => !x.ok);
+        toast(failed.length ? `${label}: ${r.done} of ${n} done. ${failed.map(x => x.error).join(" ")}` : `${label}: done for ${what}`, failed.length ? "bad" : "good");
+        if (action === "remove") CSel.clear();
+        await loadContainers();
+        setTimeout(loadServices.bind(null, true), 2500);
+      } catch (e) { if (!e.cancelled && e.message !== "Signed out") toast(e.message, "bad"); }
+      finally { delete bar.dataset.busy; Bulk.render(); }
+    };
+    if (action === "start" || action === "unpause") return go();
+    Confirm.open({
+      title: `${label} ${what}?`, ok: label, safe: action === "pause" || action === "restart",
+      body: (n > 1 ? `<p>${names.map(esc).join(", ")}</p>` : "") + ({
+        stop: "<p>They stay off until you start them again.</p>",
+        restart: "<p>Each goes offline for a few seconds while it restarts.</p>",
+        pause: "<p>They're frozen in place until you resume them: nothing runs, but nothing is lost.</p>",
+        remove: "<p>Running ones are stopped first. Their volumes (saved data) are kept. Any that belong to a compose project come back the next time that project is started.</p>",
+      }[action] || "") + (players.length ? `<p class="tag warn">${players.map(x => `${x.n} player${x.n === 1 ? " is" : "s are"} on ${esc(x.name)}`).join(", ")}.</p>` : ""),
+      onOk: go,
+    });
+  },
+};
+$("#c-bulk").addEventListener("click", e => { const b = e.target.closest("[data-bulk]"); if (b) Bulk.run(b.dataset.bulk); });
 
 /* ---------- drawer ---------- */
 const Drawer = {
@@ -2079,7 +2221,7 @@ const Drawer = {
     this.lastFocus = document.activeElement; this.onClose = onClose || null;
     $("#drawer-title").textContent = title; $("#drawer-sub").innerHTML = sub || "";
     $("#drawer-actions").innerHTML = actionsHtml + `<button class="btn" type="button" data-close>Close</button>`;
-    $("#drawer-body").innerHTML = bodyHtml || "";
+    $("#drawer-body").innerHTML = bodyHtml || ""; $("#drawer-note").innerHTML = "";
     $("#drawer").hidden = false; $("#scrim").classList.remove("hidden");
     $("#drawer [data-close]").focus();
   },
@@ -2118,13 +2260,17 @@ const Logs = {
        <select class="input" id="lg-tail" aria-label="Lines"><option value="300">Last 300 lines</option><option value="1000">Last 1,000</option><option value="5000">Last 5,000</option></select>
        <label class="tag" style="color:var(--text)"><input type="checkbox" id="lg-follow" checked> Follow</label>
        <button class="btn" type="button" id="lg-refresh">Refresh</button>`,
-      `<pre id="lg-pre" class="muted">Loading logs…</pre>`, () => { clearInterval(this.timer); this.timer = null; });
+      `<div class="lg-tools"><input class="input" id="lg-q" type="search" placeholder="Search the log" aria-label="Search the log">
+         <select class="input" id="lg-since" aria-label="From"><option value="">All of it</option><option value="900">Last 15 minutes</option><option value="3600">Last hour</option><option value="86400">Last day</option></select></div>
+       <pre id="lg-pre" class="muted">Loading logs…</pre>`, () => { clearInterval(this.timer); this.timer = null; clearTimeout(this.qTimer); });
     $("#lg-rename").addEventListener("click", () => Rename.open("containers", c.name, c.display, async (shown) => {
       $("#drawer-title").textContent = shown; await loadContainers();
     }));
     this.renderCtl();
     $("#lg-ctl").addEventListener("click", e => { const b = e.target.closest("[data-act]"); if (b) containerAction(this.cid, b.dataset.act); });
     $("#lg-tail").addEventListener("change", () => this.load(true));
+    $("#lg-since").addEventListener("change", () => this.load(true));
+    $("#lg-q").addEventListener("input", () => { clearTimeout(this.qTimer); this.qTimer = setTimeout(() => this.load(true), 300); });
     $("#lg-refresh").addEventListener("click", () => this.load(true));
     $("#lg-follow").addEventListener("change", e => this.follow(e.target.checked));
     this.load(true); this.follow(true);
@@ -2135,19 +2281,26 @@ const Logs = {
     const run = c.state === "running" || c.state === "restarting";
     $("#drawer-sub").innerHTML = `<span class="tag ${cState(c)}"><span class="dot ${cState(c)}"></span>${esc(cStateText(c))}</span>` +
       `${run && c.uptime ? ` for ${fmtDur(c.uptime)}` : ""} · ${esc(c.name)} · ${esc(c.id)}`;
+    const note = Updates.banner(c);  // only rewritten when it changes, so it can be selected and copied
+    if ($("#drawer-note").innerHTML !== note) $("#drawer-note").innerHTML = note;
     if (ctl.dataset.busy) return;
-    ctl.innerHTML = run
-      ? `<button class="btn" type="button" data-act="restart">${ICON_RESTART} Restart</button>` +
-        (c.is_self ? "" : `<button class="btn danger" type="button" data-act="stop">${ICON_STOP} Stop</button>`)
-      : `<button class="btn primary" type="button" data-act="start">${ICON_START} Start</button>`;
+    if (document.body.classList.contains("viewer")) { ctl.innerHTML = ""; return; }
+    const btn = (act, label, cls = "") => `<button class="btn${cls}" type="button" data-act="${act}">${label}</button>`;
+    ctl.innerHTML = c.state === "paused"
+      ? btn("unpause", `${ICON_START} Resume`, " primary") + (c.is_self ? "" : btn("stop", `${ICON_STOP} Stop`, " danger"))
+      : run
+      ? btn("restart", `${ICON_RESTART} Restart`) + (c.is_self ? "" : btn("pause", "Pause") + btn("stop", `${ICON_STOP} Stop`, " danger"))
+      : btn("start", `${ICON_START} Start`, " primary") + (c.is_self ? "" : btn("remove", "Remove…", " danger"));
   },
   follow(on) { clearInterval(this.timer); this.timer = on ? setInterval(() => this.load(false), 3000) : null; },
   async load(scroll) {
     const pre = $("#lg-pre"); if (!pre) return;
     const body = $("#drawer-body"), atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
     try {
-      const t = await api(`/api/containers/${encodeURIComponent(this.cid)}/logs?tail=${$("#lg-tail").value}`);
-      pre.textContent = t || "This container hasn't written any logs.";
+      const q = $("#lg-q").value.trim(), since = $("#lg-since").value;
+      const t = await api(`/api/containers/${encodeURIComponent(this.cid)}/logs?tail=${$("#lg-tail").value}` +
+                          (since ? `&since=${since}` : "") + (q ? `&q=${encodeURIComponent(q)}` : ""));
+      pre.textContent = t || (q ? "No lines match that search." : since ? "Nothing in that time." : "This container hasn't written any logs.");
       pre.classList.toggle("muted", !t);
     } catch (e) { pre.textContent = `Couldn't load logs: ${e.message}`; }
     if (scroll || atBottom) body.scrollTop = body.scrollHeight;
@@ -2168,29 +2321,34 @@ function playersOn(c) {
 async function containerAction(cid, action) {
   const c = (S.containers.items || []).find(x => x.id === cid); if (!c) return;
   const name = dname(c);
-  const words = { restart: ["Restart", "Restarting…", "Restarted"], stop: ["Stop", "Stopping…", "Stopped"], start: ["Start", "Starting…", "Started"] }[action];
+  const words = { restart: ["Restart", "Restarting…", "Restarted"], stop: ["Stop", "Stopping…", "Stopped"], start: ["Start", "Starting…", "Started"],
+                  pause: ["Pause", "Pausing…", "Paused"], unpause: ["Resume", "Resuming…", "Resumed"], remove: ["Remove", "Removing…", "Removed"] }[action];
   const go = async () => {
     const ctl = $("#lg-ctl");
     if (ctl) { ctl.dataset.busy = "1"; $$("button", ctl).forEach(b => { b.disabled = true; if (b.dataset.act === action) b.textContent = words[1]; }); }
     try {
-      const r = await api(`/api/containers/${encodeURIComponent(cid)}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
-      if (r.self) { toast("Restarting the dashboard. This page reconnects by itself in a few seconds."); return; }
+      const r = await apiSend(`/api/containers/${encodeURIComponent(cid)}/action`, { action });
+      if (r.self) { toast("Restarting LabKeel. This page reconnects by itself in a few seconds."); return; }
       toast(`${words[2]} ${name}`, "good");
+      if (action === "remove") { Drawer.close(); CSel.delete(cid); }
       await loadContainers();
       setTimeout(loadServices.bind(null, true), 2500);
       Logs.load(true);
-    } catch (e) { if (e.message !== "Signed out") toast(e.message, "bad"); }
+    } catch (e) { if (!e.cancelled && e.message !== "Signed out") toast(e.message, "bad"); }
     finally { if (ctl) delete ctl.dataset.busy; Logs.renderCtl(); }
   };
-  if (action === "start") return go();
+  if (action === "start" || action === "unpause") return go();
   const p = playersOn(c);
   const busy = p.length ? `<p class="tag warn">${p.map(x => `${x.n} player${x.n === 1 ? " is" : "s are"} on ${esc(x.name)}`).join(", ")}. They'll be disconnected.</p>` : "";
   Confirm.open({
     title: `${words[0]} ${name}?`, ok: words[0],
-    body: (action === "restart"
-      ? (c.is_self ? "<p>This is the dashboard itself. The page reconnects by itself once it's back, usually within a few seconds.</p>"
-                   : "<p>It goes offline for a few seconds while it restarts.</p>")
-      : "<p>It stays off until you start it again. Stopping it here won't set off a crash or service-down alert.</p>") + busy,
+    body: ({
+      restart: c.is_self ? "<p>This is LabKeel itself. The page reconnects by itself once it's back, usually within a few seconds.</p>"
+                         : "<p>It goes offline for a few seconds while it restarts.</p>",
+      stop: "<p>It stays off until you start it again. Stopping it here won't set off a crash or service-down alert.</p>",
+      pause: "<p>It's frozen in place until you resume it: nothing runs, but nothing is lost.</p>",
+      remove: `<p>The container is deleted. Its volumes (saved data) are kept.${c.project ? ` It belongs to the compose project <b>${esc(c.project)}</b>, so it comes back the next time that project is started.` : ""}</p>`,
+    }[action]) + busy, safe: action === "pause",
     onOk: go,
   });
 }
@@ -4549,7 +4707,7 @@ const Settings = {
     $("#sec-foot").hidden = !d.auth;
   },
   async load() {
-    this.loadSecurity(); Passkeys.load(); AppIcon.load();
+    this.loadSecurity(); Passkeys.load(); AppIcon.load(); SelfUpdate.load();
     try {
       const d = await api("/api/settings");
       this.data = d;
@@ -4601,6 +4759,7 @@ const Settings = {
     $("#st-day-label").textContent = freq === "monthly" ? "On the first" : "Day";
     $("#st-restart-body").classList.toggle("off", !f["restart.enabled"].checked);
     $("#st-cleanup-body").classList.toggle("off", !f["cleanup.enabled"].checked);
+    $("#st-updates-body").classList.toggle("off", !f["updates.enabled"].checked);
     $("#st-plex-field").classList.toggle("hidden", !f["restart.wait_plex"].checked);
     f["alerts.disk_threshold"].disabled = !f["alerts.disk_space"].checked;
     f["alerts.pool_threshold"].disabled = !f["alerts.pool_space"].checked;
@@ -4633,7 +4792,7 @@ const Settings = {
     if (st.reboot_required) b += `<div class="banner">Ubuntu has installed updates that need a restart${st.reboot_pkgs.length ? ` (${esc(st.reboot_pkgs.slice(0, 4).join(", "))}${st.reboot_pkgs.length > 4 ? " and more" : ""})` : ""}.</div>`;
     for (const n of st.notes || []) b += `<div class="banner">${esc(n)}</div>`;
     $("#st-banners").innerHTML = b;
-    const ns = $("#nav-settings"); ns.textContent = st.reboot_required ? "update" : ""; ns.classList.remove("alert");
+    settingsBadge();
     let next = "";
     if (this.dirty) next = "";
     else if (s.restart.enabled && st.next_restart) {
@@ -4662,7 +4821,7 @@ const Settings = {
     const ev = this.events || [], shown = this.evShown || 20, cls = { alert: "warn", error: "bad", boot: "good", slow: "bad" };
     const more = ev.length - shown;
     $("#st-events").innerHTML = ev.length
-      ? ev.slice(0, shown).map(e => `<div class="ev"><span class="dot ${cls[e.kind] || ""}"></span><time datetime="${new Date(e.t * 1000).toISOString()}">${fmtDate(e.t)}</time><span>${esc(e.text)}</span></div>`).join("")
+      ? ev.slice(0, shown).map(e => `<div class="ev"><span class="dot ${cls[e.kind] || ""}"></span><time datetime="${new Date(e.t * 1000).toISOString()}">${fmtDate(e.t)}</time><span>${esc(e.text)}${e.user ? ` <span class="faint">· ${esc(e.user)}</span>` : ""}</span></div>`).join("")
         + (more > 0 ? `<div class="ev-more"><button class="linkbtn" type="button" id="st-ev-more">Show ${Math.min(more, 40)} older</button><span class="faint small">${more} more</span></div>` : "")
       : `<div class="li muted">Nothing yet. Restarts, alerts and clean-ups will be listed here.</div>`;
   },
@@ -4704,6 +4863,90 @@ async function signOut(all) {
 }
 $("#signout-btn").addEventListener("click", () => signOut(false));
 
+// LabKeel updating itself (see selfupdate.py): Settings → LabKeel, and "update" beside Settings in the sidebar
+function settingsBadge() {
+  const ready = Settings.data?.status?.reboot_required || SelfUpdate.d?.check?.status === "update";
+  const ns = $("#nav-settings"); ns.textContent = ready ? "update" : ""; ns.classList.remove("alert");
+}
+const SelfUpdate = {
+  d: null, waiting: false,
+  async load(fresh) {
+    try { this.d = await api("/api/labkeel/update" + (fresh ? "?fresh=true" : "")); }
+    catch (e) { if (currentView === "settings") $("#lk-body").innerHTML = `<div class="muted">${esc(e.message)}</div>`; return; }
+    this.render(); settingsBadge();
+  },
+  row(lvl, title, text) { return `<div class="sec-row"><span class="dot ${lvl}"></span><div><b>${title}</b>${text ? `<p>${text}</p>` : ""}</div></div>`; },
+  render() {
+    const d = this.d; if (!d) return;
+    const i = d.install, c = d.check, last = d.last;
+    $("#lk-lede").innerHTML = `Version <b>${esc(d.version)}</b>` + (!i ? "." : i.mode === "source"
+      ? `, built from the git copy in <code>${esc(i.repo)}</code>, following <code>${esc(i.upstream)}</code>.`
+      : `, from the image <code>${esc(i.image)}</code>.`);
+    let h = "";
+    if (d.running) {
+      h = this.row("warn", "Updating now…", `Started ${ago(d.running.t)}${d.running.by ? ` by ${esc(d.running.by)}` : ""}. LabKeel restarts at the end; this page reloads by itself.`) +
+          `<pre class="lk-log">${esc(d.log)}</pre>`;
+    } else if (!d.possible) {
+      h = this.row("warn", "Updates are done by hand here", `${esc(d.reason)} From LabKeel's folder: <code>git pull &amp;&amp; docker compose up -d --build</code> (or <code>docker compose pull &amp;&amp; docker compose up -d</code> if you use the published image).`);
+    } else if (!c) {
+      if (!last?.ok) h = this.row("", "Not checked yet", "Check for an update to see what's new.");
+    } else if (c.status === "update") {
+      const n = c.behind, what = i?.mode === "source" ? `${n} new change${n === 1 ? "" : "s"}` : "A newer image";
+      h = this.row("info", `An update is ready: ${what}${c.latest_version && c.latest_version !== d.version ? ` (version ${esc(c.latest_version)})` : ""}`,
+                   `Checked ${ago(c.checked)}. Installing takes a minute or two (longer while it builds), then LabKeel restarts. Your accounts, settings and history stay put.`);
+      if (c.changes?.length) h += `<ul class="lk-changes">${c.changes.map(x => `<li><span class="faint">${esc(x.date)}</span>${esc(x.text)}</li>`).join("")}</ul>`;
+    } else if (c.status === "current") {
+      h = this.row("good", "Up to date", `Checked ${ago(c.checked)}.`);
+    } else {
+      h = this.row(c.status === "blocked" ? "warn" : "bad", c.status === "blocked" ? "Can't update automatically" : "Couldn't check for an update", esc(c.detail || ""));
+    }
+    if (last && !d.running) {
+      h += last.ok ? (Date.now() / 1000 - last.t < 86400 ? `<div style="${h ? "margin-top:12px" : ""}">${this.row("good", `Updated ${ago(last.t)}`, `From version ${esc(last.from_version)}${last.by ? `, by ${esc(last.by)}` : ""}.`)}</div>` : "")
+                   : `<div style="margin-top:12px">${this.row("bad", `The last update failed (${ago(last.t)})`, `${esc(last.detail)} LabKeel kept running the version it had.`)}</div>`;
+      if (d.log && (!last.ok || Date.now() / 1000 - last.t < 86400)) h += `<details><summary>What the update printed</summary><pre class="lk-log">${esc(d.log)}</pre></details>`;
+    }
+    $("#lk-body").innerHTML = h;
+    $("#lk-install").hidden = !(d.possible && c?.status === "update" && !d.running);
+    $("#lk-check").hidden = !d.possible || !!d.running;
+    if (d.running && !this.waiting) this.wait();
+  },
+  async check() {
+    const b = $("#lk-check"); b.disabled = true; b.textContent = "Checking…";
+    try { await apiSend("/api/labkeel/update/check"); await this.load(true); }
+    catch (e) { if (!e.cancelled && e.message !== "Signed out") toast(e.message, "bad"); }
+    finally { b.disabled = false; b.textContent = "Check for an update"; }
+  },
+  install() {
+    Confirm.open({ title: "Update LabKeel?", ok: "Update and restart", safe: true,
+      body: `<p>LabKeel ${this.d.install?.mode === "source" ? "fetches the new code, builds it" : "downloads the new image"} and restarts itself. ` +
+            `It's away for a minute or two; containers, drives and files aren't touched.</p><p class="muted">If anything goes wrong, the current version keeps running and this page shows what happened.</p>`,
+      onOk: async () => {
+        try { await apiSend("/api/labkeel/update/install", { confirm: "update" }); toast("Updating LabKeel…"); await this.load(); this.wait(); }
+        catch (e) { if (!e.cancelled && e.message !== "Signed out") toast(e.message, "bad"); }
+      } });
+  },
+  // Poll until the update has finished. While the new LabKeel starts, requests fail for a little while: keep going.
+  async wait() {
+    this.waiting = true;
+    const from = this.d?.version, end = Date.now() + 20 * 60000;
+    $("#global-banner").innerHTML = `<div class="banner info"><b>LabKeel is updating.</b> It'll be away for a minute or two while it restarts; this page reloads by itself.</div>`;
+    while (Date.now() < end) {
+      await new Promise(r => setTimeout(r, 3000));
+      let d; try { d = await api("/api/labkeel/update"); } catch { continue; }
+      this.d = d; if (currentView === "settings") this.render();
+      if (!d.running) {
+        $("#global-banner").innerHTML = "";
+        if (d.last?.ok) { toast(`LabKeel updated${d.version !== from ? ` to ${d.version}` : ""}`, "good"); setTimeout(() => location.reload(), 1500); }
+        else if (d.last) toast("The update failed: LabKeel kept the version it had", "bad");
+        break;
+      }
+    }
+    this.waiting = false;
+  },
+};
+$("#lk-check").addEventListener("click", () => SelfUpdate.check());
+$("#lk-install").addEventListener("click", () => SelfUpdate.install());
+
 /* ---------- boot ---------- */
 (async () => {
   route();
@@ -4719,9 +4962,11 @@ $("#signout-btn").addEventListener("click", () => signOut(false));
   poll(loadAttention, 15000);
   poll(loadDriveCare, 10000);
   poll(loadContainers, 4000);
+  poll(loadUpdates, 60000);
   poll(loadServices, 30000);
   poll(loadStorage, 30000);
   poll(loadDrives, 60000);
+  if (S.meta?.user?.role === "admin" || (S.meta && !S.meta.auth)) poll(() => SelfUpdate.load(), 600000);
 })();
 </script>
 </body>

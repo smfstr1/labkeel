@@ -376,7 +376,14 @@ Hello or a phone instead of typing a password.
 
 ## Keeping it up to date
 
-From the `labkeel` folder:
+The easy way: **Settings → LabKeel → Check for an update**, then **Install update**. LabKeel shows what's
+new, asks for your password, pulls the new version, rebuilds itself and restarts. It's away for a minute or
+two. If anything goes wrong, the old version keeps running and Settings shows what happened.
+
+It checks on its own every 6 hours too (the same schedule as container updates), and puts "update" beside
+Settings in the sidebar when one is ready.
+
+By hand, from the `labkeel` folder (this is exactly what the button does):
 
 ```sh
 git pull

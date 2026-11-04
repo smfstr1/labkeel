@@ -16,6 +16,8 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Body, HTTPException, Request
 
+import containers
+
 router = APIRouter()
 _lock = threading.RLock()   # drivecare.json
 _wake = threading.Event()   # set to make the loop look at the pools now rather than at the next tick
@@ -735,8 +737,8 @@ def _act(act):
         stopped = []
         for name in act[1]:
             try:
-                c = M().dclient().containers.get(name)
-                if c.id == M().SELF_ID or c.status != "running":
+                c = containers.dclient().containers.get(name)
+                if c.id == containers.SELF_ID or c.status != "running":
                     continue
                 U().mark_stopped_on_purpose(c.name, True)
                 c.stop(timeout=30)
@@ -757,7 +759,7 @@ def _act(act):
             if name == "-":
                 continue
             try:
-                c = M().dclient().containers.get(name)
+                c = containers.dclient().containers.get(name)
                 c.start()
                 U().mark_stopped_on_purpose(c.name, False)
                 started.append(c.name)

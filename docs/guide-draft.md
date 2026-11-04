@@ -21,7 +21,7 @@ mkdir -p ~/servers/homelab/dashboard && cd ~/servers/homelab/dashboard
 docker compose up -d --build
 ```
 
-Open `https://sam-server:8787` (or the secure address shown in `docker logs homelab-dash`).
+Open `https://sam-server:8787` (or the secure address shown in `docker logs labkeel`).
 
 Run `docker compose` as your normal user, not with `sudo`. Otherwise `${HOME}` in the compose file points at `/root`.
 
@@ -120,7 +120,7 @@ If renewing the Tailscale certificate fails (Tailscale restarting, say), the das
 
 **Turning on the trusted Tailscale certificate:** in the Tailscale admin console, open **DNS**, make sure MagicDNS is on, and under **HTTPS Certificates** choose **Enable HTTPS**. The dashboard picks it up within 10 minutes, or straight away after `docker compose restart`. Then use `https://sam-server.<tailnet>.ts.net:8787`; Settings → Security shows the exact address. It renews by itself, and the dashboard swaps in the renewed certificate without a restart. Other devices need Tailscale running to open that address.
 
-**Your own certificate:** add `- ./certs:/certs:ro` under `volumes` and put `tls.crt` and `tls.key` (or `fullchain.pem` and `privkey.pem`) in `./certs`. After replacing them, run `docker kill -s HUP homelab-dash` to reload them.
+**Your own certificate:** add `- ./certs:/certs:ro` under `volumes` and put `tls.crt` and `tls.key` (or `fullchain.pem` and `privkey.pem`) in `./certs`. After replacing them, run `docker kill -s HUP labkeel` to reload them.
 
 **Behind Caddy instead:** set `DASH_TLS: "off"` and `DASH_HOST: "127.0.0.1"`, and proxy to it:
 
@@ -202,7 +202,7 @@ On the Storage page, ZFS datasets share the pool's space, so the pool's root and
 - **Port 8787 taken**: change `DASH_PORT`.
 - **Browser says the connection isn't private**: you're on the self-signed certificate, or you used an address the certificate doesn't cover (such as the LAN IP). Turn on Tailscale HTTPS (above) and use the `ts.net` address.
 - **Locked out after wrong passwords**: wait 15 minutes, or `docker compose restart`.
-- Logs: `docker logs homelab-dash`.
+- Logs: `docker logs labkeel`.
 
 ## Working on the code
 

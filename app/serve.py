@@ -19,7 +19,7 @@ import main
 import security
 import tls
 
-HOST = os.environ.get("DASH_HOST", "0.0.0.0")
+HOST = os.environ.get("DASH_HOST", "0.0.0.0")  # a server for the network, signed in and HTTPS-only  # nosec B104
 PORT = int(os.environ.get("DASH_PORT", "8787"))
 LOG_LEVEL = os.environ.get("DASH_LOG_LEVEL", "warning")
 MAX_CONNECTIONS = int(os.environ.get("DASH_MAX_CONNECTIONS", "512"))
@@ -202,7 +202,7 @@ async def run():
 
     crt, key = await asyncio.to_thread(tls.obtain)
     st = tls.state
-    where = st.get("domain") or (socket.gethostname() if HOST in ("0.0.0.0", "::") else HOST)
+    where = st.get("domain") or (socket.gethostname() if HOST in ("0.0.0.0", "::") else HOST)  # only a comparison  # nosec B104
     print(f"Dashboard on https://{where}:{PORT} using a {st['mode']} certificate, valid until "
           f"{datetime.fromtimestamp(st['expires']):%d %b %Y}", flush=True)
     if st.get("error"):
@@ -219,7 +219,7 @@ async def run():
     tls.set_context_getter(lambda: config.ssl)
     tls.start_renewal()
 
-    # `docker kill -s HUP homelab-dash` re-reads the certificate without a restart
+    # `docker kill -s HUP labkeel` re-reads the certificate without a restart
     loop = asyncio.get_running_loop()
     try:
         loop.add_signal_handler(signal.SIGHUP, lambda: loop.run_in_executor(None, tls.refresh))

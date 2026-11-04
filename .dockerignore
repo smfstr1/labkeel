@@ -10,3 +10,6 @@ certs
 docker-compose.yml
 .env
 .ruff_cache
+docs
+*.md
+!README.md

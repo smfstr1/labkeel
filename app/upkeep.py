@@ -2,6 +2,7 @@
 Long-term upkeep for the server: scheduled restarts, alerts, Docker clean-up and an activity log.
 Everything is stored as JSON in the dashboard's data folder (DASH_DATA, /data by default).
 """
+import contextvars
 import json
 import os
 import ssl
@@ -15,11 +16,14 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import psutil
-from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi import APIRouter, Body, HTTPException, Query, Request
+
+import containers
+import db
+from version import USER_AGENT
 
 router = APIRouter()
 _lock = threading.RLock()     # state.json and settings.json; never held during network calls
-_ev_lock = threading.Lock()   # events.json only, so logging never waits behind anything slow
 ALLOW_REBOOT = os.environ.get("DASH_ALLOW_REBOOT", "0") == "1"  # off unless turned on: restarting the machine is a big power to hand out
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -27,20 +31,22 @@ WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", 
 # _clean() checks values from the page. Weekdays count from 0 = Monday; times are the server's local time.
 DEFAULTS = {
     "restart": {"enabled": False, "frequency": "weekly", "weekday": 6, "time": "04:00",
-                "only_if_updates": False, "wait_minecraft": True, "wait_plex": True,
+                "only_if_updates": False, "wait_minecraft": False, "wait_plex": False,
                 "wait_hours": 2, "if_still_busy": "skip"},
     "plex": {"url": "http://127.0.0.1:32400", "token": ""},
     "alerts": {"url": "", "drives": True, "pools": True, "disk_space": True, "disk_threshold": 90, "pool_space": True, "pool_threshold": 80,
-               "containers": True, "services": True, "restarts": True, "slow": True, "slow_secs": 10,
+               "containers": True, "services": True, "restarts": True, "slow": True, "slow_secs": 10, "updates": True,
                "quiet": False, "quiet_start": "23:00", "quiet_end": "07:00"},
     "cleanup": {"enabled": False, "weekday": 6, "time": "03:30"},
     "power": {"rest_w": 0, "price": 0, "currency": "£"},
     "display": {"refresh_ms": 2000},
+    "updates": {"enabled": True, "hours": 6},   # look for newer container images (see updates.py)
     "drivecare": {"reminder_hours": 12, "auto_replace": False, "hold_restarts": True, "pause_containers": [],
                   "nvme_hot": 70, "hdd_hot": 55, "wear_warn": 70, "wear_bad": 90, "scrub_days": 35,
                   "selftest": False, "selftest_weekday": 6, "selftest_time": "03:00", "selftest_long_monthly": True},
 }
 REFRESH_CHOICES = (300, 400, 500, 1000, 2000, 5000)  # the live refresh rates Settings → Display offers (ms)
+UPDATE_HOURS = (1, 3, 6, 12, 24)                     # how often Settings → Container updates can check
 
 
 def M():
@@ -130,14 +136,18 @@ def setting(section, key, default=None):
 
 
 def log(kind, text):
-    """Add a line to the activity log (Settings → Activity), keeping the last 300. `kind` sets its colour on the
-    page and says what it's about: alert, error, boot, slow, gap, settings, files, zfs, drive, container,
-    restart, cleanup."""
-    with _ev_lock:
-        ev = _read("events.json", [])
-        ev.append({"t": time.time(), "kind": kind, "text": text})
-        _write("events.json", ev[-300:])
-    print(f"[{kind}] {text}", flush=True)
+    """Add a line to the activity log (Settings → Activity), in the database (see db.py). `kind` sets its colour
+    on the page and says what it's about: alert, error, boot, slow, gap, settings, files, zfs, drive, container,
+    restart, cleanup, update. Done during a request, it also records who did it and from where.
+
+    Never raises: if the database can't be written, the line still reaches the container's log."""
+    actor = sys.modules["security"].ACTOR.get() if "security" in sys.modules else None
+    who = (actor or {}).get("user")
+    try:
+        db.add_event(kind, text, who, (actor or {}).get("ip"))
+    except Exception as e:
+        print(f"[error] Couldn't write the activity log: {type(e).__name__}: {e}", flush=True)
+    print(f"[{kind}] {text}" + (f" ({who})" if who else ""), flush=True)
 
 
 # --------------------------------------------------------------------------- time
@@ -339,8 +349,8 @@ def _send(title, message, tag, urgent):
             data = message.encode()
             headers = {"Title": ascii_title, "Tags": tag,
                        "Priority": "urgent" if urgent and tag == "rotating_light" else "high" if urgent or tag in ("warning", "rotating_light") else "default"}
-        req = urllib.request.Request(url, data=data, headers={"User-Agent": "homelab-dash", **headers}, method="POST")
-        with urllib.request.urlopen(req, timeout=10):
+        req = urllib.request.Request(url, data=data, headers={"User-Agent": USER_AGENT, **headers}, method="POST")
+        with urllib.request.urlopen(req, timeout=10):  # http(s) only, checked above  # nosec B310
             pass
         return True, None
     except Exception as e:
@@ -453,7 +463,7 @@ def _cleanup_tick(s, st, now):
 
 def run_cleanup(why):
     """Remove Docker images no container uses, and the build cache. Returns what was freed."""
-    cl = M().dclient()
+    cl = containers.dclient()
     imgs = cl.images.prune(filters={"dangling": False}) or {}
     try:
         builds = cl.api.prune_builds() or {}
@@ -530,7 +540,7 @@ def _conditions(a, active=frozenset(), covered=True):
             pass
     on_purpose = set(_read("state.json", {}).get("stopped_on_purpose") or [])
     # forget containers that are running again (started from the command line, for example)
-    running = {c["name"] for c in m._containers["items"] if c["state"] == "running"}
+    running = {c["name"] for c in containers.state["items"] if c["state"] == "running"}
     if on_purpose & running:
         with _lock:
             st = _read("state.json", {})
@@ -586,7 +596,7 @@ def _conditions(a, active=frozenset(), covered=True):
             except Exception:
                 pass
     if a["containers"]:
-        for c in m._containers["items"]:
+        for c in containers.state["items"]:
             if c["name"] in on_purpose:
                 continue
             crashed = c["state"] == "exited" and c.get("exit_code") not in (0, 143)
@@ -764,7 +774,7 @@ def _clean(body, cur):
         raise HTTPException(400, "The alert address needs to start with https:// (or http://)")
     out["alerts"] = {"url": url, "disk_threshold": max(50, min(99, int(a["disk_threshold"]))),
                      "pool_threshold": max(50, min(99, int(a["pool_threshold"]))),
-                     **{k: bool(a[k]) for k in ("drives", "pools", "disk_space", "pool_space", "containers", "services", "restarts", "quiet", "slow")},
+                     **{k: bool(a[k]) for k in ALERT_SWITCHES + ("quiet",)},
                      "slow_secs": max(5, min(300, int(a["slow_secs"]))),
                      "quiet_start": _hhmm(a["quiet_start"], cur["alerts"]["quiet_start"]),
                      "quiet_end": _hhmm(a["quiet_end"], cur["alerts"]["quiet_end"])}
@@ -774,6 +784,8 @@ def _clean(body, cur):
                     "currency": pw["currency"] if pw["currency"] in ("£", "€", "$", "") else "£"}
     dp = {**cur["display"], **(body.get("display") or {})}
     out["display"] = {"refresh_ms": int(dp["refresh_ms"]) if int(dp["refresh_ms"]) in REFRESH_CHOICES else 2000}
+    up = {**cur["updates"], **(body.get("updates") or {})}
+    out["updates"] = {"enabled": bool(up["enabled"]), "hours": int(up["hours"]) if int(up["hours"]) in UPDATE_HOURS else 6}
     dc = {**cur["drivecare"], **(body.get("drivecare") or {})}
     pause = dc["pause_containers"] if isinstance(dc["pause_containers"], list) else []
     out["drivecare"] = {
@@ -838,7 +850,7 @@ def api_get_settings():
     return {"settings": _public(s), "status": _status(s)}
 
 
-ALERT_SWITCHES = ("drives", "pools", "disk_space", "pool_space", "containers", "services", "restarts", "slow")
+ALERT_SWITCHES = ("drives", "pools", "disk_space", "pool_space", "containers", "services", "restarts", "slow", "updates")
 
 
 def weakens(cur, new):
@@ -895,6 +907,10 @@ def api_put_settings(request: Request, body: dict = Body(...)):
         changes.append("updated the Plex connection")
     if new["power"] != cur["power"]:
         changes.append("updated the power estimate")
+    if new["updates"] != cur["updates"]:
+        u = new["updates"]
+        changes.append(f"checking for container updates every {u['hours']} hour{'s' if u['hours'] != 1 else ''}"
+                       if u["enabled"] else "turned container update checks off")
     if new["display"] != cur["display"]:
         changes.append(f"live refresh every {new['display']['refresh_ms'] / 1000:g} s")
     if new["drivecare"] != cur["drivecare"]:
@@ -915,7 +931,8 @@ def api_restart(request: Request, body: dict = Body(...)):
     if not (M().HOST_NS and ALLOW_REBOOT):
         raise HTTPException(409, "The dashboard isn't set up to restart this machine")
     sys.modules["security"].confirm_password(request, body.get("password"))
-    threading.Thread(target=do_reboot, args=("restarted from the dashboard",), daemon=True).start()
+    ctx = contextvars.copy_context()  # so the log says who asked
+    threading.Thread(target=ctx.run, args=(do_reboot, "restarted from the dashboard"), daemon=True).start()
     return {"ok": True}
 
 
@@ -928,7 +945,8 @@ def api_shutdown(request: Request, body: dict = Body(...)):
         raise HTTPException(409, "The dashboard isn't set up to shut this machine down")
     sys.modules["security"].confirm_password(request, body.get("password"))  # needs someone at the machine to undo
     reason = "shut down from the dashboard" + (" to swap a drive" if body.get("why") == "swap" else "")
-    threading.Thread(target=do_reboot, args=(reason, True), daemon=True).start()
+    ctx = contextvars.copy_context()  # so the log says who asked
+    threading.Thread(target=ctx.run, args=(do_reboot, reason, True), daemon=True).start()
     return {"ok": True}
 
 
@@ -952,6 +970,11 @@ def api_cleanup():
 
 
 @router.get("/api/events")
-def api_events(limit: int = 100):
-    """The activity log, newest first."""
-    return list(reversed(_read("events.json", [])))[:max(1, min(limit, 300))]
+def api_events(limit: int = Query(100, ge=1, le=500), kind: str = Query(None, max_length=32),
+               q: str = Query(None, max_length=200), before: int = Query(None, ge=1)):
+    """The activity log, newest first: who did what, and when. `before` (an entry's id) pages back through older
+    entries; `kind` and `q` filter them."""
+    try:
+        return db.events(limit, kind, q, before)
+    except Exception as e:
+        raise HTTPException(503, f"The activity log isn't available: {e}")

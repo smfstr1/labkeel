@@ -18,3 +18,5 @@ argon2-cffi==25.1.0
 cryptography==50.0.2
 # Passkeys (WebAuthn): checking what the browser's passkey sends
 webauthn==3.0.1
+# Asking image registries whether a newer image is out (async, a few at a time)
+httpx==0.28.1

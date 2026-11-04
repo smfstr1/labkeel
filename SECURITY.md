@@ -30,6 +30,21 @@ mount. Treat an admin account like a root password.
 | Off by default | File changes, ZFS changes, and restarting the machine each need turning on. |
 | HTTPS only | Sign-in only happens over HTTPS (TLS 1.2 and 1.3). Plain `http://` is redirected to HTTPS, or, with HTTPS turned off, refused: only the health check answers. Behind a proxy, its word that the visitor used HTTPS is only taken from `DASH_TRUSTED_PROXY`. HSTS is opt-in (`DASH_HSTS=1`) because it applies to every port on the host name. |
 | Behind a proxy | Forwarded addresses, and sign-in by header, are only believed from `DASH_TRUSTED_PROXY`. |
+| Updating itself | Admins only, password again. Runs fixed commands (`git pull --ff-only`, `docker compose`) for LabKeel's own compose project, read from Docker's labels on its container; every value is shell-quoted, and the script is kept in `data/update.sh` to read. Git never overwrites local edits. |
+| Activity log | Records who did what, from which address, for every change, including ones that finish later in the background. |
+
+## What it connects to
+
+LabKeel makes no outgoing connections of its own except these:
+
+- **Image registries** (Docker Hub, GHCR and the like), to check for container updates: anonymous, HTTPS only,
+  never with a password. Turn it off in Settings → Container updates. See [docs/updates.md](docs/updates.md).
+- **Where LabKeel came from**, to check for a new version of itself: `git fetch` from the repository you cloned
+  (as the folder's owner, with their own git sign-in), or the registry of the image you run.
+- **Your alert address** (ntfy or Discord), when you've set one.
+- **Your services**, for their up/down checks, as listed in `config.json`.
+- **Plex**, at the address in Settings, only when scheduled restarts should wait for people watching.
+- **Tailscale**, on this machine, for an HTTPS certificate when Tailscale is installed.
 
 ## Your part
 
@@ -43,4 +58,9 @@ mount. Treat an admin account like a root password.
 ```sh
 pip install -r requirements-dev.txt
 python -m pytest tests/test_security.py
+pip install bandit pip-audit
+bandit -q -r app -ll            # risky code; reviewed exceptions are marked "nosec" with a reason
+pip-audit -r requirements.txt   # known vulnerabilities in the dependencies
 ```
+
+CI runs all of these on every change.

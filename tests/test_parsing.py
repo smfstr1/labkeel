@@ -1,14 +1,15 @@
 """Pure helpers that read other programs' output or Docker's data."""
+import containers
 import main
 import drivecare
 
 
 def test_docker_time():
-    assert main.parse_docker_time("0001-01-01T00:00:00Z") is None
-    assert main.parse_docker_time("") is None
-    t = main.parse_docker_time("2026-11-02T18:00:00.123456789Z")
+    assert containers.parse_docker_time("0001-01-01T00:00:00Z") is None
+    assert containers.parse_docker_time("") is None
+    t = containers.parse_docker_time("2026-11-02T18:00:00.123456789Z")
     assert abs(t - 1793642400.123456) < 0.001
-    assert main.parse_docker_time("garbage") is None
+    assert containers.parse_docker_time("garbage") is None
 
 
 def test_private_folders_found_from_mounts():
