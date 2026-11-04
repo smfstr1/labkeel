@@ -35,14 +35,33 @@ control of the server. See [SECURITY.md](SECURITY.md) for how it's protected.
 
 ## Screenshots
 
-| | |
-| --- | --- |
-| ![Containers grouped by compose project, with an Update badge on the ones with a newer image](images/containers.png) | ![A container's logs, with how to update it](images/container-logs.png) |
-| **Containers**: grouped by project, with update checks | **Logs**: live, searchable, with the update command |
-| ![The file browser in a Movies folder](images/files.png) | ![Service tiles with live up/down checks](images/services.png) |
-| **Files**: browse, upload, move, with a trash | **Services**: every app, with a live check |
-| ![Settings showing a LabKeel update ready to install](images/labkeel-update.png) | ![The activity log, naming who did what](images/activity.png) |
-| **Updates itself** from Settings | **Activity log**: who did what, and when |
+![Containers grouped by compose project, with an Update badge on the ones with a newer image](images/containers.png)
+**Containers**: grouped by project, with update checks
+
+>
+
+![A container's logs, with how to update it](images/container-logs.png)
+**Logs**: live, searchable, with the update command
+
+>
+
+![The file browser in a Movies folder](images/files.png)
+**Files**: browse, upload, move, delete
+
+>
+
+![Service tiles with live up/down checks](images/services.png)
+**Services**: every app, with a live check
+
+>
+
+![Settings showing a LabKeel update ready to install](images/labkeel-update.png)
+**Updates itself** from Settings
+
+>
+
+![The activity log, naming who did what](images/activity.png)
+**Activity log**: who did what, and when
 
 <p align="center"><img src="images/phone.png" alt="LabKeel on a phone" width="300"></p>
 
