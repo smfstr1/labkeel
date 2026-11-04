@@ -44,7 +44,7 @@ control of the server. See [SECURITY.md](SECURITY.md) for how it's protected.
 | ![Settings showing a LabKeel update ready to install](images/labkeel-update.png) | ![The activity log, naming who did what](images/activity.png) |
 | **Updates itself** from Settings | **Activity log**: who did what, and when |
 
-<p align="center"><img src="screenshots/phone.png" alt="LabKeel on a phone" width="300"></p>
+<p align="center"><img src="images/phone.png" alt="LabKeel on a phone" width="300"></p>
 
 The screenshots show a demo machine with sample containers, files and history.
 
