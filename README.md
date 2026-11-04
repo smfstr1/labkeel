@@ -37,14 +37,14 @@ control of the server. See [SECURITY.md](SECURITY.md) for how it's protected.
 
 | | |
 | --- | --- |
-| ![Containers grouped by compose project, with an Update badge on the ones with a newer image](/screenshots/containers.png) | ![A container's logs, with how to update it](/screenshots/container-logs.png) |
+| ![Containers grouped by compose project, with an Update badge on the ones with a newer image](screenshots/containers.png) | ![A container's logs, with how to update it](screenshots/container-logs.png) |
 | **Containers**: grouped by project, with update checks | **Logs**: live, searchable, with the update command |
-| ![The file browser in a Movies folder](/screenshots/files.png) | ![Service tiles with live up/down checks](/screenshots/services.png) |
+| ![The file browser in a Movies folder](screenshots/files.png) | ![Service tiles with live up/down checks](screenshots/services.png) |
 | **Files**: browse, upload, move, with a trash | **Services**: every app, with a live check |
-| ![Settings showing a LabKeel update ready to install](/screenshots/labkeel-update.png) | ![The activity log, naming who did what](/screenshots/activity.png) |
+| ![Settings showing a LabKeel update ready to install](screenshots/labkeel-update.png) | ![The activity log, naming who did what](screenshots/activity.png) |
 | **Updates itself** from Settings | **Activity log**: who did what, and when |
 
-<p align="center"><img src="/screenshots/phone.png" alt="LabKeel on a phone" width="300"></p>
+<p align="center"><img src="screenshots/phone.png" alt="LabKeel on a phone" width="300"></p>
 
 The screenshots show a demo machine with sample containers, files and history.
 
