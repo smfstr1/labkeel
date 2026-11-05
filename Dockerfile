@@ -22,6 +22,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY app/ .
+COPY VERSION .
 # compiled once here, so start-up doesn't (the app never writes .pyc files at run time)
 RUN python -m compileall -q .
 

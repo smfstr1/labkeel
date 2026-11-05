@@ -34,6 +34,7 @@ from fastapi import APIRouter, Body, HTTPException, Request
 
 import containers
 import updates
+import version
 from version import USER_AGENT, VERSION
 
 router = APIRouter()
@@ -226,9 +227,8 @@ def _check_source(info):
     if out["behind"]:
         log = host(git("log", f"-{MAX_CHANGES}", "--format=%h%x09%cs%x09%s", "HEAD..@{u}"), 15)
         out["changes"] = [dict(zip(("id", "date", "text"), ln.split("\t", 2))) for ln in _out(log).splitlines() if ln.count("\t") >= 2]
-        ver = host(git("show", "@{u}:app/version.py"), 15)
-        m = re.search(r'^VERSION\s*=\s*"([^"]+)"', _out(ver), re.M) if _ok(ver) else None
-        out["latest_version"] = m.group(1) if m else None
+        ver = host(git("show", "@{u}:VERSION"), 15)
+        out["latest_version"] = version.read(_out(ver)) if _ok(ver) else None
     dirty = host(git("status", "--porcelain", "--untracked-files=no"), 15)
     out["local_changes"] = bool(_out(dirty)) if _ok(dirty) else False
     if out["ahead"]:
@@ -243,7 +243,7 @@ def _check_source(info):
 
 
 async def _check_image(info):
-    digests = await asyncio.to_thread(lambda: {i["Id"]: i.get("RepoDigests") or [] for i in containers.dclient().api.images()})
+    digests = await asyncio.to_thread(updates.repo_digests, containers.dclient(), {info["image_id"]})
     async with httpx.AsyncClient(timeout=updates.TIMEOUT, follow_redirects=True, headers={"User-Agent": USER_AGENT},
                                  transport=updates._transport()) as http:
         row = await updates.check_image(http, info["image"], {info["image_id"]}, digests)

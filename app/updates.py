@@ -223,6 +223,22 @@ async def remote_digest(http, ref):
 
 
 # --------------------------------------------------------------------------- one image, all images
+def repo_digests(cl, ids=None):
+    """{image ID: [RepoDigests]} for these images (default: all of them). Read with an inspect per image:
+    with Docker's containerd image store, the image list shows only one of an image's names and digests."""
+    if ids is None:
+        ids = {i["Id"] for i in cl.api.images()}
+    out = {}
+    for i in ids:
+        if not i:
+            continue
+        try:
+            out[i] = cl.api.inspect_image(i).get("RepoDigests") or []
+        except Exception:
+            out[i] = []   # removed since: no digests to compare
+    return out
+
+
 def _inventory():
     """(Blocking: run in a thread.) What each container runs, and every local image's digests.
     Returns ({image name: {image IDs}}, {image ID: [RepoDigests]})."""
@@ -232,8 +248,7 @@ def _inventory():
         name = ((c.attrs.get("Config") or {}).get("Image") or "").strip()
         if name:
             by_name.setdefault(name, set()).add(c.attrs.get("Image"))
-    digests = {i["Id"]: i.get("RepoDigests") or [] for i in cl.api.images()}
-    return by_name, digests
+    return by_name, repo_digests(cl, set().union(*by_name.values()) if by_name else set())
 
 
 async def check_image(http, name, image_ids, digests):
@@ -384,7 +399,7 @@ def _image_digests(need=()):
     now = time.time()
     if now - c["t"] > 60 or (now - c["t"] > 5 and any(i not in c["digests"] for i in need)):
         try:
-            c["digests"] = {i["Id"]: i.get("RepoDigests") or [] for i in containers.dclient().api.images()}
+            c["digests"] = repo_digests(containers.dclient())
         except Exception:
             pass
         c["t"] = now

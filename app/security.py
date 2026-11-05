@@ -983,22 +983,32 @@ def remove_user(request: Request, body: dict = Body(...)):
 _pages = {}
 
 
+_UI_REF = re.compile(r'(/ui/[a-z0-9-]+\.(?:js|css))"')
+
+
 def page(name, request: Request = None):
-    """Serve a page with a strict CSP: only its own inline script (by hash) may run. The browser keeps a
-    copy and only downloads it again when it has changed (ETag), so reopening the dashboard is instant."""
+    """Serve a page with a strict CSP: only its own inline script (by hash) and the dashboard's own files
+    under /ui/ may run. Each /ui/ link gets ?v=<hash of the file>, so browsers keep those files until they
+    change. The page itself is kept too and only downloaded again when it (or a file it links) changed."""
     p = M().STATIC / name
-    mt = p.stat().st_mtime
     cached = _pages.get(name)
-    if not cached or cached[0] != mt:
+    key = cached and (p.stat().st_mtime, *(f.stat().st_mtime for f in cached[4]))
+    if not cached or cached[0] != key:
         html = p.read_text()
+        refs = _UI_REF.findall(html)
+        ui_files = [M().STATIC / r.lstrip("/") for r in refs]
+        key = (p.stat().st_mtime, *(f.stat().st_mtime for f in ui_files))
+        for r, f in zip(refs, ui_files):
+            html = html.replace(f'{r}"', f'{r}?v={hashlib.sha256(f.read_bytes()).hexdigest()[:12]}"')
         hashes = " ".join(f"'sha256-{base64.b64encode(hashlib.sha256(m.encode()).digest()).decode()}'"
-                          for m in re.findall(r"<script>(.*?)</script>", html, re.S)) or "'none'"
+                          for m in re.findall(r"<script>(.*?)</script>", html, re.S))
+        sources = " ".join(x for x in (("'self'" if '<script src="/ui/' in html else ""), hashes) if x) or "'none'"
         csp = ("default-src 'none'; "
-               f"script-src {hashes}; "
+               f"script-src {sources}; "
                "style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self'; "
                "connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; manifest-src 'self'")
         etag = '"' + hashlib.sha256(html.encode()).hexdigest()[:32] + '"'
-        cached = (mt, html, csp, etag)
+        cached = (key, html, csp, etag, ui_files)
         _pages[name] = cached
     headers = {"Cache-Control": "no-cache", "Content-Security-Policy": cached[2], "ETag": cached[3]}
     if request is not None and cached[3] in [t.strip() for t in (request.headers.get("if-none-match") or "").split(",")]:

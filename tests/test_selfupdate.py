@@ -47,7 +47,7 @@ class FakeHost:
             (["rev-list", "--count", "HEAD..@{u}"], R("3")),
             (["rev-list", "--count", "@{u}..HEAD"], R("0")),
             (["log"], R("b1\t2026-11-04\tAdd update checks\nb2\t2026-11-03\tFix the trash\nb3\t2026-11-02\tTidy")),
-            (["show", "@{u}:app/version.py"], R('"""v"""\nVERSION = "0.2.0"\n')),
+            (["show", "@{u}:VERSION"], R("0.2.0\n")),
             (["status", "--porcelain"], R("")),
             (["systemd-run", "--unit"], R("Running as unit: labkeel-update.service")),
         ]
@@ -316,7 +316,7 @@ def test_image_install_check(machine, monkeypatch):
     async def fake_check(http, name, ids, digests):
         return {"status": "update", "local_digest": "sha256:" + "a" * 64, "remote_digest": "sha256:" + "b" * 64, "detail": None}
     monkeypatch.setattr(selfupdate.updates, "check_image", fake_check)
-    monkeypatch.setattr(containers, "dclient", lambda: SimpleNamespace(api=SimpleNamespace(images=lambda: [])))
+    monkeypatch.setattr(containers, "dclient", lambda: SimpleNamespace(api=SimpleNamespace(images=lambda: [], inspect_image=lambda i: {"RepoDigests": []})))
     res = asyncio.run(selfupdate.check())
     assert res["status"] == "update" and res["mode"] == "image" and res["latest"] == "b" * 12
     assert os.path.exists(main.DATA_DIR / "update.json")

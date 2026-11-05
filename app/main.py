@@ -15,7 +15,8 @@ metrics.py    GPU and power readings, and the history behind the Overview charts
 drivecare.py  the pools' drives: failing drives, replacing them, scrubs and SMART self-tests.
 zfsmgr.py     pool and dataset management, snapshots, scheduled scrubs and TRIMs.
 fileops.py    changing files from the file browser: uploads, moves, copies, the Trash.
-static/       the pages (index.html is the whole dashboard; login.html, setup.html) and fonts.
+static/       the pages (index.html is the dashboard's markup; login.html, setup.html), fonts, and ui/: the
+              dashboard's scripts (one file per page, loaded in order) and styles (app.css).
 
 The other modules reach this one (and each other) through small helpers such as M() that look the
 module up in sys.modules when called, rather than importing it, because they're imported from the
@@ -1021,7 +1022,9 @@ def api_file_raw(path: str, download: bool = False):
     fd, p, st = open_checked(path)
     kind = mimetypes.guess_type(p.name)[0] or "text/plain"
     if download:
-        return _FdFile(fd, st, filename=p.name, media_type=kind)
+        # a script someone uploaded is never served under a script's type, so no page here could run it
+        risky = kind in ACTIVE_TYPES or kind.endswith(("javascript", "ecmascript"))
+        return _FdFile(fd, st, filename=p.name, media_type="application/octet-stream" if risky else kind)
     if kind in ACTIVE_TYPES or (kind != "image/svg+xml" and kind.endswith(("+xml", "/xml", "javascript", "ecmascript"))):
         kind = "text/plain; charset=utf-8"  # a page or script someone uploaded is shown as text, never run
     return _FdFile(fd, st, media_type=kind, headers={"Content-Disposition": "inline", "X-Content-Type-Options": "nosniff",
@@ -1521,6 +1524,19 @@ def app_icon_info():
 FONT_RE = re.compile(r"^[a-z0-9-]+\.(woff2|txt)$")
 
 
+UI_RE = re.compile(r"^[a-z0-9-]+\.(js|css)$")
+
+
+@app.get("/ui/{name}")
+def ui_file(name: str):
+    """The dashboard's own scripts and styles (static/ui). Pages link them as /ui/<name>?v=<content hash>,
+    so a browser can keep each one for good and still gets the new one the moment it changes."""
+    if not UI_RE.fullmatch(name) or not (STATIC / "ui" / name).is_file():
+        raise HTTPException(404, "Not found")
+    kind = "text/javascript; charset=utf-8" if name.endswith(".js") else "text/css; charset=utf-8"
+    return FileResponse(STATIC / "ui" / name, media_type=kind, headers={"Cache-Control": "private, max-age=31536000, immutable"})
+
+
 @app.get("/assets/{name}")
 def assets(name: str):
     """Bundled fonts (and their licences); no outside requests needed."""
@@ -1534,7 +1550,7 @@ async def http_exc(request: Request, exc: StarletteHTTPException):
     """Errors come back as {"error": "..."} JSON. An unknown page address goes to the dashboard instead."""
     path = request.url.path
     # an unknown page address (e.g. /files instead of /#files) goes to the dashboard rather than an error
-    if exc.status_code == 404 and request.method == "GET" and not path.startswith(("/api/", "/assets/")):
+    if exc.status_code == 404 and request.method == "GET" and not path.startswith(("/api/", "/assets/", "/ui/")):
         return RedirectResponse("/", status_code=303)
     return JSONResponse({"error": exc.detail}, status_code=exc.status_code, headers=getattr(exc, "headers", None))
 

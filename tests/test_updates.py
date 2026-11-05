@@ -316,6 +316,22 @@ def test_viewers_can_look_but_not_check(users, lab):
     assert v.post("/api/updates/check").status_code == 403
 
 
+def test_every_name_of_an_image_is_seen():
+    """With Docker's containerd image store, the image list shows one name per image even when it has several:
+    the digests have to come from inspecting each image."""
+    class Api:
+        def images(self):
+            return [{"Id": "i1", "RepoDigests": ["sonarr@" + D(1)]}]
+
+        def inspect_image(self, i):
+            if i == "gone":
+                raise LookupError(i)
+            return {"RepoDigests": ["sonarr@" + D(1), "jellyfin/jellyfin@" + D(1)]}
+    cl = type("Cl", (), {"api": Api()})()
+    assert updates.repo_digests(cl)["i1"] == ["sonarr@" + D(1), "jellyfin/jellyfin@" + D(1)]
+    assert updates.repo_digests(cl, {"gone", None}) == {"gone": []}
+
+
 def test_reads_images_from_docker(ticker):
     """Against a real Docker (skipped without one): what each container runs, and its image's digests."""
     c = ticker()

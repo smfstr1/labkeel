@@ -47,6 +47,9 @@
 - `docs/services.md` explains every field, placeholder and check.
 
 ### Changed
+- The dashboard page is split up: `index.html` holds only the markup, the styles are in `static/ui/app.css`,
+  and the script is one file per page in `static/ui/` (core, overview, containers, storage, zfs, services,
+  files, dialogs, settings, main), formatted with Prettier. Browsers keep each file until it changes.
 - Settings now holds off scheduled restarts for Minecraft players or Plex viewers only if you tick those
   boxes (they were on by default).
 - The image is built on Python 3.13 and Debian 13 (trixie). Container logs are capped at 3 × 10 MB in the
@@ -56,6 +59,9 @@
   dependency updates weekly.
 
 ### Fixed
+- Update checks could see only one name of an image that has several (Docker's containerd image store lists
+  just one), so most images showed as "built locally" instead of being checked.
+- On a machine with few CPU threads, the per-thread bars on the Overview stretched across the whole page.
 - After starting, stopping or restarting a container, the list could take a few seconds to show it.
 - Restoring a Trash item whose copy had gone crashed, and deleting it for good did nothing.
 - The dashboard's config folder wasn't hidden from the file browser when mounted as a folder.
