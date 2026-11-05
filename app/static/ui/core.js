@@ -263,7 +263,7 @@ function route() {
     a.dataset.view === navView ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"),
   );
   if (currentView === "files") Files.open(arg ? safeDecode(arg) : null);
-  if (currentView === "settings") Settings.open();
+  if (currentView === "settings") Settings.open(arg);
   if (currentView === "overview") {
     requestAnimationFrame(drawSparks);
     Charts.load();

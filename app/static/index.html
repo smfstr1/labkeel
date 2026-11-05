@@ -25,7 +25,7 @@
       <a href="#overview" data-view="overview"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg><span class="nav-lbl">Overview</span></a>
       <a href="#containers" data-view="containers"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M10 2.5 17 6v8l-7 3.5L3 14V6z"/><path d="M3 6l7 3.5L17 6M10 9.5v8"/></svg><span class="nav-lbl">Containers</span> <span class="count" id="nav-containers"></span></a>
       <a href="#storage" data-view="storage"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="M2.5 11.5h15"/><circle cx="14" cy="13.8" r=".6" fill="currentColor"/></svg><span class="nav-lbl">Storage</span> <span class="count" id="nav-storage"></span></a>
-      <a href="#files" data-view="files"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M2.5 5.5A1.5 1.5 0 0 1 4 4h3.6l1.6 1.8H16a1.5 1.5 0 0 1 1.5 1.5v7.2A1.5 1.5 0 0 1 16 16H4a1.5 1.5 0 0 1-1.5-1.5z"/></svg><span class="nav-lbl">Files</span></a>
+      <a href="#files" data-view="files"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M2.5 5.5A1.5 1.5 0 0 1 4 4h3.6l1.6 1.8H16a1.5 1.5 0 0 1 1.5 1.5v7.2A1.5 1.5 0 0 1 16 16H4a1.5 1.5 0 0 1-1.5-1.5z"/></svg><span class="nav-lbl">Files</span> <span class="count" id="nav-files"></span></a>
       <a href="#services" data-view="services"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15M10 2.5c2.2 2.3 2.2 12.7 0 15M10 2.5c-2.2 2.3-2.2 12.7 0 15"/></svg><span class="nav-lbl">Services</span> <span class="count" id="nav-services"></span></a>
       <a href="#settings" data-view="settings"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M3 5.5h8M15 5.5h2M3 10h2M9 10h8M3 14.5h6M13 14.5h4"/><circle cx="13" cy="5.5" r="2"/><circle cx="7" cy="10" r="2"/><circle cx="11" cy="14.5" r="2"/></svg><span class="nav-lbl">Settings</span> <span class="count" id="nav-settings"></span></a>
     </nav>
@@ -38,28 +38,52 @@
   </aside>
 
   <main>
+    <div id="transfers" class="xfer" role="status" aria-live="polite" hidden></div>
     <div id="global-banner"></div>
     <div id="auth-banner"></div>
 
     <!-- OVERVIEW -->
     <div class="view" id="view-overview">
-      <div class="view-head"><h1>Overview</h1><span class="muted" id="ov-cpu-model"></span></div>
+      <div class="view-head"><h1>Overview</h1><span class="toolbar"><span class="muted" id="ov-cpu-model"></span><button class="btn admin-only" type="button" id="tiles-edit">Customise</button></span></div>
       <div id="ov-attn" role="region" aria-label="Needs attention"></div>
       <div class="vitals">
-        <div class="vital click" data-open="cpu" tabindex="0" role="button" aria-label="CPU. Show what's using it">
+        <div class="vital click" data-tile="cpu" data-open="cpu" tabindex="0" role="button" aria-label="CPU. Show what's using it">
           <div class="vital-label"><span>CPU<i class="chev" aria-hidden="true">›</i></span><span id="ov-cpu-temp"></span></div>
           <div class="vital-value" id="ov-cpu">–</div>
           <div class="vital-sub" id="ov-load"></div>
           <canvas id="sp-cpu" aria-hidden="true"></canvas>
         </div>
-        <div class="vital click" data-open="mem" tabindex="0" role="button" aria-label="Memory. Show what's using it">
+        <div class="vital click" data-tile="mem" data-open="mem" tabindex="0" role="button" aria-label="Memory. Show what's using it">
           <div class="vital-label"><span>Memory<i class="chev" aria-hidden="true">›</i></span><span id="ov-mem-pct"></span></div>
           <div class="vital-value" id="ov-mem">–</div>
           <div class="vital-sub" id="ov-mem-sub"></div>
           <canvas id="sp-mem" aria-hidden="true"></canvas>
         </div>
-        <div class="vital" id="v-third"></div>
-        <div class="vital">
+        <div class="vital click" data-tile="gpu" data-open="gpu" tabindex="0" role="button" aria-label="GPU. Show details and what's using it">
+          <div class="vital-label"><span>GPU<i class="chev" aria-hidden="true">›</i></span><span id="ov-gpu-temp"></span></div>
+          <div class="vital-value" id="ov-gpu">–</div>
+          <div class="vital-sub" id="ov-gpu-sub"></div>
+          <canvas id="sp-gpu" aria-hidden="true"></canvas>
+        </div>
+        <div class="vital click" data-tile="ctr" data-open="ctr" tabindex="0" role="button" aria-label="Containers. Open the containers page">
+          <div class="vital-label"><span>Containers<i class="chev" aria-hidden="true">›</i></span></div>
+          <div class="vital-value" id="ov-ctr">–</div>
+          <div class="vital-sub" id="ov-ctr-sub"></div>
+          <div class="cstates" id="ov-ctr-dots"></div>
+        </div>
+        <div class="vital" data-tile="power">
+          <div class="vital-label"><span>Power</span><span id="ov-pw-cost"></span></div>
+          <div class="vital-value" id="ov-pw">–</div>
+          <div class="vital-sub" id="ov-pw-sub"></div>
+          <canvas id="sp-pw" aria-hidden="true"></canvas>
+        </div>
+        <div class="vital click" data-tile="storage" data-open="storage" tabindex="0" role="button" aria-label="Storage. Open the storage page">
+          <div class="vital-label"><span>Storage<i class="chev" aria-hidden="true">›</i></span><span id="ov-st-pct"></span></div>
+          <div class="vital-value" id="ov-st">–</div>
+          <div class="vital-sub" id="ov-st-sub"></div>
+          <div class="bar tile-bar"><i id="ov-st-bar"></i></div>
+        </div>
+        <div class="vital" data-tile="net">
           <div class="vital-label"><span>Network</span></div>
           <div class="netpair" style="margin-top:8px">
             <div><span class="k key-rx">↓</span><span class="v" id="ov-rx">–</span><span class="u" id="ov-rx-u"></span></div>
@@ -69,6 +93,7 @@
           <canvas id="sp-net" aria-hidden="true"></canvas>
         </div>
       </div>
+      <div hidden id="tiles-off"></div>
       <div class="cores" id="ov-cores" aria-label="Per-core CPU usage"></div>
 
       <section class="hist" aria-labelledby="hist-h">
@@ -196,19 +221,20 @@
               <button class="btn" id="f-tree-btn" type="button" aria-expanded="false" aria-controls="f-tree">Folders</button>
               <input class="input" id="f-filter" type="search" placeholder="Filter, or search (Enter)" aria-label="Filter this folder, or press Enter to search it and its subfolders" style="width:230px">
               <button class="btn" id="f-search" type="button" title="Search this folder and everything inside it">Search</button>
-              <button class="btn" id="f-size" type="button">Folder size</button>
+              <button class="btn fx-more" id="f-size" type="button">Folder size</button>
               <span class="toolbar" id="f-write" hidden>
-                <button class="btn" type="button" data-fx="mkdir">New folder</button>
-                <button class="btn" type="button" data-fx="newfile">New file</button>
+                <button class="btn fx-more" type="button" data-fx="mkdir">New folder</button>
+                <button class="btn fx-more" type="button" data-fx="newfile">New file</button>
                 <button class="btn primary" type="button" data-fx="upload">Upload files</button>
-                <button class="btn" type="button" data-fx="uploaddir">Upload folder</button>
+                <button class="btn fx-more" type="button" data-fx="uploaddir">Upload folder</button>
                 <button class="btn" type="button" data-fx="paste" id="f-paste" hidden>Paste</button>
                 <input type="file" id="f-upload-input" multiple hidden>
                 <input type="file" id="f-upload-dir" webkitdirectory multiple hidden>
               </span>
-              <button class="btn" type="button" data-fx="moves" id="f-moves-btn" hidden>Moves</button>
-              <button class="btn" type="button" data-fx="trash" id="f-trash-btn" hidden>Trash</button>
-              <button class="btn" type="button" data-fx="keys" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">⌨</button>
+              <button class="btn fx-more" type="button" data-fx="trash" id="f-trash-btn" hidden>Trash</button>
+              <button class="btn fx-more fx-desk" type="button" data-fx="keys" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">⌨</button>
+              <span class="fmore-wrap"><button class="btn" type="button" id="f-more" aria-haspopup="menu" aria-expanded="false" aria-label="More actions">More</button>
+                <span class="fmore-menu" id="f-more-menu" role="menu" hidden></span></span>
             </div>
           </div>
           <div class="fsel" id="f-selbar" hidden><span id="f-selcount"></span>
@@ -229,13 +255,24 @@
     <div class="view hidden" id="view-settings">
       <div class="view-head"><h1>Settings</h1><span class="muted" style="font-size:13.5px" id="st-tz"></span></div>
       <div id="st-banners"></div>
-      <section class="set" aria-labelledby="lk-h">
+      <div class="st-layout">
+      <nav class="st-nav" id="st-nav" aria-label="Settings sections">
+        <a href="#settings:general" data-page="general">General</a>
+        <a href="#settings:security" data-page="security">Security and sign-in</a>
+        <a href="#settings:alerts" data-page="alerts">Alerts</a>
+        <a href="#settings:containers" data-page="containers">Containers</a>
+        <a href="#settings:storage" data-page="storage">Drives</a>
+        <a href="#settings:server" data-page="server">Restarts and power</a>
+        <a href="#settings:activity" data-page="activity">Activity log</a>
+      </nav>
+      <div class="st-pages">
+      <section class="set" aria-labelledby="lk-h" data-page="general">
         <div class="set-head"><div><h2 id="lk-h">LabKeel</h2><p class="muted set-lede" id="lk-lede">This dashboard's own version, and updates for it.</p></div>
           <span class="toolbar"><button class="btn" type="button" id="lk-check">Check for an update</button>
             <button class="btn primary" type="button" id="lk-install" hidden>Install update…</button></span></div>
         <div class="set-body lk-body" id="lk-body"><div class="muted">Checking…</div></div>
       </section>
-      <section class="set st-security" aria-labelledby="sec-h">
+      <section class="set st-security" aria-labelledby="sec-h" data-page="security">
         <div class="set-head"><div><h2 id="sec-h">Security</h2><p class="muted set-lede">How access to this dashboard is protected.</p></div></div>
         <div class="set-body"><div class="sec-list" id="sec-list"><div class="muted">Checking…</div></div></div>
         <div class="set-foot" id="sec-foot" hidden>
@@ -243,12 +280,12 @@
           <span class="toolbar"><button class="btn" type="button" id="sec-out-all">Sign out everywhere…</button><button class="btn" type="button" id="sec-out">Sign out</button></span>
         </div>
       </section>
-      <section class="set st-security" aria-labelledby="pk-h">
+      <section class="set st-security" aria-labelledby="pk-h" data-page="security">
         <div class="set-head"><div><h2 id="pk-h">Passkeys</h2><p class="muted set-lede">Sign in with Face ID, Touch ID, Windows Hello, your phone or a security key instead of typing the password. They also confirm big changes. The password keeps working too.</p></div>
           <button class="btn primary" type="button" id="pk-add" disabled>Add a passkey</button></div>
         <div class="set-body"><div id="pk-list"><div class="muted">Checking…</div></div></div>
       </section>
-      <section class="set st-security" aria-labelledby="app-h">
+      <section class="set st-security" aria-labelledby="app-h" data-page="security">
         <div class="set-head"><div><h2 id="app-h">Phone app</h2><p class="muted set-lede">Put the dashboard on your phone's home screen, with its own icon. It opens full-screen, like an app.</p></div></div>
         <div class="set-body"><div class="appicon">
           <img id="app-icon-img" src="/app-icon.png" alt="The home-screen icon" width="88" height="88">
@@ -259,7 +296,7 @@
         </div></div>
       </section>
       <form id="st-form" novalidate>
-        <section class="set">
+        <section class="set" data-page="general">
           <div class="set-head"><div><h2>Dashboard</h2><p class="muted set-lede">How this dashboard behaves, on every device.</p></div></div>
           <div class="set-body">
             <div class="fields">
@@ -270,7 +307,7 @@
             <p class="st-note" style="max-width:72ch">For the CPU, memory, network, GPU and power figures on Overview. The server only reads them this often while a dashboard page is open, so a fast setting costs nothing when nobody's looking.</p>
           </div>
         </section>
-        <section class="set">
+        <section class="set" data-page="containers">
           <div class="set-head">
             <div><h2>Container updates</h2><p class="muted set-lede">Look for newer versions of the images your containers run. Nothing is downloaded or changed: you choose when to update.</p></div>
             <label class="switch"><input type="checkbox" name="updates.enabled"><span class="switch-ui" aria-hidden="true"></span><span class="sr">Check for container updates</span></label>
@@ -283,7 +320,7 @@
             <p class="st-note" style="max-width:72ch">LabKeel asks each image's registry (Docker Hub, GHCR and others) which version its tag points to now: one small request per image, which doesn't count towards Docker Hub's download limit. Images that need a login to read are skipped. To be told about new versions, tick it under Alerts.</p>
           </div>
         </section>
-        <section class="set">
+        <section class="set" data-page="server">
           <div class="set-head">
             <div><h2>Restart schedule</h2><p class="muted set-lede">Restart the server on a regular schedule to apply updates and start fresh.</p></div>
             <label class="switch"><input type="checkbox" name="restart.enabled"><span class="switch-ui" aria-hidden="true"></span><span class="sr">Scheduled restarts</span></label>
@@ -317,7 +354,7 @@
           </div>
         </section>
 
-        <section class="set" id="st-dc">
+        <section class="set" id="st-dc" data-page="storage">
           <div class="set-head"><div><h2>Drive care</h2><p class="muted set-lede">What happens when a drive in a pool fails, and regular checks that catch problems early.</p></div></div>
           <div class="set-body">
             <div class="fields">
@@ -355,12 +392,12 @@
           </div>
         </section>
 
-        <section class="set">
+        <section class="set" data-page="alerts">
           <div class="set-head"><div><h2>Alerts</h2><p class="muted set-lede">Get a notification when something needs you. Each problem is sent once, and again when it's fixed.</p></div></div>
           <div class="set-body">
             <label class="field wide"><span>Send alerts to</span>
               <span class="row"><input class="input" type="url" name="alerts.url" placeholder="https://ntfy.sh/your-topic or a Discord webhook" autocomplete="off" spellcheck="false"><button class="btn" type="button" id="st-test">Send test</button></span>
-              <span class="faint small" id="st-test-result">Works with the ntfy phone app or a Discord webhook. Leave it empty to only record alerts in the activity log below.</span>
+              <span class="faint small" id="st-test-result">Works with the ntfy phone app or a Discord webhook. Leave it empty to only record alerts in the activity log.</span>
             </label>
             <fieldset class="checks">
               <legend>Tell me when</legend>
@@ -381,7 +418,7 @@
           </div>
         </section>
 
-        <section class="set">
+        <section class="set" data-page="server">
           <div class="set-head"><div><h2>Power estimate</h2><p class="muted set-lede">The dashboard adds up what the CPU, memory and graphics cards report about themselves. Drives, fans and the power supply's own losses can't be measured from software, so add an allowance for them here.</p></div></div>
           <div class="set-body">
             <div class="fields">
@@ -394,7 +431,7 @@
           </div>
         </section>
 
-        <section class="set">
+        <section class="set" data-page="containers">
           <div class="set-head">
             <div><h2>Weekly Docker clean-up</h2><p class="muted set-lede">Remove images no container is using, plus old build files, so they don't slowly fill the system drive. Anything removed downloads again when it's next needed.</p></div>
             <label class="switch"><input type="checkbox" name="cleanup.enabled"><span class="switch-ui" aria-hidden="true"></span><span class="sr">Weekly Docker clean-up</span></label>
@@ -417,17 +454,21 @@
         </div>
       </form>
 
-      <section class="st-activity">
+      <section class="st-activity" data-page="activity">
         <h2>Activity</h2>
         <div class="list" id="st-events"><div class="li muted">Loading…</div></div>
       </section>
+      </div>
+      </div>
     </div>
 
     <!-- SERVICES -->
     <div class="view hidden" id="view-services">
       <div class="view-head">
         <h1>Services</h1>
-        <div class="toolbar"><span class="faint" style="font-size:13px">Links and checks come from config.json</span><button class="btn" id="svc-refresh" type="button">Check now</button></div>
+        <div class="toolbar"><div class="seg" role="group" aria-label="View" id="svc-view">
+            <button type="button" data-sv="logos" aria-pressed="false">Logos</button><button type="button" data-sv="list" aria-pressed="false">List</button><button type="button" data-sv="cards" aria-pressed="true">Detailed</button></div>
+          <button class="btn" id="svc-refresh" type="button">Check now</button></div>
       </div>
       <div id="svc-body"></div>
     </div>
@@ -444,6 +485,19 @@
     <div class="toolbar" style="justify-content:space-between">
       <button class="linkbtn" type="button" id="rn-reset">Use the real name</button>
       <span class="toolbar"><button class="btn" type="button" id="rn-cancel">Cancel</button><button class="btn primary" type="submit">Save</button></span>
+    </div>
+  </form>
+</dialog>
+<dialog id="tiles-dlg" class="dlg" aria-labelledby="td-title">
+  <form id="td-form" method="dialog">
+    <h2 id="td-title">Customise the Overview</h2>
+    <p class="muted" style="font-size:14px;margin:0">Choose the tiles along the top and their order. This changes it for everyone who signs in.</p>
+    <ol class="tile-pick" id="td-list"></ol>
+    <label class="field"><span>Second history chart</span>
+      <select class="input" id="td-chart"><option value="auto">GPU if there is one, otherwise CPU and memory</option><option value="gpu">GPU</option><option value="cpumem">CPU and memory</option></select></label>
+    <div class="toolbar" style="justify-content:space-between;margin-top:6px">
+      <button class="linkbtn" type="button" id="td-reset">Back to the default</button>
+      <span class="toolbar"><button class="btn" type="button" id="td-cancel">Cancel</button><button class="btn primary" type="submit">Save</button></span>
     </div>
   </form>
 </dialog>
@@ -471,7 +525,6 @@
 </dialog>
 <div class="scrim hidden" id="scrim"></div>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<div id="up-global" class="upg" role="status" aria-live="polite" hidden></div>
 <aside class="drawer" id="drawer" hidden aria-labelledby="drawer-title" role="dialog" aria-modal="true">
   <div class="drawer-head">
     <div style="min-width:0"><div class="drawer-title" id="drawer-title"></div><div class="drawer-sub" id="drawer-sub"></div></div>

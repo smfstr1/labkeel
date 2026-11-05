@@ -1239,6 +1239,45 @@ def enabled_service(s):
     return isinstance(s, dict) and s.get("name") and s.get("enabled", True) is not False
 
 
+LOGO_TYPES = {".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+
+
+def logos_dir():
+    """config/logos: put an image named after a service there (jellyfin.svg, home-assistant.png) and the
+    Services page shows it. A service can also name its file: "logo": "my-logo.png"."""
+    return Path(CONFIG_PATH).parent / "logos"
+
+
+def logo_slug(s):
+    want = s.get("logo") if isinstance(s.get("logo"), str) else None
+    if want:
+        return Path(want).stem.lower()
+    return re.sub(r"[^a-z0-9]+", "-", str(s.get("name", "")).lower()).strip("-")
+
+
+def find_logo(s_or_slug):
+    slug = s_or_slug if isinstance(s_or_slug, str) else logo_slug(s_or_slug)
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,80}", slug or ""):
+        return None
+    for ext in LOGO_TYPES:
+        p = logos_dir() / f"{slug}{ext}"
+        if p.is_file() and p.stat().st_size <= 2_000_000:
+            return p
+    return None
+
+
+@app.get("/api/services/logo/{slug}")
+def api_service_logo(slug: str):
+    """A service's logo from config/logos. SVGs are shown as pictures only: a strict policy stops any script
+    in one from running, even if it's opened on its own."""
+    p = find_logo(slug)
+    if not p:
+        raise HTTPException(404, "No logo")
+    return FileResponse(p, media_type=LOGO_TYPES[p.suffix.lower()],
+                        headers={"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+                                 "Cache-Control": "private, max-age=300"})
+
+
 @app.get("/api/services")
 def api_services(request: Request = None, fresh: bool = False):
     """Each service from config.json that's turned on, with its status. All checked at once, at most every 20 s
@@ -1255,7 +1294,8 @@ def api_services(request: Request = None, fresh: bool = False):
             items = []
             for s, r in zip(svcs, results):
                 item = {k: s.get(k) for k in ("name", "description", "icon", "group", "container")}
-                item.update(url=(s.get("url") or "").replace("{gateway}", gw) or None, display=names.get(s["name"]), status=r)
+                item.update(url=(s.get("url") or "").replace("{gateway}", gw) or None, display=names.get(s["name"]), status=r,
+                            logo=f"/api/services/logo/{logo_slug(s)}" if find_logo(s) else None)
                 items.append(item)
             _svc_cache.update(data={"items": items, "error": cfg.get("_error"), "title": cfg.get("title"),
                                     "turned_off": len(listed) - len(svcs)}, t=time.time())
@@ -1414,9 +1454,9 @@ def api_attention():
     if req:
         items.append({"level": "info", "title": "Updates are waiting for a restart",
                       "detail": f"{len(pkgs)} package{'s' if len(pkgs) != 1 else ''}, including {', '.join(pkgs[:3])}" if pkgs else "",
-                      "link": "#settings"})
+                      "link": "#settings:server"})
     if tls.state.get("error") and tls.state.get("mode") == "tailscale":
-        items.append({"level": "warn", "title": "The HTTPS certificate isn't renewing", "detail": tls.state["error"], "link": "#settings"})
+        items.append({"level": "warn", "title": "The HTTPS certificate isn't renewing", "detail": tls.state["error"], "link": "#settings:security"})
     order = {"bad": 0, "warn": 1, "info": 2}
     items.sort(key=lambda i: order.get(i["level"], 3))
     data = {"items": items[:12], "more": max(0, len(items) - 12)}
@@ -1429,6 +1469,20 @@ def api_attention():
 def api_health():
     """For Docker's health check (healthcheck.py): answers as soon as the app is up, no sign-in needed."""
     return {"ok": True}
+
+
+def data_not_kept():
+    """True when LabKeel runs in a container whose data folder isn't mounted from the machine: then the
+    history, settings, activity log and update checks are thrown away on every rebuild."""
+    if not containers.SELF_ID:
+        return False
+    want = str(DATA_DIR.resolve())
+    try:
+        with open("/proc/self/mountinfo") as f:
+            mounts = {ln.split()[4] for ln in f if len(ln.split()) > 4}
+    except OSError:
+        return False
+    return want not in mounts
 
 
 @app.get("/api/meta")
@@ -1445,7 +1499,9 @@ def api_meta(request: Request):
     return {"title": cfg.get("title") or HOST_INFO["hostname"], "version": VERSION, "file_roots": roots, "config_error": cfg.get("_error"),
             "auth": security.enabled(), "refresh_ms": refresh_ms(), "file_write": fileops.WRITE and not viewer,
             "user": {"name": u["name"], "role": u["role"], "via": u.get("via"), "source": u.get("source")} if u else None,
-            "file_writable": {r: _writable(root / r, root) for r in roots}}
+            "file_writable": {r: _writable(root / r, root) for r in roots},
+            "layout": {k: upkeep.load_settings()["display"].get(k) for k in ("tiles", "chart")},
+            "data_not_kept": data_not_kept()}
 
 
 @app.get("/")
@@ -1574,5 +1630,7 @@ import updates  # noqa: E402  (is a newer image out for each container?)
 app.include_router(updates.router)
 BACKGROUND_TASKS.append(updates.scheduler)
 import selfupdate  # noqa: E402  (updating LabKeel itself, from Settings)
+import ctrupdate  # noqa: E402  (updating a container to its newest image, with a way back)
+app.include_router(ctrupdate.router)
 app.include_router(selfupdate.router)
 BACKGROUND_TASKS.append(selfupdate.scheduler)

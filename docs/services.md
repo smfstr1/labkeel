@@ -46,6 +46,7 @@ Leave out `"enabled"` and it's on.
 | `group` | Tiles with the same group sit together under that heading. |
 | `description` | A short line under the name. |
 | `icon` | A letter or emoji for the tile. Leave it out to use the name's first letter. |
+| `logo` | An image file in `config/logos` to show instead (`"logo": "my-app.png"`). Without it, LabKeel looks for one named after the service: `Home Assistant` → `config/logos/home-assistant.svg` (or `.png`, `.webp`, `.jpg`). Up to 2 MB. |
 | `container` | The Docker container it runs in. The tile shows down if that container stops, even before anything else notices. |
 | `check` | How to tell it's up. Leave it out to check `url`, or, if you've set `container` instead, just to watch the container. See below. |
 

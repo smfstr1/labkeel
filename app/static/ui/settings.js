@@ -55,9 +55,23 @@ const Settings = {
       if (currentView === "settings" && !document.hidden) this.load();
     }, 30000);
   },
-  async open() {
+  PAGES: ["general", "security", "alerts", "containers", "storage", "server", "activity"],
+  async open(page) {
     this.init();
+    this.page(this.PAGES.includes(page) ? page : this.lastPage || "general");
     await this.load();
+  },
+  // Settings is split into pages (General, Security, Alerts...): one shows at a time. The form behind them is
+  // still one form, so unsaved changes on one page are kept while you look at another.
+  page(name) {
+    this.lastPage = name;
+    $$("#view-settings [data-page]").forEach(el => {
+      if (el.closest("#st-nav")) el.toggleAttribute("aria-current", el.dataset.page === name);
+      else el.hidden = el.dataset.page !== name;
+    });
+    $$("#st-nav a").forEach(a =>
+      a.dataset.page === name ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"),
+    );
   },
   async loadSecurity() {
     let d;

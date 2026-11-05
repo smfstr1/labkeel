@@ -23,6 +23,16 @@
   how to turn HTTPS on. Behind a reverse proxy, set `DASH_TRUSTED_PROXY` so its HTTPS is recognised.
 
 ### Added
+- **Update a container from its panel.** "Update now" pulls the newer image and re-creates the container with
+  Docker Compose, checks the new one starts (and passes its health check), and puts the old image back if it
+  doesn't. Admins only, password again, logged.
+- **Choose the Overview's tiles.** Customise picks up to six of CPU, Memory, GPU, Containers, Network, Power and
+  Storage, in any order, and what the second history chart shows.
+- **Services: Logos, List or Detailed view.** Drop an image named after a service into `config/logos`
+  (`jellyfin.svg`) to show its logo; otherwise it gets a coloured letter tile.
+- **Settings in pages:** General, Security and sign-in, Alerts, Containers, Drives, Restarts and power,
+  Activity log.
+- A warning when LabKeel's data folder isn't mounted, which would lose history and settings on every rebuild.
 - **LabKeel updates itself.** Settings → LabKeel shows the version, checks for a new one (the new commits on
   the branch you cloned, or a newer image) and installs it: `git pull` and `docker compose up -d --build`,
   run on the host by systemd so they survive LabKeel restarting. Admins only, asks for the password, and the
@@ -47,6 +57,12 @@
 - `docs/services.md` explains every field, placeholder and check.
 
 ### Changed
+- Uploads, copies and moves show as one slim strip at the top of every page (and a percentage beside Files),
+  instead of a box in the corner and a separate Moves panel. The Moves button is gone.
+- Files on a phone: the search box on its own row, Folders, Upload and More (for everything else), and each
+  file's size and date under its name.
+- Storage: a livelier "all drives healthy" panel with a light per drive.
+- The CPU thread bars on the Overview are centred; Settings sections all line up at the same width.
 - The dashboard page is split up: `index.html` holds only the markup, the styles are in `static/ui/app.css`,
   and the script is one file per page in `static/ui/` (core, overview, containers, storage, zfs, services,
   files, dialogs, settings, main), formatted with Prettier. Browsers keep each file until it changes.

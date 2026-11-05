@@ -73,23 +73,11 @@ function renderServices() {
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(s);
   }
-  for (const [g, list] of groups) {
-    html +=
-      `<section>${g ? `<h2>${esc(g)}</h2>` : ""}<div class="sgrid">` +
-      list
-        .map(s => {
-          const tag = s.url ? "a" : "div",
-            attrs = s.url ? ` href="${esc(s.url)}" target="_blank" rel="noopener"` : "";
-          const icon = s.icon || sname(s).trim()[0].toUpperCase();
-          return `<div class="svc-wrap"><${tag} class="svc"${attrs}><div class="svc-icon" aria-hidden="true">${esc(icon)}</div><div class="svc-body">
-        <div class="svc-name">${esc(sname(s))}</div>${s.description ? `<div class="svc-desc">${esc(s.description)}</div>` : ""}
-        <div class="tag ${svcState(s)}"><span class="dot ${svcState(s)}"></span>${svcLine(s)}</div>
-        ${s.url ? `<div class="svc-url">${esc(s.url.replace(/^https?:\/\//, ""))}</div>` : ""}</div></${tag}>
-        <button class="svc-edit" type="button" data-rename-svc="${esc(s.name)}" aria-label="Rename ${esc(sname(s))}" title="Rename">${ICON_PEN}</button></div>`;
-        })
-        .join("") +
-      `</div></section>`;
-  }
+  const view = SvcView.get();
+  const summary = `<div class="svc-sum"><span><b>${items.length - down - warn}</b> up</span>${warn ? `<span class="warn"><b>${warn}</b> not answering</span>` : ""}${down ? `<span class="bad"><b>${down}</b> down</span>` : ""}<span class="faint">Links and checks come from config.json</span></div>`;
+  html += summary;
+  for (const [g, list] of groups)
+    html += `<section>${g ? `<h2>${esc(g)}</h2>` : ""}<div class="sgrid sv-${view}">${list.map(s => SvcView[view](s)).join("")}</div></section>`;
   $("#svc-body").innerHTML = html;
 }
 $("#svc-body").addEventListener("click", e => {
@@ -139,3 +127,72 @@ $("#rn-form").addEventListener("submit", e => {
 });
 $("#rn-reset").addEventListener("click", () => Rename.save(""));
 $("#rn-cancel").addEventListener("click", () => $("#rename-dlg").close());
+
+// Three ways to see the services: big logos (a launcher), a compact list, or the detailed cards. The choice
+// is remembered in this browser. A service's logo comes from config/logos (see main.logos_dir); without
+// one it gets a coloured tile with its first letter, the colour picked from its name so it never changes.
+const SvcView = {
+  get() {
+    try {
+      const v = localStorage.getItem("lk-svc-view");
+      return ["logos", "list", "cards"].includes(v) ? v : "cards";
+    } catch {
+      return "cards";
+    }
+  },
+  set(v) {
+    try {
+      localStorage.setItem("lk-svc-view", v);
+    } catch {}
+    $$("#svc-view [data-sv]").forEach(b => b.setAttribute("aria-pressed", b.dataset.sv === v));
+    renderServices();
+  },
+  hue(name) {
+    let h = 0;
+    for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
+    return h;
+  },
+  icon(s, cls = "svc-icon") {
+    if (s.logo)
+      return `<div class="${cls} has-logo" aria-hidden="true"><img src="${esc(s.logo)}" alt="" loading="lazy"></div>`;
+    const ch = s.icon || sname(s).trim()[0].toUpperCase();
+    return `<div class="${cls} mono" style="--h:${this.hue(s.name)}" aria-hidden="true">${esc(ch)}</div>`;
+  },
+  link(s, cls, inner) {
+    const tag = s.url ? "a" : "div",
+      attrs = s.url ? ` href="${esc(s.url)}" target="_blank" rel="noopener"` : "";
+    return `<${tag} class="${cls}"${attrs}>${inner}</${tag}>`;
+  },
+  edit(s) {
+    return `<button class="svc-edit" type="button" data-rename-svc="${esc(s.name)}" aria-label="Rename ${esc(sname(s))}" title="Rename">${ICON_PEN}</button>`;
+  },
+  cards(s) {
+    return `<div class="svc-wrap">${SvcView.link(
+      s,
+      "svc",
+      `${SvcView.icon(s)}<div class="svc-body"><div class="svc-name">${esc(sname(s))}</div>${s.description ? `<div class="svc-desc">${esc(s.description)}</div>` : ""}
+       <div class="tag ${svcState(s)}"><span class="dot ${svcState(s)}"></span>${svcLine(s)}</div>
+       ${s.url ? `<div class="svc-url">${esc(s.url.replace(/^https?:\/\//, ""))}</div>` : ""}</div>`,
+    )}${SvcView.edit(s)}</div>`;
+  },
+  logos(s) {
+    return `<div class="svc-wrap">${SvcView.link(
+      s,
+      "svc-tile",
+      `${SvcView.icon(s, "svc-logo")}<span class="svc-tile-name">${esc(sname(s))}</span><span class="dot ${svcState(s)} svc-tile-dot" title="${esc(svcShort(s))}"></span>`,
+    )}${SvcView.edit(s)}</div>`;
+  },
+  list(s) {
+    return `<div class="svc-wrap">${SvcView.link(
+      s,
+      "svc-row",
+      `<span class="dot ${svcState(s)}"></span>${SvcView.icon(s, "svc-mini")}<span class="svc-row-name">${esc(sname(s))}</span>
+       <span class="svc-row-url">${s.url ? esc(s.url.replace(/^https?:\/\//, "")) : ""}</span><span class="svc-row-st ${svcState(s)}">${svcLine(s)}</span>`,
+    )}${SvcView.edit(s)}</div>`;
+  },
+};
+$("#svc-view").addEventListener("click", e => {
+  const b = e.target.closest("[data-sv]");
+  if (b) SvcView.set(b.dataset.sv);
+});
+$$("#svc-view [data-sv]").forEach(b => b.setAttribute("aria-pressed", b.dataset.sv === SvcView.get()));

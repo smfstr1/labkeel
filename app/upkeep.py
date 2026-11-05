@@ -39,14 +39,15 @@ DEFAULTS = {
                "quiet": False, "quiet_start": "23:00", "quiet_end": "07:00"},
     "cleanup": {"enabled": False, "weekday": 6, "time": "03:30"},
     "power": {"rest_w": 0, "price": 0, "currency": "£"},
-    "display": {"refresh_ms": 2000},
+    "display": {"refresh_ms": 2000, "tiles": None, "chart": "auto"},  # tiles: None = the default set
     "updates": {"enabled": True, "hours": 6},   # look for newer container images (see updates.py)
     "drivecare": {"reminder_hours": 12, "auto_replace": False, "hold_restarts": True, "pause_containers": [],
                   "nvme_hot": 70, "hdd_hot": 55, "wear_warn": 70, "wear_bad": 90, "scrub_days": 35,
                   "selftest": False, "selftest_weekday": 6, "selftest_time": "03:00", "selftest_long_monthly": True},
 }
 REFRESH_CHOICES = (300, 400, 500, 1000, 2000, 5000)  # the live refresh rates Settings → Display offers (ms)
-UPDATE_HOURS = (1, 3, 6, 12, 24)                     # how often Settings → Container updates can check
+UPDATE_HOURS = (1, 3, 6, 12, 24)
+OVERVIEW_TILES = ("cpu", "mem", "gpu", "ctr", "net", "power", "storage")  # the tiles the Overview can show                     # how often Settings → Container updates can check
 
 
 def M():
@@ -783,7 +784,13 @@ def _clean(body, cur):
                     "price": max(0.0, min(10.0, float(pw["price"] or 0))),
                     "currency": pw["currency"] if pw["currency"] in ("£", "€", "$", "") else "£"}
     dp = {**cur["display"], **(body.get("display") or {})}
-    out["display"] = {"refresh_ms": int(dp["refresh_ms"]) if int(dp["refresh_ms"]) in REFRESH_CHOICES else 2000}
+    tiles = dp.get("tiles")
+    if tiles is not None:
+        if not isinstance(tiles, list) or not tiles or len(tiles) > 6 or len(set(tiles)) != len(tiles) \
+                or any(t not in OVERVIEW_TILES for t in tiles):
+            raise HTTPException(400, f"Overview tiles: pick 1 to 6 of {', '.join(OVERVIEW_TILES)}")
+    out["display"] = {"refresh_ms": int(dp["refresh_ms"]) if int(dp["refresh_ms"]) in REFRESH_CHOICES else 2000,
+                      "tiles": tiles, "chart": dp.get("chart") if dp.get("chart") in ("auto", "gpu", "cpumem") else "auto"}
     up = {**cur["updates"], **(body.get("updates") or {})}
     out["updates"] = {"enabled": bool(up["enabled"]), "hours": int(up["hours"]) if int(up["hours"]) in UPDATE_HOURS else 6}
     dc = {**cur["drivecare"], **(body.get("drivecare") or {})}
@@ -911,8 +918,10 @@ def api_put_settings(request: Request, body: dict = Body(...)):
         u = new["updates"]
         changes.append(f"checking for container updates every {u['hours']} hour{'s' if u['hours'] != 1 else ''}"
                        if u["enabled"] else "turned container update checks off")
-    if new["display"] != cur["display"]:
+    if new["display"]["refresh_ms"] != cur["display"]["refresh_ms"]:
         changes.append(f"live refresh every {new['display']['refresh_ms'] / 1000:g} s")
+    if (new["display"]["tiles"], new["display"]["chart"]) != (cur["display"].get("tiles"), cur["display"].get("chart")):
+        changes.append("changed the Overview's tiles")
     if new["drivecare"] != cur["drivecare"]:
         changes.append("updated drive care")
         thresholds = ("nvme_hot", "hdd_hot", "wear_warn", "wear_bad")

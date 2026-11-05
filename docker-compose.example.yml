@@ -5,7 +5,7 @@
 services:
   labkeel:
     build: .                                  # builds from this folder (docker compose up -d --build)
-    # image: ghcr.io/smfstr1/labkeel:latest   # If this line is hashed, this file is a part of an Alpah release. Once releases are published: use this line instead of build
+    # image: ghcr.io/smfstr1/labkeel:latest   # once releases are published: use this line instead of build
     container_name: labkeel
     restart: unless-stopped
     stop_grace_period: 30s                    # time to finish what it's doing (an upload, a move) before stopping
@@ -17,28 +17,41 @@ services:
         max-size: "10m"
         max-file: "3"
 
-    # Docker Container Settings
-    network_mode: host      #   network_mode: host  shows the machine's real network cards and traffic, not the container's
-    pid: host               #   privileged: true    lets it read drive health (SMART) and run ZFS and disk commands on the machine
-    privileged: true        #   pid: host           lets it see every process, and restart or shut down the machine if you allow it
+    # Why these three are needed:
+    #   network_mode: host  shows the machine's real network cards and traffic, not the container's
+    #   pid: host           lets it see every process, and restart or shut down the machine if you allow it
+    #   privileged: true    lets it read drive health (SMART) and run ZFS and disk commands on the machine
+    # Together they give LabKeel full control of this machine. Only give an admin account to someone
+    # you'd trust with a root shell on it.
+    network_mode: host
+    pid: host
+    privileged: true
 
     environment:
+      # What LabKeel may change. All three start OFF: turn on only what you need.
       - DASH_FILES_WRITE=0      # 1 = upload, edit, move and delete files in the file browser
       - DASH_ZFS_WRITE=0        # 1 = create, change and destroy ZFS pools, datasets and snapshots
       - DASH_ALLOW_REBOOT=0     # 1 = restart and shut down the machine
 
-    # Optional Environment Settings
-      # - DASH_PORT=8787         # Specify a port for the host to run at. 
-      # - DASH_TLS=auto          # auto | tailscale | self-signed | off (off = plain HTTP behind your own HTTP proxy, which then needs DASH_TRUSTED_PROXY: sign-in only happens over HTTPS)
-      # - DASH_HSTS=1            # tell browsers to always use https:// for this name. Only if nothing else on the same host name uses plain http:// (HSTS covers every port)
-      # - DASH_UPLOAD_MAX_GB=10  # largest single upload; leave hashed for no limit
+      # Accounts are made on the set-up page and the Account page; nothing is needed here.
+      # Optionally, one admin set here instead (it can't be changed from the dashboard):
+      # - DASH_USER=admin
+      # - DASH_PASS_HASH=$$argon2id$$v=19$$...   # from: docker exec -it labkeel python accounts.py hash
+      #                                          # (write each $ as $$ in this file)
+
+      # Optional
+      # - DASH_PORT=8787
+      # - DASH_TLS=auto          # auto | tailscale | self-signed | off (off = plain HTTP behind your own HTTPS
+      #                          # proxy, which then needs DASH_TRUSTED_PROXY: sign-in only happens over HTTPS)
+      # - DASH_HSTS=1            # tell browsers to always use https:// for this name. Only if nothing else
+      #                          # on the same host name uses plain http:// (HSTS covers every port)
+      # - DASH_UPLOAD_MAX_GB=10  # largest single upload; leave out for no limit
       # - DASH_TRASH_DAYS=30     # days deleted files stay in the bin
       # - TZ=Europe/London       # only if the machine has no /etc/timezone; used for scheduled restarts
 
       # Behind a reverse proxy (Caddy, nginx, Traefik). Only requests from these addresses may say who the
       # visitor really is (X-Forwarded-For) or that they came over HTTPS (X-Forwarded-Proto):
       # - DASH_TRUSTED_PROXY=127.0.0.1
-
       # Let the proxy sign people in (Authelia, Authentik, oauth2-proxy). It must set this header itself and
       # remove any copy the visitor sends. Names with a LabKeel account get that account's role; others need
       # to be listed here ("*" lets everyone the proxy signs in view):
@@ -46,26 +59,12 @@ services:
       # - DASH_PROXY_ADMINS=alice
       # - DASH_PROXY_VIEWERS=*
 
-    # Volume Settings
-    #
-    # Format:
-    # <Directory>:<Translation>
-    #
-    # Too add Folders to LabKeel's File Browser, list them under /browse.
-    # e.g. /mnt/media:/browse/media
-    # e.g. /srv/home/sam/Photos:/browse/familyphotos
-    #
-    # Add :ro to the end of a line to make that folder read-only.
-    # Add :rw to the end of a line to make that folder read-write.
-    # e.g. /mnt/media:/browse/media:ro
-    # e.g. /srv/home/sam/Photos:/browse/familyphotos:rw
-    
     volumes:
-      # Required Volumes
       - /var/run/docker.sock:/var/run/docker.sock   # list, start, stop and restart containers
       - ./data:/data                                # accounts, settings, sign-in keys, history
       - ./config:/config                            # config.json (copy config.example.json there)
       - ./certs:/certs                              # HTTPS certificates
-
-      # All Shown Volumes (Media is an Example)
+      # Folders to show in the file browser: one line each, under /browse.
+      # Add :ro to the end of a line to make that folder read-only.
       - /srv/media:/browse/media
+      # - /home/you/documents:/browse/documents:ro

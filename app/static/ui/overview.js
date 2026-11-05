@@ -96,7 +96,7 @@ function renderSystem() {
   $("#ov-net-sub").textContent = ts
     ? `Tailscale ↓ ${fmtBits(ts.rx_rate)} ↑ ${fmtBits(ts.tx_rate)}`
     : `Total ↓ ${fmtBytes(phys.reduce((a, n) => a + n.rx_total, 0))} since boot`;
-  renderThirdCell();
+  renderGpuTile();
   renderPowerNow();
   renderHistoryLive();
   const cores = $("#ov-cores");
@@ -140,7 +140,7 @@ function renderOverviewContainers() {
   if (currentView !== "overview") return;
   $("#ov-ctr-meta").innerHTML =
     (items.length ? `<span>${running} of ${items.length} running</span>` : "") + `<a href="#containers">View all</a>`;
-  if (S.thirdMode === "ctr") {
+  {
     $("#ov-ctr").innerHTML = d.error && !items.length ? `–` : `${running}<small>/ ${items.length}</small>`;
     $("#ov-ctr-sub").textContent = d.error
       ? "Docker not reachable"
@@ -182,9 +182,22 @@ function renderOverviewStorage() {
   }
   for (const f of d.filesystems.filter(f => f.type !== "zfs" && f.size > 5e9))
     rows.push({ name: f.mount, sub: f.type, used: f.used, size: f.size, pct: f.percent });
+  renderStorageTile(rows);
   $("#ov-storage").innerHTML = rows.length
     ? rows.map(usageRow).join("")
     : `<div class="li muted">No storage data yet.</div>`;
+}
+// The Storage tile: the biggest pool (or, without ZFS, the biggest filesystem)
+function renderStorageTile(rows) {
+  const r = [...rows].sort((a, b) => b.size - a.size)[0];
+  if (!r) return;
+  const [v, u] = fmtBytes(r.used, false).split(" ");
+  $("#ov-st").innerHTML = `${esc(v)}<small>${esc(u || "")}</small>`;
+  $("#ov-st-sub").textContent = `used of ${fmtBytes(r.size, false)} · ${r.name}`;
+  $("#ov-st-pct").textContent = `${Math.round(r.pct)}%`;
+  const bar = $("#ov-st-bar");
+  bar.style.width = Math.min(100, r.pct) + "%";
+  bar.className = pctClass(r.pct);
 }
 function poolUsage(p) {
   // usable space when zfs list was available, raw zpool figures otherwise
@@ -288,6 +301,7 @@ function openVital(kind) {
   if (kind === "cpu" || kind === "mem") Procs.open(kind);
   else if (kind === "gpu") GpuView.open();
   else if (kind === "ctr") location.hash = "#containers";
+  else if (kind === "storage") location.hash = "#storage";
 }
 $(".vitals").addEventListener("click", e => {
   const v = e.target.closest("[data-open]");
@@ -424,30 +438,19 @@ const GpuView = {
 };
 
 /* ---------- overview: GPU card, power, history charts ---------- */
-function renderThirdCell() {
-  const g = S.sys?.gpu,
-    el = $("#v-third");
-  const mode = g?.available ? "gpu" : g?.available === false ? "ctr" : S.thirdMode || "ctr";
-  if (mode !== S.thirdMode) {
-    S.thirdMode = mode;
-    el.innerHTML =
-      mode === "gpu"
-        ? `<div class="vital-label"><span>GPU<i class="chev" aria-hidden="true">›</i></span><span id="ov-gpu-temp"></span></div><div class="vital-value" id="ov-gpu">–</div>
-         <div class="vital-sub" id="ov-gpu-sub"></div><canvas id="sp-gpu" aria-hidden="true"></canvas>`
-        : `<div class="vital-label"><span>Containers<i class="chev" aria-hidden="true">›</i></span></div><div class="vital-value" id="ov-ctr">–</div>
-         <div class="vital-sub" id="ov-ctr-sub"></div><div class="cstates" id="ov-ctr-dots"></div>`;
-    Object.assign(el.dataset, { open: mode });
-    el.classList.add("click");
-    el.tabIndex = 0;
-    el.setAttribute("role", "button");
-    el.setAttribute(
-      "aria-label",
-      mode === "gpu" ? "GPU. Show details and what's using it" : "Containers. Open the containers page",
-    );
-    renderOverviewContainers();
+function renderGpuTile() {
+  const g = S.sys?.gpu;
+  if (g && !!g.available !== S.hasGpu) {
+    S.hasGpu = !!g.available;
+    Tiles.apply(); // the default tiles depend on whether there's a GPU
     renderHistory();
   }
-  if (mode !== "gpu") return;
+  if (!g?.available) {
+    $("#ov-gpu").textContent = "–";
+    $("#ov-gpu-sub").textContent = g ? "No GPU found" : "";
+    $("#ov-gpu-temp").textContent = "";
+    return;
+  }
   const items = g.items || [];
   const utils = items.map(x => x.util).filter(v => v != null),
     temps = items.map(x => x.temp).filter(v => v != null);
@@ -495,6 +498,7 @@ function fmtMoney(v, cur) {
 function renderPowerNow() {
   const p = S.sys?.power;
   if (!p || currentView !== "overview") return;
+  renderPowerTile(p);
   if (!p.available) {
     $("#pw-now").textContent = "–";
     $("#pw-sources").textContent = "";
@@ -516,7 +520,7 @@ function renderPowerNow() {
     parts.map(([n, w]) => `<span>${n} <b>${fmtW(w)}</b></span>`).join("") +
     (p.rest
       ? ""
-      : `<span>Drives, fans and power-supply losses aren't included. <a href="#settings">Add an allowance</a></span>`);
+      : `<span>Drives, fans and power-supply losses aren't included. <a href="#settings:server">Add an allowance</a></span>`);
 }
 
 // The two charts on the Overview (power; CPU and memory or GPU load) over an hour, day, week or month
@@ -615,7 +619,7 @@ function renderHistory() {
   });
   // GPUs, or CPU and memory when there's no GPU
   const gpus = d.gpus || [],
-    useGpu = gpus.length && S.thirdMode === "gpu";
+    useGpu = Tiles.chartIsGpu(gpus.length);
   $("#c2-h").textContent = useGpu ? (gpus.length === 1 ? "GPU" : "GPUs") : "CPU and memory";
   const series = useGpu
     ? gpus.slice(0, 4).map((g, i) => ({
@@ -658,7 +662,7 @@ function renderHistory() {
 // The live part of the second card: redrawn with every reading, not just when the chart reloads.
 function renderHistoryLive() {
   if (!window.historyReady || currentView !== "overview" || !Charts.data) return;
-  const useGpu = (Charts.data.gpus || []).length && S.thirdMode === "gpu";
+  const useGpu = Tiles.chartIsGpu((Charts.data.gpus || []).length);
   const live = S.sys?.gpu?.items || [];
   const nowVal = useGpu
     ? live.length
@@ -979,3 +983,120 @@ function drawChart(el, o) {
 }
 Charts.init();
 window.historyReady = true;
+
+// The Power tile: watts now, what's drawing them, and a line of the last few minutes
+function renderPowerTile(p) {
+  if (!p.available) {
+    $("#ov-pw").textContent = "–";
+    $("#ov-pw-sub").textContent = "Not reported by this machine";
+    return;
+  }
+  const [v, u] = fmtW(p.total).split(" ");
+  $("#ov-pw").innerHTML = `${esc(v)}<small>${esc(u)}</small>`;
+  const parts = [
+    ["CPU", p.cpu],
+    ["GPUs", p.gpu],
+  ].filter(([, w]) => w != null);
+  $("#ov-pw-sub").textContent = parts.map(([n, w]) => `${n} ${fmtW(w)}`).join(" · ");
+  const now = Date.now() / 1000;
+  S.pwHist = (S.pwHist || []).filter(x => x.t > now - SPARK_WINDOW);
+  S.pwHist.push({ t: now, w: p.total });
+  spark(
+    $("#sp-pw"),
+    [{ values: S.pwHist.map(x => x.w), color: hexOf(cssVar("--s1")), fill: true }],
+    null,
+    S.pwHist.map(x => x.t),
+  );
+}
+
+// Which tiles the Overview shows, in which order, and what the second history chart shows. Chosen by an
+// admin (Customise), saved in Settings for everyone; without a choice: CPU, memory, GPU (or containers when
+// there's no GPU), network.
+const Tiles = {
+  ALL: [
+    ["cpu", "CPU"],
+    ["mem", "Memory"],
+    ["gpu", "GPU"],
+    ["ctr", "Containers"],
+    ["net", "Network"],
+    ["power", "Power"],
+    ["storage", "Storage"],
+  ],
+  MAX: 6,
+  defaults() {
+    return ["cpu", "mem", S.hasGpu ? "gpu" : "ctr", "net"];
+  },
+  current() {
+    const t = S.meta?.layout?.tiles;
+    return Array.isArray(t) && t.length ? t : this.defaults();
+  },
+  chartIsGpu(gpuCount) {
+    const c = S.meta?.layout?.chart || "auto";
+    return !!gpuCount && c !== "cpumem";
+  },
+  apply() {
+    const row = $(".vitals"),
+      off = $("#tiles-off"),
+      want = this.current();
+    const all = Object.fromEntries([...row.children, ...off.children].map(el => [el.dataset.tile, el]));
+    for (const id of want) if (all[id]) row.appendChild(all[id]);
+    for (const [id, el] of Object.entries(all)) if (!want.includes(id)) off.appendChild(el);
+    row.style.setProperty("--tiles", want.length);
+    row.classList.toggle("many", want.length > 4); // smaller numbers so five or six tiles fit
+    drawSparks();
+  },
+  // the Customise dialog: tick the tiles to show, move them up and down
+  edit() {
+    const list = $("#td-list"),
+      chosen = this.current();
+    const order = [...chosen, ...this.ALL.map(([id]) => id).filter(id => !chosen.includes(id))];
+    const name = Object.fromEntries(this.ALL);
+    list.innerHTML = order
+      .map(
+        id => `<li data-id="${id}"><label class="check"><input type="checkbox" ${chosen.includes(id) ? "checked" : ""}> ${esc(name[id])}</label>
+        <span class="toolbar"><button class="icon-btn" type="button" data-move="-1" aria-label="Move ${esc(name[id])} up">↑</button>
+        <button class="icon-btn" type="button" data-move="1" aria-label="Move ${esc(name[id])} down">↓</button></span></li>`,
+      )
+      .join("");
+    $("#td-chart").value = S.meta?.layout?.chart || "auto";
+    $("#tiles-dlg").showModal();
+  },
+  picked() {
+    return [...$("#td-list").children].filter(li => li.querySelector("input").checked).map(li => li.dataset.id);
+  },
+  async save(tiles, chart) {
+    try {
+      await apiSend("/api/settings", { display: { tiles, chart } }, "PUT");
+      S.meta.layout = { tiles, chart };
+      $("#tiles-dlg").close();
+      this.apply();
+      renderAll();
+      renderHistory();
+      toast("Overview saved", "good");
+    } catch (e) {
+      if (!e.cancelled && e.message !== "Signed out") toast(e.message, "bad");
+    }
+  },
+};
+$("#tiles-edit").addEventListener("click", () => Tiles.edit());
+$("#td-cancel").addEventListener("click", () => $("#tiles-dlg").close());
+$("#td-reset").addEventListener("click", () => Tiles.save(null, "auto"));
+$("#td-list").addEventListener("click", e => {
+  const b = e.target.closest("[data-move]");
+  if (!b) return;
+  const li = b.closest("li"),
+    to = +b.dataset.move > 0 ? li.nextElementSibling?.nextElementSibling : li.previousElementSibling;
+  if (+b.dataset.move > 0 && !li.nextElementSibling) return;
+  li.parentNode.insertBefore(li, to || null);
+  b.focus();
+});
+$("#td-list").addEventListener("change", () => {
+  const n = Tiles.picked().length;
+  for (const box of $$("#td-list input")) box.disabled = !box.checked && n >= Tiles.MAX;
+});
+$("#td-form").addEventListener("submit", e => {
+  e.preventDefault();
+  const tiles = Tiles.picked();
+  if (!tiles.length) return toast("Pick at least one tile", "bad");
+  Tiles.save(tiles, $("#td-chart").value);
+});

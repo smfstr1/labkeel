@@ -146,6 +146,9 @@ const Updates = {
             : "";
   },
   banner(c) {
+    const job = CtrUpdate.jobs[c.name];
+    if (job?.state === "running" || (job?.finished && Date.now() / 1000 - job.finished < 120))
+      return CtrUpdate.banner(c, job);
     const u = cUpdate(c);
     if (!u || u.status === "current") return "";
     if (u.status !== "update") return u.detail ? `<p class="faint small">Update check: ${esc(u.detail)}.</p>` : "";
@@ -153,9 +156,14 @@ const Updates = {
       c.project && c.service
         ? `In the folder with the <b>${esc(c.project)}</b> compose file: <code>docker compose pull ${esc(c.service)} &amp;&amp; docker compose up -d ${esc(c.service)}</code>`
         : `Pull it with <code>docker pull ${esc(c.image)}</code>, then re-create the container with the same settings.`;
+    const button =
+      c.project && c.service && !document.body.classList.contains("viewer")
+        ? `<button class="btn primary" type="button" data-ctr-update="${esc(c.name)}">Update now</button>`
+        : "";
     return (
-      `<div class="banner info"><b>${u.pulled ? "A newer image is downloaded" : "A newer image is out"}</b> for <code>${esc(c.image)}</code>.` +
-      `${u.pulled ? " Re-create the container to use it." : ""}<br>${how}</div>`
+      `<div class="banner info upd-banner"><div><b>${u.pulled ? "A newer image is downloaded" : "A newer image is out"}</b> for <code>${esc(c.image)}</code>.` +
+      `${button ? " LabKeel can update it, and puts the old one back if the new one doesn't start." : `<br>${how}`}` +
+      `${button ? `<details><summary>Or by hand</summary>${how}</details>` : ""}</div>${button}</div>`
     );
   },
   async check() {
@@ -554,4 +562,55 @@ $("#smart-refresh").addEventListener("click", async e => {
     e.target.disabled = false;
     e.target.textContent = "Re-check drives";
   }, 12000);
+});
+
+// Updating a container from its drawer: pull, re-create, check it works, or go back (see ctrupdate.py)
+const CtrUpdate = {
+  jobs: {},
+  banner(c, job) {
+    const steps = job.steps.map(s => `<li>${esc(s.text)}</li>`).join("");
+    const head =
+      job.state === "running"
+        ? `<span class="spin" aria-hidden="true"></span><b>Updating ${esc(dname(c))}…</b>`
+        : job.result === "updated"
+          ? `<b>Updated</b> to the newest ${esc(job.image)}.`
+          : job.result === "current"
+            ? `<b>Already up to date.</b>`
+            : job.result === "rolled_back"
+              ? `<b>The new image didn't work</b> (${esc(job.detail)}), so it's back on the previous one.`
+              : `<b>The update stopped:</b> ${esc(job.detail || "")}`;
+    const lvl = job.state === "running" || job.result === "updated" || job.result === "current" ? "info" : "bad";
+    return `<div class="banner ${lvl}"><div>${head}</div><ol class="upd-steps">${steps}</ol></div>`;
+  },
+  async start(name) {
+    try {
+      await apiSend(`/api/containers/${encodeURIComponent(name)}/update`, {});
+      this.jobs[name] = { state: "running", steps: [], image: "" };
+      this.follow(name);
+    } catch (e) {
+      if (!e.cancelled && e.message !== "Signed out") toast(e.message, "bad");
+    }
+  },
+  async follow(name) {
+    for (;;) {
+      try {
+        this.jobs[name] = await api(`/api/containers/${encodeURIComponent(name)}/update`);
+      } catch {}
+      Logs.renderCtl();
+      const j = this.jobs[name];
+      if (j.state !== "running") {
+        if (j.result === "updated") toast(`Updated ${name}`, "good");
+        else if (j.result === "current") toast(`${name} was already up to date`);
+        else toast(`Updating ${name} didn't work: ${j.detail}`, "bad");
+        await loadContainers();
+        await loadUpdates();
+        return;
+      }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  },
+};
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-ctr-update]");
+  if (b) CtrUpdate.start(b.dataset.ctrUpdate);
 });

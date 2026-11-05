@@ -35,7 +35,7 @@ const Files = {
     }
     this.roots = S.meta.file_roots || [];
     for (const r of this.roots) this.nodes.set(r, { name: r, open: false, loaded: false, children: [] });
-    $("#f-trash-btn").hidden = $("#f-moves-btn").hidden = !S.meta.file_write;
+    $("#f-trash-btn").hidden = !S.meta.file_write;
     if (S.meta.file_write) Moves.poll();
     this.renderTree();
     if (!this.roots.length)
@@ -180,7 +180,8 @@ const Files = {
         e => `<div class="frow${sc}${this.sel.has(e.path) ? " picked" : ""}" tabindex="0" role="button"${w ? ' draggable="true"' : ""} data-${e.dir ? "go" : "file"}="${esc(e.path)}">
       ${w ? `<input type="checkbox" data-sel="${esc(e.path)}" aria-label="Select ${esc(e.name)}"${this.sel.has(e.path) ? " checked" : ""}>` : ""}
       <span class="fn">${e.dir ? ICON.dir : ICON.file}<span>${esc(e.name)}${e.link ? ` <span class="faint">(link)</span>` : ""}${this.search ? `<span class="fpath">${esc(e.path.split("/").slice(0, -1).join("/"))}</span>` : ""}</span></span>
-      <span class="r">${e.dir ? "" : fmtBytes(e.size)}</span><span class="r">${fmtDate(e.mtime)}</span></div>`,
+      <span class="r">${e.dir ? "" : fmtBytes(e.size)}</span><span class="r">${fmtDate(e.mtime)}</span>
+      <span class="fmeta">${e.dir ? "Folder" : fmtBytes(e.size)} · ${fmtShortDate(e.mtime)}</span></div>`,
       )
       .join("");
     if (this.truncated && !this.search) html += `<div class="empty">Showing the first 5,000 items.</div>`;
@@ -209,8 +210,8 @@ const Files = {
     bar.hidden = !here.length;
     bar.innerHTML = here
       .map(
-        u => `<span>Unfinished upload: <b>${esc(u.name)}</b> (${fmtBytes(u.received)} of ${fmtBytes(u.size)}). Upload the same file again to carry on.</span>
-      <button class="btn small" type="button" data-updrop="${esc(u.id)}">Discard</button>`,
+        u => `<span class="unf"><span class="xfer-ic paused" aria-hidden="true"></span><span><b>${esc(u.name)}</b> stopped at ${Math.floor((u.received / u.size) * 100)}% <span class="faint">· pick it again to carry on</span></span>
+      <span class="toolbar"><button class="btn small primary" type="button" data-fx="upload">Carry on</button><button class="btn small" type="button" data-updrop="${esc(u.id)}">Discard</button></span></span>`,
       )
       .join("<br>");
   },
@@ -250,7 +251,6 @@ const Files = {
       picked = [...this.sel];
     try {
       if (what === "trash") return Trash.open();
-      if (what === "moves") return Moves.open();
       if (what === "upload") return $("#f-upload-input").click();
       if (what === "uploaddir") return $("#f-upload-dir").click();
       if (what === "keys") return Keys.help();
@@ -524,21 +524,28 @@ const Uploads = {
     if (!this.running) this.run();
   },
   show(job, fileSent) {
-    const el = $("#up-global");
-    el.hidden = false;
     const total = this.bytes || 1,
-      now = this.sent + fileSent,
-      pct = Math.min(100, Math.floor((now / total) * 100));
+      now = this.sent + fileSent;
     const secs = (Date.now() - this.t0) / 1000,
       rate = secs > 2 ? Math.max(0, now - this.base) / secs : 0,
       left = rate ? (total - now) / rate : 0;
-    const n = this.done + this.skipped + this.failed + 1,
-      all = n + this.queue.length;
-    el.innerHTML = `<div class="upg-top"><b>Uploading${all > 1 ? ` ${n} of ${all}` : ""}</b><button class="btn small" type="button" id="up-cancel"${this.cancel ? " disabled" : ""}>${this.cancel ? "Stopping…" : "Stop"}</button></div>
-      <div class="upg-name" title="${esc(job.rel)}">${esc(job.rel)}</div>
-      <div class="fup" style="padding:4px 0;background:none;border:0"><span class="bar"><i style="width:${pct}%"></i></span><span>${pct}%</span></div>
-      <div class="upg-sub">${fmtBytes(now)} of ${fmtBytes(total)}${rate ? ` · ${fmtBytes(rate)}/s · ${left < 60 ? "under a minute" : left < 3600 ? `about ${Math.ceil(left / 60)} min` : `about ${Math.floor(left / 3600)} h ${Math.ceil((left % 3600) / 60)} min`} left` : ""}</div>
-      <div class="upg-sub">${job.note || "You can use the rest of the dashboard meanwhile. Keep this tab open; if it closes or the connection drops, choose the same file again to carry on."}</div>`;
+    const n = this.done + this.skipped + this.failed + 1;
+    Transfers.up = {
+      name: job.rel.split("/").pop(),
+      note: job.note,
+      n,
+      all: n + this.queue.length,
+      pct: Math.min(100, Math.floor((now / total) * 100)),
+      left: !rate
+        ? ""
+        : left < 60
+          ? "under a minute left"
+          : left < 3600
+            ? `${Math.ceil(left / 60)} min left`
+            : `${Math.floor(left / 3600)} h ${Math.ceil((left % 3600) / 60)} min left`,
+      stopping: this.cancel,
+    };
+    Transfers.render();
   },
   async run() {
     this.running = true;
@@ -566,9 +573,9 @@ const Uploads = {
     const stopped = this.cancel;
     this.running = false;
     this.queue.length = 0;
-    $("#up-global").hidden = true;
+    Transfers.up = null;
     const msg = `Uploaded ${this.done} file${this.done === 1 ? "" : "s"}${this.skipped ? `, skipped ${this.skipped} already there` : ""}${this.failed ? `, ${this.failed} didn't finish` : ""}${stopped ? " (stopped)" : ""}`;
-    if (this.done || this.skipped || this.failed || stopped) toast(msg, this.failed ? "" : "good");
+    if (this.done || this.skipped || this.failed || stopped) Transfers.done(msg, this.failed ? "bad" : "good");
     if (currentView === "files") {
       if (dirs.has(Files.current)) Files.refresh();
       else Files.loadUnfinished();
@@ -904,7 +911,7 @@ const Mover = {
       title: `${mode === "copy" ? "Copy" : "Move"} ${what}`,
       ok: mode === "copy" ? "Copy here" : "Move here",
       safe: true,
-      body: `<p class="muted" style="margin:0">${mode === "copy" ? "Choose any folder. Copies run in the background (follow them under Moves); a copy into the same folder is called “name (copy)”." : "Choose any folder. On the same drive it's instant. To another drive it's copied in the background, then the original is deleted once the copy is complete: follow it under Moves."}</p>
+      body: `<p class="muted" style="margin:0">${mode === "copy" ? "Choose any folder. Copies run in the background, with their progress at the top of the page; a copy into the same folder is called “name (copy)”." : "Choose any folder. On the same drive it's instant. To another drive it's copied in the background, then the original is deleted once the copy is complete. Its progress shows at the top of the page."}</p>
         <div class="mv-here" id="mv-here"></div><div class="mv-list" id="mv-list"><div class="empty">Loading…</div></div>`,
       onOk: async () => {
         const dest = this.cur;
@@ -988,69 +995,100 @@ async function moveItems(paths, dest) {
 }
 
 // Moves between drives, with progress. Polled while any are running.
+// Copies, and moves to another drive, run on the server in the background (see fileops.py). Their progress
+// shows in the transfers strip at the top of every page, alongside uploads.
 const Moves = {
   items: [],
   timer: null,
-  open_: false,
-  async poll(soon) {
+  async poll() {
     clearTimeout(this.timer);
     try {
       const d = await api("/api/files/jobs");
       this.items = d.items;
-      this.badge(d.active);
-      if (this.open_) this.render();
       if (d.active === 0 && this.wasActive && currentView === "files") Files.refresh();
       this.wasActive = d.active > 0;
+      Transfers.render();
     } catch {}
     const busy = this.items.some(j => ["queued", "copying", "removing"].includes(j.state));
-    if (busy || this.open_) this.timer = setTimeout(() => this.poll(), busy ? 1500 : 5000);
+    if (busy) this.timer = setTimeout(() => this.poll(), 1500);
   },
-  badge(n) {
-    const b = $("#f-moves-btn");
-    if (b) b.textContent = n ? `Moves (${n})` : "Moves";
+  live() {
+    return this.items.filter(j => ["queued", "copying", "removing"].includes(j.state));
   },
-  open() {
-    this.open_ = true;
-    Drawer.open(
-      "Moves and copies",
-      "Copies, and moves to another drive, run here in the background, one at a time. A move copies everything first, checks the copy, and only then deletes the original. Stopping one leaves the original untouched.",
-      `<button class="btn" type="button" data-mj="clear">Clear finished</button>`,
-      `<div id="mj-list"><div class="empty">Loading…</div></div>`,
-      () => {
-        this.open_ = false;
-      },
-    );
-    this.poll();
-  },
-  render() {
-    const el = $("#mj-list");
-    if (!el) return;
-    const label = {
-      queued: "Waiting",
-      copying: "Copying",
-      removing: "Deleting the original",
-      done: "Done",
-      failed: "Didn't finish",
-      cancelled: "Stopped",
-    };
-    el.innerHTML = this.items.length
-      ? this.items
-          .map(j => {
-            const pct = j.total ? Math.min(100, Math.round((j.done / j.total) * 100)) : 0,
-              live = ["queued", "copying"].includes(j.state);
-            return `<div class="trow" style="grid-template-columns:minmax(0,1fr) auto">
-        <span>${j.dir ? ICON.dir : ICON.file} <b>${j.kind === "copy" ? "Copy" : "Move"}: ${esc(j.name)}</b><div class="from">${esc(j.from)} → ${esc(j.to)}</div>
-          <div class="from">${esc(label[j.state] || j.state)}${j.state === "copying" ? ` · ${fmtBytes(j.done)} of ${fmtBytes(j.total)}` : j.total != null && j.state === "done" ? ` · ${fmtBytes(j.total)}` : ""}</div>
-          ${j.state === "copying" ? `<div class="fup" style="padding:6px 0;background:none;border:0"><span class="bar"><i style="width:${pct}%"></i></span><span>${pct}%</span></div>` : ""}
-          ${j.error ? `<div class="tag bad" style="margin-top:4px">${esc(j.error)}</div>` : ""}</span>
-        <span>${live ? `<button class="btn small" type="button" data-mj="cancel" data-id="${esc(j.id)}">Stop</button>` : ""}</span></div>`;
-          })
-          .join("")
-      : `<div class="empty">Nothing yet. Copies, and moves to another drive, show here. Moves within one drive happen at once and don't.</div>`;
+  failed() {
+    return this.items.filter(j => j.state === "failed");
   },
 };
-$("#drawer").addEventListener("click", async e => {
-  const b = e.target.closest("[data-mj]");
+
+// The transfers strip: one line at the top of every page while files are uploading, copying or moving, with
+// a progress bar along its bottom edge. It says what's happening in a few words and goes away when done.
+const Transfers = {
+  up: null, // the upload in progress: { name, n, all, pct, left, stopping }
+  flash: null, // a moment's "Uploaded 12 files" when done
+  render() {
+    const el = $("#transfers"),
+      live = Moves.live(),
+      failed = Moves.failed();
+    let icon = "",
+      text = "",
+      right = "",
+      pct = null,
+      lvl = "";
+    if (this.up) {
+      const u = this.up;
+      icon = "up";
+      text = `<b>Uploading</b> ${esc(u.name)}${u.all > 1 ? ` <span class="faint">· ${u.n} of ${u.all}</span>` : ""}${u.note && /dropped/.test(u.note) ? ` <span class="faint">· reconnecting…</span>` : ""}`;
+      right = `<span>${u.pct}%${u.left ? ` · ${u.left}` : ""}</span><button class="xfer-x" type="button" id="up-cancel" aria-label="Stop uploading"${u.stopping ? " disabled" : ""}>${u.stopping ? "Stopping…" : "Stop"}</button>`;
+      pct = u.pct;
+      if (live.length)
+        text += ` <span class="faint">· ${live.length} copy${live.length === 1 ? "" : "ies"} waiting</span>`;
+    } else if (live.length) {
+      const j = live.find(x => x.state !== "queued") || live[0];
+      const p = j.total ? Math.min(100, Math.round((j.done / j.total) * 100)) : 0;
+      icon = j.kind === "copy" ? "copy" : "move";
+      const verb =
+        j.state === "queued"
+          ? "Waiting to " + (j.kind === "copy" ? "copy" : "move")
+          : j.state === "removing"
+            ? "Finishing the move of"
+            : j.kind === "copy"
+              ? "Copying"
+              : "Moving";
+      text = `<b>${verb}</b> ${esc(j.name)} <span class="faint">to ${esc(j.to)}${live.length > 1 ? ` · ${live.length - 1} more after` : ""}</span>`;
+      right = `<span>${j.state === "copying" ? `${p}%` : ""}</span><button class="xfer-x" type="button" data-mj="cancel" data-id="${esc(j.id)}" aria-label="Stop">Stop</button>`;
+      pct = j.state === "copying" ? p : null;
+    } else if (failed.length) {
+      const j = failed[0];
+      lvl = "bad";
+      icon = "warn";
+      text = `<b>${j.kind === "copy" ? "Copy" : "Move"} of ${esc(j.name)} didn't finish:</b> ${esc(j.error || "")} <span class="faint">The original is untouched.</span>`;
+      right = `<button class="xfer-x" type="button" data-mj="clear">Dismiss</button>`;
+    } else if (this.flash) {
+      lvl = this.flash.lvl;
+      icon = "done";
+      text = esc(this.flash.text);
+    }
+    el.hidden = !text;
+    el.className = `xfer ${lvl}`;
+    el.innerHTML = text
+      ? `<span class="xfer-ic ${icon}" aria-hidden="true"></span><span class="xfer-text">${text}</span><span class="xfer-right">${right}</span>` +
+        (pct != null ? `<span class="xfer-bar" style="--p:${pct}%"></span>` : "")
+      : "";
+    const nf = $("#nav-files");
+    if (nf) nf.textContent = this.up ? `${this.up.pct}%` : live.length ? `${live.length}` : "";
+  },
+  done(text, lvl) {
+    this.flash = { text, lvl };
+    this.render();
+    clearTimeout(this.ft);
+    this.ft = setTimeout(() => {
+      this.flash = null;
+      this.render();
+    }, 5000);
+  },
+};
+document.addEventListener("click", async e => {
+  const b = e.target.closest("#transfers [data-mj]");
   if (!b) return;
   try {
     if (b.dataset.mj === "cancel") {
@@ -1116,7 +1154,7 @@ for (const id of ["#f-list", "#f-tree", "#f-crumbs"]) {
       if (
         await confirmAsync(
           `Copy ${what}?`,
-          `<p>Copy <b>${esc(what)}</b> into <b>${esc(dest)}</b>? It runs in the background: follow it under Moves.</p>`,
+          `<p>Copy <b>${esc(what)}</b> into <b>${esc(dest)}</b>? It runs in the background, with its progress at the top of the page.</p>`,
           "Copy",
         )
       )
@@ -1396,4 +1434,51 @@ $("#f-size").addEventListener("click", async e => {
     alertBanner(`Couldn't measure folder: ${err.message}`);
   }
   b.disabled = false;
+});
+
+// On a phone the Files toolbar keeps the search, Folders and Upload; everything else is under More.
+function fmtShortDate(t) {
+  if (!t) return "";
+  const d = new Date(t * 1000),
+    now = new Date();
+  return d.toLocaleDateString(
+    undefined,
+    d.getFullYear() === now.getFullYear()
+      ? { day: "numeric", month: "short" }
+      : { day: "numeric", month: "short", year: "numeric" },
+  );
+}
+const FMore = {
+  open() {
+    const menu = $("#f-more-menu");
+    const items = $$("#view-files .pane-head .fx-more:not(.fx-desk)").filter(b => !b.hidden && !b.closest("[hidden]"));
+    menu.innerHTML = items
+      .map(
+        b =>
+          `<button type="button" role="menuitem" data-more="${esc(b.id || b.dataset.fx)}">${esc(b.textContent.trim())}</button>`,
+      )
+      .join("");
+    menu.hidden = false;
+    $("#f-more").setAttribute("aria-expanded", "true");
+  },
+  close() {
+    $("#f-more-menu").hidden = true;
+    $("#f-more").setAttribute("aria-expanded", "false");
+  },
+};
+$("#f-more").addEventListener("click", e => {
+  e.stopPropagation();
+  $("#f-more-menu").hidden ? FMore.open() : FMore.close();
+});
+$("#f-more-menu").addEventListener("click", e => {
+  const b = e.target.closest("[data-more]");
+  if (!b) return;
+  FMore.close();
+  const key = b.dataset.more,
+    real =
+      $(`#view-files .pane-head #${CSS.escape(key)}`) || $(`#view-files .pane-head [data-fx="${CSS.escape(key)}"]`);
+  real?.click();
+});
+document.addEventListener("click", e => {
+  if (!e.target.closest(".fmore-wrap")) FMore.close();
 });

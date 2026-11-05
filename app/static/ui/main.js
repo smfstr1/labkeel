@@ -9,6 +9,7 @@ applyTheme(getTheme());
   route();
   try {
     S.meta = await api("/api/meta");
+    Tiles.apply();
     $("#signout-btn").classList.toggle("hidden", !S.meta.auth);
     $("#account-link").classList.toggle("hidden", !S.meta.auth);
     if (S.meta.user) $("#account-link").textContent = S.meta.user.name;
@@ -17,6 +18,10 @@ applyTheme(getTheme());
       document.body.classList.add("viewer");
       if (["files", "settings"].includes(currentView)) location.hash = "#overview";
     }
+    if (S.meta.data_not_kept)
+      $("#global-banner").innerHTML =
+        `<div class="banner bad"><b>LabKeel's data isn't being kept.</b> Its data folder lives only inside the container, so history, settings and the activity log are lost every time it's rebuilt. ` +
+        `Add <code>- ./data:/data</code> under <code>volumes:</code> in docker-compose.yml, then run <code>docker compose up -d</code>.</div>`;
     if (S.meta.config_error)
       $("#global-banner").innerHTML = `<div class="banner bad">${esc(S.meta.config_error)}</div>`;
     if (!S.meta.auth)

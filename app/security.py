@@ -564,7 +564,7 @@ def confirm_password(request: Request, password):
 # Read-only status pages. Not files, container logs, processes (their command lines can hold secrets),
 # settings, the activity log, or anything that lists drives that could be wiped.
 VIEWER_GET = re.compile(r"^/api/(system|meta|containers|updates|storage|drives|services|attention|gpu|history|health|security|"
-                        r"drivecare|login-info|account|passkeys|zfs/pool/[^/]+(/(datasets|snapshots|history))?)$")
+                        r"drivecare|login-info|account|passkeys|services/logo/[a-z0-9._-]+|zfs/pool/[^/]+(/(datasets|snapshots|history))?)$")
 VIEWER_POST = {"/api/logout", "/api/account/password", "/api/passkeys/register/options", "/api/passkeys/register/verify",
                "/api/passkeys/rename", "/api/passkeys/delete", "/api/passkeys/confirm/options", "/api/passkeys/confirm"}
 

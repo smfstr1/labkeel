@@ -325,9 +325,7 @@ function renderDriveLayout() {
         unknown.length ? `${unknown.length} couldn't be read` : null,
         ...pools.map(p => `Pool ${esc(p.name)} online`),
       ].filter(Boolean);
-      sum =
-        `<span class="led good"></span><b>${healthy === 1 ? "1 drive healthy" : `All ${healthy} drives healthy`}</b>` +
-        (extra.length ? `<span class="muted">${extra.join(" · ")}</span>` : "");
+      sum = healthHero(drives, sts, pools, healthy, asleep, unknown);
     } else {
       const n = needs.length;
       sum =
@@ -342,7 +340,9 @@ function renderDriveLayout() {
     if (S.drives.error && !drives.length) sum = `<span class="led"></span><span>${esc(S.drives.error)}</span>`;
     else if (!drives.length)
       sum = `<span class="led"></span><span>${S.drives.updated ? "smartctl didn't report any drives. The dashboard container needs privileged mode to read them." : "Reading drive health…"}</span>`;
-    $("#s-summary").innerHTML = `<div class="s-summary ${worst}" role="status">${sum}</div>`;
+    $("#s-summary").innerHTML = sum.startsWith('<div class="s-hero')
+      ? sum
+      : `<div class="s-summary ${worst}" role="status">${sum}</div>`;
   } else
     $("#s-summary").innerHTML =
       `<div class="s-summary" role="status"><span class="led"></span><span class="muted">Reading drive health…</span></div>`;
@@ -1011,3 +1011,33 @@ $("#s-fs").addEventListener("click", async e => {
     b.disabled = false;
   }
 });
+
+// When everything's fine, the Storage page opens with a calm "all healthy" panel: a shield, the count, the
+// temperature range, one light per drive (hover for its name) and each pool's state.
+function healthHero(drives, sts, pools, healthy, asleep, unknown) {
+  const temps = drives.filter(x => !x.standby && x.temp != null).map(x => x.temp);
+  const sub = [
+    S.drives?.updated ? `Checked ${ago(S.drives.updated)}` : "",
+    temps.length ? `${Math.min(...temps)}–${Math.max(...temps)}°C` : "",
+    asleep.length ? `${asleep.length} asleep` : "",
+    unknown.length ? `${unknown.length} couldn't be read` : "",
+  ].filter(Boolean);
+  const lights = sts
+    .map(
+      o =>
+        `<button class="s-light ${o.st.cls === "good" ? "good" : o.st.text === "Asleep" ? "sleep" : "off"}" type="button" data-drive="${esc(driveKey(o.x))}" title="${esc(driveName(o.x))}: ${esc(o.st.text)}${!o.x.standby && o.x.temp != null ? `, ${o.x.temp}°C` : ""}" aria-label="${esc(driveName(o.x))}: ${esc(o.st.text)}"></button>`,
+    )
+    .join("");
+  const chips = pools
+    .map(
+      p =>
+        `<span class="s-pool"><span class="dot good"></span>${esc(p.name)} <span class="faint">${esc(p.health.toLowerCase())}</span></span>`,
+    )
+    .join("");
+  return `<div class="s-hero" role="status">
+    <div class="s-shield" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M24 4 40 10v12c0 10.5-6.8 18.7-16 22-9.2-3.3-16-11.5-16-22V10z"/><path class="tick" d="m16.5 24.5 5 5 10-11"/></svg></div>
+    <div class="s-hero-main"><div class="s-hero-title">${healthy === 1 ? "1 drive healthy" : `All ${healthy} drives healthy`}</div>
+      <div class="s-hero-sub">${sub.map(esc).join(" · ")}</div></div>
+    <div class="s-hero-side"><div class="s-lights" aria-label="Drives">${lights}</div>${chips ? `<div class="s-pools">${chips}</div>` : ""}</div>
+  </div>`;
+}
