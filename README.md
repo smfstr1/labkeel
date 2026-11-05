@@ -34,6 +34,9 @@ Keep it off the open internet, and only make admin accounts for people you'd tru
 control of the server. See [SECURITY.md](SECURITY.md) for how it's protected.
 
 ## Screenshots
+![test](images/main.png)
+**Dashboard**: monitor live activity
+>
 
 ![Containers grouped by compose project, with an Update badge on the ones with a newer image](images/containers.png)
 **Containers**: grouped by project, with update checks
