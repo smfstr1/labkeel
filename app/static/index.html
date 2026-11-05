@@ -231,7 +231,7 @@
                 <input type="file" id="f-upload-input" multiple hidden>
                 <input type="file" id="f-upload-dir" webkitdirectory multiple hidden>
               </span>
-              <button class="btn fx-more" type="button" data-fx="trash" id="f-trash-btn" hidden>Trash</button>
+              <button class="btn fx-more" type="button" data-fx="trash" id="f-trash-btn" hidden>Bin</button>
               <button class="btn fx-more fx-desk" type="button" data-fx="keys" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">⌨</button>
               <span class="fmore-wrap"><button class="btn" type="button" id="f-more" aria-haspopup="menu" aria-expanded="false" aria-label="More actions">More</button>
                 <span class="fmore-menu" id="f-more-menu" role="menu" hidden></span></span>
@@ -338,7 +338,7 @@
               <label class="check"><input type="checkbox" name="restart.wait_plex"> Someone is watching Plex</label>
               <div class="field nested" id="st-plex-field">
                 <span>Plex token, so the dashboard can see who's watching</span>
-                <div class="row"><input class="input" type="password" name="plex.token" autocomplete="off" spellcheck="false"><button class="linkbtn" type="button" id="st-plex-clear" hidden>Remove</button></div>
+                <div class="row"><input class="input masked" type="text" name="plex.token" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore aria-label="Plex token"><button class="linkbtn" type="button" id="st-plex-clear" hidden>Remove</button></div>
                 <a class="faint small" href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/" target="_blank" rel="noopener">How to find your Plex token</a>
               </div>
             </fieldset>

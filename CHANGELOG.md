@@ -79,7 +79,7 @@
   just one), so most images showed as "built locally" instead of being checked.
 - On a machine with few CPU threads, the per-thread bars on the Overview stretched across the whole page.
 - After starting, stopping or restarting a container, the list could take a few seconds to show it.
-- Restoring a Trash item whose copy had gone crashed, and deleting it for good did nothing.
+- Restoring a Bin item whose copy had gone crashed, and deleting it for good did nothing.
 - The dashboard's config folder wasn't hidden from the file browser when mounted as a folder.
 
 ### Upgrading from the original dashboard

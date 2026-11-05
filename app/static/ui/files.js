@@ -1,6 +1,6 @@
 // LabKeel dashboard — files.js (7 of 10; index.html loads them in order).
 // The Files page: tree, list, previews and editing, uploads, search, moving and copying (with background
-// jobs), drag and drop, keyboard shortcuts and the Trash.
+// jobs), drag and drop, keyboard shortcuts and the Bin.
 "use strict";
 
 /* ---------- files ---------- */
@@ -194,7 +194,7 @@ const Files = {
     $("#f-mode").textContent = !S.meta?.file_write
       ? "Read-only (turn on changing files with DASH_FILES_WRITE=1)."
       : this.writable
-        ? "You can change files here. Deleted things go to the Trash for 30 days."
+        ? "You can change files here. Deleted things go to the Bin for 30 days."
         : ro && (S.meta.file_writable || {})[this.current.split("/")[0]] === false
           ? `${this.current.split("/")[0]} is mounted read-only (:ro in docker-compose.yml).`
           : "Read-only here.";
@@ -288,13 +288,13 @@ const Files = {
         const one = picked.length === 1 ? picked[0].split("/").pop() : null;
         Confirm.open({
           title: one ? `Delete ${one}?` : `Delete ${picked.length} items?`,
-          ok: "Move to Trash",
-          body: `<p>${one ? esc(one) : `${picked.length} items`} will go to the Trash. You can put ${one ? "it" : "them"} back from there for 30 days, after which ${one ? "it's" : "they're"} deleted for good.</p>`,
+          ok: "Move to the Bin",
+          body: `<p>${one ? esc(one) : `${picked.length} items`} will go to the Bin. You can put ${one ? "it" : "them"} back from there for 30 days, after which ${one ? "it's" : "they're"} deleted for good.</p>`,
           onOk: async () => {
             try {
               const r = await apiSend("/api/files/delete", { paths: picked });
               this.sel.clear();
-              toast(`Moved ${r.deleted} to the Trash`, "good");
+              toast(`Moved ${r.deleted} to the Bin`, "good");
             } catch (e) {
               if (!e.cancelled) alertBanner(`Couldn't delete: ${e.message}`);
             }
@@ -397,7 +397,7 @@ const Files = {
     if (clashFiles.length) {
       replace = await confirmAsync(
         clashFiles.length === 1 ? `Replace ${clashFiles[0]}?` : `Replace ${clashFiles.length} files?`,
-        `<p>${clashFiles.length === 1 ? `<b>${esc(clashFiles[0])}</b> is` : `${clashFiles.length} of these files are`} already here. Replacing puts the old ${clashFiles.length === 1 ? "one" : "ones"} in the Trash. Cancel to skip ${clashFiles.length === 1 ? "it" : "them"} and upload the rest.</p>`,
+        `<p>${clashFiles.length === 1 ? `<b>${esc(clashFiles[0])}</b> is` : `${clashFiles.length} of these files are`} already here. Replacing puts the old ${clashFiles.length === 1 ? "one" : "ones"} in the Bin. Cancel to skip ${clashFiles.length === 1 ? "it" : "them"} and upload the rest.</p>`,
         "Replace",
       );
       if (!replace) clashFiles.forEach(t => skipTop.add(t));
@@ -1239,7 +1239,7 @@ const Keys = {
       `<div style="padding:4px 18px 18px"><table class="keys">
       ${k(["↑", "↓"], "Move between files")}${k(["Shift", "↑ ↓"], "Select as you go")}${k(["Enter"], "Open a folder or file")}
       ${k(["Backspace"], "Up one folder")}${k(["Space"], "Select or unselect")}${k(["Ctrl", "A"], "Select everything shown")}
-      ${k(["Esc"], "Clear the selection or search")}${k(["/"], "Filter or search")}${k(["F2"], "Rename")}${k(["Delete"], "Move to the Trash")}
+      ${k(["Esc"], "Clear the selection or search")}${k(["/"], "Filter or search")}${k(["F2"], "Rename")}${k(["Delete"], "Move to the Bin")}
       ${k(["Ctrl", "C"], "Copy")}${k(["Ctrl", "X"], "Cut (to move)")}${k(["Ctrl", "V"], "Paste here")}
       ${k(["Shift", "N"], "New folder")}${k(["U"], "Upload files")}${k(["?"], "This list")}
       </table><p class="st-note">On a Mac, use ⌘ instead of Ctrl. Hold Ctrl (or Alt) while dragging to copy rather than move.</p></div>`,
@@ -1338,14 +1338,14 @@ document.addEventListener("keydown", e => {
   }
 });
 
-// The Trash: things deleted from the file browser, kept for 30 days
+// The Bin: things deleted from the file browser, kept for 30 days
 const Trash = {
   sel: new Set(),
   items: [],
   async open() {
     this.sel.clear();
     Drawer.open(
-      "Trash",
+      "Bin",
       "Deleted from the file browser. Kept for 30 days, then deleted for good.",
       `<button class="btn" type="button" data-tr="restore" disabled>Put back</button><button class="btn danger" type="button" data-tr="purge" disabled>Delete forever…</button>`,
       `<div id="tr-list"><div class="empty">Loading…</div></div>`,
@@ -1369,7 +1369,7 @@ const Trash = {
       <span class="faint small">${esc(fmtDate(x.deleted))}${x.size != null ? `<br>${fmtBytes(x.size)}` : ""}</span></label>`,
           )
           .join("")
-      : `<div class="empty">The Trash is empty.</div>`;
+      : `<div class="empty">The Bin is empty.</div>`;
     this.buttons();
   },
   buttons() {

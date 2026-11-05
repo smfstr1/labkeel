@@ -4713,3 +4713,9 @@ a.svc-row:hover {
   gap: 4px 10px;
   flex-wrap: wrap;
 }
+
+/* a token box browsers won't fill with a saved password (it isn't a password field), shown as dots */
+.input.masked:not(:focus) {
+  -webkit-text-security: disc;
+  text-security: disc;
+}

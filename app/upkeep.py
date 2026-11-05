@@ -5,6 +5,7 @@ Everything is stored as JSON in the dashboard's data folder (DASH_DATA, /data by
 import contextvars
 import json
 import os
+import re
 import ssl
 import sys
 import threading
@@ -271,7 +272,10 @@ def who_is_busy(r, notes=None, fresh=True):
                 reasons.append(f"{n} Plex stream{'s' if n != 1 else ''}")
         except Exception as e:
             if notes is not None:
-                notes.append(f"Couldn't check Plex: {getattr(e, 'reason', e)}")
+                why = getattr(e, "reason", e)
+                notes.append("Plex refused the saved token, so LabKeel can't see who's watching. Paste a new one in "
+                             "Settings → Restarts and power, or untick waiting for Plex." if getattr(e, "code", None) in (401, 403)
+                             else f"Couldn't check Plex: {why}")
     if load_settings()["drivecare"].get("hold_restarts", True):
         try:
             import drivecare
@@ -760,6 +764,11 @@ def _clean(body, cur):
     if not plex_url.startswith(("http://", "https://")) or len(plex_url) > 2048:
         raise HTTPException(400, "The Plex address needs to start with http:// or https://")
     new_token = str(p.get("token") or "").strip()[:512]
+    if new_token and not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", new_token):
+        # Plex tokens are letters, digits, - and _. Anything else is usually the browser filling in a saved
+        # password here by mistake, which Plex would then refuse ("Unauthorized").
+        raise HTTPException(400, "That doesn't look like a Plex token (they're letters, numbers, - and _ only). "
+                                 "If your browser filled it in, clear the box and paste the token from Plex.")
     if p.get("clear_token"):
         token = ""
     elif new_token:

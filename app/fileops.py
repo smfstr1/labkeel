@@ -11,7 +11,7 @@ Folders mounted read-only (`:ro` in docker-compose.yml) stay read-only: the page
 here can get round it. None of it works unless DASH_FILES_WRITE=1 turns it on.
 
 Sections below: checks shared by everything; creating and editing; resumable uploads; searching;
-renaming, moving and copying; the background jobs that move or copy between drives; the Trash.
+renaming, moving and copying; the background jobs that move or copy between drives; the Bin.
 Temporary names used while working (hidden from the file browser by main.WORKING_RE):
   .dash-upload-<id>.part   a file still being uploaded
   .dash-edit-<id>.tmp      an edited text file being saved
@@ -259,11 +259,11 @@ def _flush_upload(key):
     if not b:
         return
     if b["files"] == 1 and not b["folders"]:
-        _log(f"Uploaded {b['first']} ({b['bytes'] / 1e6:.1f} MB)" + (" replacing the old one (now in the Trash)" if b["replaced"] else ""))
+        _log(f"Uploaded {b['first']} ({b['bytes'] / 1e6:.1f} MB)" + (" replacing the old one (now in the Bin)" if b["replaced"] else ""))
     else:
         bits = [f"{b['files']} file{'s' if b['files'] != 1 else ''}"] + ([f"{b['folders']} folder{'s' if b['folders'] != 1 else ''}"] if b["folders"] else [])
         _log(f"Uploaded {' and '.join(bits)} ({b['bytes'] / 1e9:.2f} GB) into {key}, starting with {b['first']}"
-             + (f"; {b['replaced']} replaced (old ones in the Trash)" if b["replaced"] else ""))
+             + (f"; {b['replaced']} replaced (old ones in the Bin)" if b["replaced"] else ""))
 
 
 # --------------------------------------------------------------------------- creating
@@ -609,7 +609,7 @@ async def api_up_chunk(request: Request, id: str, offset: int):
 @router.post("/api/files/upload/finish")
 def api_up_finish(request: Request, body: dict = Body(...)):
     """All pieces are in: check the size, and put the file in place (an old one of the same name goes
-    to the Trash if replacing was chosen)."""
+    to the Bin if replacing was chosen)."""
     u = _up_get(body.get("id"), request)
     if u["state"] == "done":
         return {"path": f"{u['rel']}/{u['name']}", "size": u["size"]}
@@ -698,7 +698,7 @@ _search_slots = threading.BoundedSemaphore(2)
 @router.get("/api/files/search")
 def api_search(q: str, path: str = ""):
     """Names containing every word typed, in a folder and everything below it. Hidden names, the
-    dashboard's own folder and the Trash are skipped, and links aren't followed. Stops at 500 matches,
+    dashboard's own folder and the Bin are skipped, and links aren't followed. Stops at 500 matches,
     300,000 items looked at, or 8 seconds."""
     words = [w for w in (q or "").lower().split() if w][:8]
     if not words or sum(len(w) for w in words) < 2 or len(q) > 200:
@@ -1238,7 +1238,7 @@ def _load_jobs():
 
 # --------------------------------------------------------------------------- trash
 def _index():
-    """The Trash's records (trash.json): what was deleted, from where, and when."""
+    """The Bin's records (trash.json): what was deleted, from where, and when."""
     try:
         with open(M().DATA_DIR / "trash.json") as f:
             v = json.load(f)
@@ -1328,7 +1328,7 @@ def api_delete(request: Request, body: dict = Body(...)):
 
 @router.get("/api/files/trash")
 def api_trash():
-    """What's in the Trash, newest first."""
+    """What's in the Bin, newest first."""
     items = sorted(_index(), key=lambda x: -x.get("deleted", 0))
     return {"items": items, "days": TRASH_DAYS, "write": WRITE}
 
@@ -1350,7 +1350,7 @@ def _open_trash_item(item):
 
 
 def _take(ids):
-    """The Trash records with these ids (404 if none of them are there any more)."""
+    """The Bin records with these ids (404 if none of them are there any more)."""
     if not isinstance(ids, list) or not ids or not all(isinstance(i, str) for i in ids):
         raise HTTPException(400, "Choose items from the trash")
     with _lock:
@@ -1362,14 +1362,14 @@ def _take(ids):
 
 
 def _forget(ids):
-    """Drop these Trash records."""
+    """Drop these Bin records."""
     with _lock:
         _save_index([x for x in _index() if x.get("id") not in ids])
 
 
 @router.post("/api/files/trash/restore")
 def api_restore(request: Request, body: dict = Body(...)):
-    """Put things back from the Trash where they came from (unless something with that name is there now)."""
+    """Put things back from the Bin where they came from (unless something with that name is there now)."""
     _guard(request, body)
     pick = _take(body.get("ids"))
     restored, problems, missing = [], [], []
@@ -1390,7 +1390,7 @@ def api_restore(request: Request, body: dict = Body(...)):
             try:
                 tfd = _open_trash_item(item)
             except FileNotFoundError:  # its copy has gone (Trash folder deleted, or the drive isn't there)
-                problems.append(f"{item['name']}: its copy in the Trash isn't there any more")
+                problems.append(f"{item['name']}: its copy in the Bin isn't there any more")
                 missing.append(item["id"])
                 continue
             try:
@@ -1401,7 +1401,7 @@ def api_restore(request: Request, body: dict = Body(...)):
                     os.close(ifd)
                 os.rmdir(item["id"], dir_fd=tfd)
             except FileNotFoundError:
-                problems.append(f"{item['name']}: its copy in the Trash isn't there any more")
+                problems.append(f"{item['name']}: its copy in the Bin isn't there any more")
                 missing.append(item["id"])
                 continue
             except OSError as e:
@@ -1420,7 +1420,7 @@ def api_restore(request: Request, body: dict = Body(...)):
 
 
 def _purge(item):
-    """Delete one Trash item for good."""
+    """Delete one Bin item for good."""
     tfd = _open_trash_item(item)
     try:
         try:
@@ -1470,7 +1470,7 @@ def tidy():
 
 
 def _loop():
-    """Background thread, hourly: removes stale unfinished uploads and empties old Trash."""
+    """Background thread, hourly: removes stale unfinished uploads and empties old Bin items."""
     time.sleep(120)
     while True:
         try:

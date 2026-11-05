@@ -14,7 +14,7 @@ upkeep.py     settings, scheduled restarts, alerts, Docker clean-up and the acti
 metrics.py    GPU and power readings, and the history behind the Overview charts.
 drivecare.py  the pools' drives: failing drives, replacing them, scrubs and SMART self-tests.
 zfsmgr.py     pool and dataset management, snapshots, scheduled scrubs and TRIMs.
-fileops.py    changing files from the file browser: uploads, moves, copies, the Trash.
+fileops.py    changing files from the file browser: uploads, moves, copies, the Bin.
 static/       the pages (index.html is the dashboard's markup; login.html, setup.html), fonts, and ui/: the
               dashboard's scripts (one file per page, loaded in order) and styles (app.css).
 
@@ -812,7 +812,7 @@ WORKING_RE = re.compile(r"\.(.+\.)?dash-(upload|moving|edit)-[0-9a-f]{8,24}(\.pa
 
 def _hidden_part(part):
     # also the dashboard's own work in progress: half-uploaded files, copies being made, edits being saved
-    """A name the file browser never shows or touches: ZFS snapshot folders, the Trash, the dashboard's own
+    """A name the file browser never shows or touches: ZFS snapshot folders, the Bin, the dashboard's own
     half-finished work, and names on the deny list."""
     return part in (SNAPDIR, ".dashboard-trash") or bool(WORKING_RE.fullmatch(part)) or _denied(part)
 
