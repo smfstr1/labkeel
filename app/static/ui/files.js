@@ -192,7 +192,7 @@ const Files = {
     const ro = this.roots.length && !this.writable;
     $("#f-write").hidden = !this.writable;
     $("#f-mode").textContent = !S.meta?.file_write
-      ? "Read-only (turn on changing files with DASH_FILES_WRITE=1)."
+      ? "Read-only (turn on changing files with LABKEEL_ALLOW_FILE_CHANGES=1)."
       : this.writable
         ? "You can change files here. Deleted things go to the Bin for 30 days."
         : ro && (S.meta.file_writable || {})[this.current.split("/")[0]] === false

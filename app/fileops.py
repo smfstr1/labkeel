@@ -8,7 +8,7 @@ top-level folders themselves are never changed. Changes ask for the password aga
 10 minutes), since writing files is a big step up from reading them.
 
 Folders mounted read-only (`:ro` in docker-compose.yml) stay read-only: the page says so, and nothing
-here can get round it. None of it works unless DASH_FILES_WRITE=1 turns it on.
+here can get round it. None of it works unless LABKEEL_ALLOW_FILE_CHANGES=1 turns it on.
 
 Sections below: checks shared by everything; creating and editing; resumable uploads; searching;
 renaming, moving and copying; the background jobs that move or copy between drives; the Bin.
@@ -34,13 +34,15 @@ from fastapi import APIRouter, Body, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import ClientDisconnect
 
+import env
+
 router = APIRouter()
 
-WRITE = os.environ.get("DASH_FILES_WRITE", "0") == "1"  # off unless turned on: the file browser starts read-only
+WRITE = env.flag("LABKEEL_ALLOW_FILE_CHANGES")  # off unless turned on: the file browser starts read-only
 TRASH = ".dashboard-trash"  # the hidden Trash folder at the top of each drive or dataset
-TRASH_DAYS = int(os.environ.get("DASH_TRASH_DAYS", "30"))
+TRASH_DAYS = env.number("LABKEEL_BIN_DAYS", 30, minimum=1)
 # no limit on how big an upload may be, unless you set one (in GB); free space is always checked
-UPLOAD_MAX = int(float(os.environ.get("DASH_UPLOAD_MAX_GB") or 0) * 1e9) or (1 << 62)
+UPLOAD_MAX = int(env.number("LABKEEL_UPLOAD_LIMIT_GB", 0.0, minimum=0) * 1e9) or (1 << 62)
 EDIT_MAX = 512 * 1024  # the preview shows this much, so only files that fit are edited
 _lock = threading.Lock()  # trash.json
 
@@ -79,14 +81,14 @@ def check_name(name):
 
 
 def _guard(request, body=None):
-    """Before any change: changing files must be on, sign-in must be on (or DASH_FILES_WRITE=1 said explicitly),
+    """Before any change: changing files must be on, sign-in must be on (or LABKEEL_ALLOW_FILE_CHANGES=1 said explicitly),
     and the password confirmed (once every 10 minutes)."""
     if not WRITE:
-        raise HTTPException(403, "Changing files is turned off. An admin can turn it on with DASH_FILES_WRITE=1")
-    if not S().enabled() and os.environ.get("DASH_FILES_WRITE") != "1":
+        raise HTTPException(403, "Changing files is turned off. An admin can turn it on with LABKEEL_ALLOW_FILE_CHANGES=1")
+    if not S().enabled() and not env.flag("LABKEEL_ALLOW_FILE_CHANGES"):
         # with sign-in off, anyone who can reach the page could change files: only if you've said so explicitly
         raise HTTPException(403, "Changing files needs sign-in (set up an account). "
-                                 "To allow it without, set DASH_FILES_WRITE: \"1\".")
+                                 "To allow it without, set LABKEEL_ALLOW_FILE_CHANGES: \"1\".")
     S().confirm_password(request, (body or {}).get("password") if isinstance(body, dict) else None)
 
 
@@ -476,7 +478,7 @@ def api_up_start(request: Request, body: dict = Body(...)):
     if not isinstance(size, int) or isinstance(size, bool) or size < 0:
         raise HTTPException(400, "The file's size is needed")
     if size > UPLOAD_MAX:
-        raise HTTPException(413, f"Uploads are limited to {UPLOAD_MAX / 1e9:g} GB (DASH_UPLOAD_MAX_GB)")
+        raise HTTPException(413, f"Uploads are limited to {UPLOAD_MAX / 1e9:g} GB (LABKEEL_UPLOAD_LIMIT_GB)")
     overwrite = bool(body.get("overwrite"))
     fd, real, rel = open_dir(body.get("path"))
     try:
@@ -547,7 +549,7 @@ async def api_up_chunk(request: Request, id: str, offset: int):
     """One piece of an upload, written where it belongs in the partly-uploaded file. Whatever arrives
     counts, even if the connection drops part-way, so the next try carries on from there."""
     if not WRITE:
-        raise HTTPException(403, "Changing files is turned off. An admin can turn it on with DASH_FILES_WRITE=1")
+        raise HTTPException(403, "Changing files is turned off. An admin can turn it on with LABKEEL_ALLOW_FILE_CHANGES=1")
     u = _up_get(id, request)
     if u["state"] != "uploading":
         raise HTTPException(409, "That upload has finished already")
@@ -1452,7 +1454,7 @@ def api_purge(request: Request, body: dict = Body(...)):
 
 
 def tidy():
-    """Empty trash older than DASH_TRASH_DAYS. Run once an hour."""
+    """Empty trash older than LABKEEL_BIN_DAYS. Run once an hour."""
     cut = time.time() - TRASH_DAYS * 86400
     old = [x for x in _index() if x.get("deleted", 0) < cut]
     gone = []

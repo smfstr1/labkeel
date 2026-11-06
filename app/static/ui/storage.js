@@ -320,11 +320,6 @@ function renderDriveLayout() {
           : "good";
     if (worst === "good") {
       const healthy = sts.filter(o => o.st.cls === "good").length;
-      const extra = [
-        asleep.length ? `${asleep.map(o => esc(driveName(o.x))).join(", ")} asleep` : null,
-        unknown.length ? `${unknown.length} couldn't be read` : null,
-        ...pools.map(p => `Pool ${esc(p.name)} online`),
-      ].filter(Boolean);
       sum = healthHero(drives, sts, pools, healthy, asleep, unknown);
     } else {
       const n = needs.length;

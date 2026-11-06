@@ -16,7 +16,7 @@ The update writes its progress to data/update.log and ends with a line "LABKEEL-
 LabKeel watches that file while it's still running (a failed build leaves it running), and the new one reads
 it on start-up, so the activity log always says how it went, and who asked.
 
-What it needs: the compose set-up from INSTALL.md (privileged, pid: host, so DASH_HOST_NS is on), a host that
+What it needs: the compose set-up from INSTALL.md (privileged, pid: host, so LABKEEL_HOST_COMMANDS is on), a host that
 runs systemd, and git on the host for source installs. Without them, Settings shows the commands instead.
 """
 import asyncio
@@ -148,7 +148,7 @@ def _self_container():
 def detect():
     """(Blocking.) Everything needed to update this install, or NotPossible saying why it can't."""
     if not M().HOST_NS:
-        raise NotPossible("LabKeel can't run commands on this machine (DASH_HOST_NS is off), so it can't update itself.")
+        raise NotPossible("LabKeel can't run commands on this machine (LABKEEL_HOST_COMMANDS is off), so it can't update itself.")
     c = _self_container()
     labels = c.attrs.get("Config", {}).get("Labels") or {}
     project = labels.get("com.docker.compose.project")

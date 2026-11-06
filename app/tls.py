@@ -1,12 +1,12 @@
 """
 HTTPS certificates for the dashboard.
 
-DASH_TLS=auto (default) picks the first that works:
+LABKEEL_HTTPS=auto (default) picks the first that works:
   1. your own certificate in /certs (tls.crt + tls.key, or fullchain.pem + privkey.pem)
   2. a trusted Tailscale certificate for this machine's *.ts.net name (needs HTTPS turned on in
      the Tailscale admin console). Fetched with the host's `tailscale cert` and renewed automatically.
   3. a self-signed certificate made here: still encrypted, but browsers show a warning
-DASH_TLS=tailscale | self-signed | off forces one of them ("off" = plain HTTP, e.g. behind Caddy).
+LABKEEL_HTTPS=tailscale | self-signed | off forces one of them ("off" = plain HTTP, e.g. behind Caddy).
 """
 import ipaddress
 import json
@@ -24,8 +24,10 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
-MODE = os.environ.get("DASH_TLS", "auto").strip().lower()
-USER_CERTS = Path(os.environ.get("DASH_CERTS", "/certs"))
+import env
+
+MODE = env.text("LABKEEL_HTTPS", "auto").strip().lower() or "auto"
+USER_CERTS = Path(env.text("LABKEEL_CERTS_DIR", "/certs"))
 state = {"mode": "off" if MODE == "off" else None, "domain": None, "expires": None, "issuer": None,
          "error": None, "cert": None, "key": None, "fingerprint": None}
 _ctx_getter = None
@@ -151,7 +153,7 @@ def _self_signed():
             pass
     k = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, dns[0] if dns else "homelab"),
-                      x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Homelab dashboard (self-signed)")])
+                      x509.NameAttribute(NameOID.ORGANIZATION_NAME, "LabKeel (self-signed)")])
     now = datetime.now(timezone.utc)
     cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(k.public_key())
             .serial_number(x509.random_serial_number())

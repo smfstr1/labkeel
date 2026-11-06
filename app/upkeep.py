@@ -1,6 +1,6 @@
 """
 Long-term upkeep for the server: scheduled restarts, alerts, Docker clean-up and an activity log.
-Everything is stored as JSON in the dashboard's data folder (DASH_DATA, /data by default).
+Everything is stored as JSON in the dashboard's data folder (LABKEEL_DATA_DIR, /data by default).
 """
 import contextvars
 import json
@@ -21,11 +21,12 @@ from fastapi import APIRouter, Body, HTTPException, Query, Request
 
 import containers
 import db
+import env
 from version import USER_AGENT
 
 router = APIRouter()
 _lock = threading.RLock()     # state.json and settings.json; never held during network calls
-ALLOW_REBOOT = os.environ.get("DASH_ALLOW_REBOOT", "0") == "1"  # off unless turned on: restarting the machine is a big power to hand out
+ALLOW_REBOOT = env.flag("LABKEEL_ALLOW_RESTART")  # off unless turned on: restarting the machine is a big power to hand out
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 # Every setting and its default, by Settings section. settings.json only holds what you've changed;
@@ -367,7 +368,7 @@ def _send(title, message, tag, urgent):
 # --------------------------------------------------------------------------- reboot
 def do_reboot(reason, shutdown=False):
     """Restart (or shut down) the machine: logs it, sends an alert, notes why so the 'back online' message can
-    say, then asks systemd. Nothing happens unless DASH_ALLOW_REBOOT=1."""
+    say, then asks systemd. Nothing happens unless LABKEEL_ALLOW_RESTART=1."""
     host = M().HOST_INFO.get("hostname")
     log("restart", f"{'Shutting down' if shutdown else 'Restarting'} the server: {reason}")
     if load_settings()["alerts"]["restarts"]:
@@ -380,7 +381,7 @@ def do_reboot(reason, shutdown=False):
         st["restart_pending"] = {"t": time.time(), "reason": reason}
         _write("state.json", st)
     if not ALLOW_REBOOT:
-        log("error", f"{'Shut-down' if shutdown else 'Restart'} not carried out: DASH_ALLOW_REBOOT=1 isn't set")
+        log("error", f"{'Shut-down' if shutdown else 'Restart'} not carried out: LABKEEL_ALLOW_RESTART=1 isn't set")
         return
     time.sleep(5)  # let the log write and the alert leave
     cmds = (["systemctl", "poweroff"], ["poweroff"]) if shutdown else (["systemctl", "reboot"], ["reboot"])

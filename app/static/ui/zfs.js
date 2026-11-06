@@ -476,7 +476,7 @@ const PoolV = {
         ${w ? `<div><button class="btn small" type="button" data-pv="savesched" data-arg="${what}">Save schedule</button></div>` : ""}</div>`;
     };
     const ssd = d.members.some(m => m.section === "data" && !m.rotational);
-    return `${w ? "" : `<div class="banner">Pool changes are turned off for this dashboard (turn them on with DASH_ZFS_WRITE=1), so this page is read-only.</div>`}
+    return `${w ? "" : `<div class="banner">Pool changes are turned off for this dashboard (turn them on with LABKEEL_ALLOW_ZFS_CHANGES=1), so this page is read-only.</div>`}
       <section class="set"><div class="set-head"><div><h2>Scrub</h2><p class="muted set-lede">Reads every block in the pool, checks it against its checksum, and repairs anything that has quietly gone bad from the other drives. Once a month is usual.</p></div></div>
         <div class="set-body"><div id="mt-scrub">${this.scrubStatus()}</div>${sched("scrub")}</div></section>
       <section class="set"><div class="set-head"><div><h2>TRIM</h2><p class="muted set-lede">Tells SSDs which blocks are free, which keeps them fast and helps them last. Hard drives don't need it.</p></div>

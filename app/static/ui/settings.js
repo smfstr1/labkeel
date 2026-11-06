@@ -66,12 +66,19 @@ const Settings = {
   page(name) {
     this.lastPage = name;
     $$("#view-settings [data-page]").forEach(el => {
-      if (el.closest("#st-nav")) el.toggleAttribute("aria-current", el.dataset.page === name);
-      else el.hidden = el.dataset.page !== name;
+      if (!el.closest("#st-nav")) el.hidden = el.dataset.page !== name;
     });
     $$("#st-nav a").forEach(a =>
       a.dataset.page === name ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"),
     );
+    // phones show the menu as one scrolling row: bring the chosen page's tab into view
+    const nav = $("#st-nav"),
+      tab = $(`#st-nav a[data-page="${name}"]`);
+    if (tab && nav.scrollWidth > nav.clientWidth) {
+      const n = nav.getBoundingClientRect(),
+        t = tab.getBoundingClientRect();
+      nav.scrollLeft += t.left - n.left - (n.width - t.width) / 2;
+    }
   },
   async loadSecurity() {
     let d;
@@ -89,7 +96,7 @@ const Settings = {
       conn = [
         "bad",
         "Not encrypted",
-        'Passwords and everything on this page travel in plain text. Remove <span class="mono">DASH_TLS: "off"</span> from docker-compose.yml, or only open the dashboard through Caddy over https.',
+        'Passwords and everything on this page travel in plain text. Remove <span class="mono">LABKEEL_HTTPS: "off"</span> from docker-compose.yml, or only open the dashboard through Caddy over https.',
       ];
     else if (t.mode === "tailscale")
       conn = [
@@ -128,17 +135,17 @@ const Settings = {
       : [
           "bad",
           "No sign-in",
-          'Anyone who can reach this page can restart the server and change settings. Remove <span class="mono">DASH_ALLOW_NO_AUTH</span> from docker-compose.yml to set up an account.',
+          'Anyone who can reach this page can restart the server and change settings. Remove <span class="mono">LABKEEL_ALLOW_NO_SIGN_IN</span> from docker-compose.yml to set up an account.',
         ];
     const rows = [conn, auth];
     if (d.proxy?.on)
       rows.push([
         "good",
         "Sign-in through your proxy",
-        `Your reverse proxy signs people in and passes their name in <span class="mono">${esc(d.proxy.header)}</span>. Only requests from <span class="mono">DASH_TRUSTED_PROXY</span> are believed.`,
+        `Your reverse proxy signs people in and passes their name in <span class="mono">${esc(d.proxy.header)}</span>. Only requests from <span class="mono">LABKEEL_TRUSTED_PROXY</span> are believed.`,
       ]);
     if (d.hsts)
-      rows.push(["good", "HTTPS only", "Browsers are told to always use https:// for this address (DASH_HSTS)."]);
+      rows.push(["good", "HTTPS only", "Browsers are told to always use https:// for this address (LABKEEL_HSTS)."]);
     $("#sec-list").innerHTML = rows
       .map(
         ([lvl, title, text]) =>
@@ -338,7 +345,7 @@ const Settings = {
           .slice(0, shown)
           .map(
             e =>
-              `<div class="ev"><span class="dot ${cls[e.kind] || ""}"></span><time datetime="${new Date(e.t * 1000).toISOString()}">${fmtDate(e.t)}</time><span>${esc(e.text)}${e.user ? ` <span class="faint">· ${esc(e.user)}</span>` : ""}</span></div>`,
+              `<div class="ev"><span class="dot ${cls[e.kind] || ""}"></span><time datetime="${new Date(e.t * 1000).toISOString()}">${fmtDate(e.t)}</time><span>${esc(e.text)}${e.user && !e.text.startsWith(e.user + " ") ? ` <span class="faint">· ${esc(e.user)}</span>` : ""}</span></div>`,
           )
           .join("") +
         (more > 0
@@ -414,6 +421,43 @@ async function signOut(all) {
   location.href = "/login";
 }
 $("#signout-btn").addEventListener("click", () => signOut(false));
+
+// Secret fields are plain text boxes drawn as dots, so password managers don't fill your password into them.
+// Browsers that can't draw a text box as dots get a password box that asks password managers to stay out.
+if (!CSS.supports("-webkit-text-security", "disc"))
+  $$("input.masked").forEach(i => {
+    i.type = "password";
+    i.autocomplete = "new-password";
+  });
+
+// Phones: the top bar has no room for "Account" and "Sign out", so your initial opens a small menu with both
+const MeMenu = {
+  setUp(user) {
+    $("#me-initial").textContent = (user.name || "?").slice(0, 1).toUpperCase();
+    $("#me-name").textContent = user.name;
+    $("#me-role").textContent = user.role === "admin" ? "Admin" : "Viewer";
+    $("#me-wrap").hidden = false;
+  },
+  toggle(open = $("#me-menu").hidden) {
+    $("#me-menu").hidden = !open;
+    $("#me-btn").setAttribute("aria-expanded", String(open));
+    if (open) $("#me-menu [role=menuitem]").focus();
+  },
+};
+$("#me-btn").addEventListener("click", e => {
+  e.stopPropagation();
+  MeMenu.toggle();
+});
+$("#me-signout").addEventListener("click", () => signOut(false));
+document.addEventListener("click", e => {
+  if (!$("#me-menu").hidden && !e.target.closest("#me-wrap")) MeMenu.toggle(false);
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !$("#me-menu").hidden) {
+    MeMenu.toggle(false);
+    $("#me-btn").focus();
+  }
+});
 
 // LabKeel updating itself (see selfupdate.py): Settings → LabKeel, and "update" beside Settings in the sidebar
 function settingsBadge() {

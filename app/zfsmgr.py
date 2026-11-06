@@ -5,12 +5,11 @@ Everything goes through the host's own `zpool` and `zfs`. A name sent by the bro
 it has been matched against what ZFS reports right now or, for something new, checked against ZFS's
 naming rules. Drives are only ever picked by serial number from the ones that are free, and added by
 their permanent /dev/disk/by-id name. Anything that erases data, or can't be undone, needs the name
-typed and, with sign-in on, the dashboard password again. None of it works unless DASH_ZFS_WRITE=1 turns it on.
+typed and, with sign-in on, the dashboard password again. None of it works unless LABKEEL_ALLOW_ZFS_CHANGES=1 turns it on.
 
 Automatic snapshots, and scheduled scrubs and TRIMs, are kept in the data folder (zfs.json).
 """
 import json
-import os
 import re
 import subprocess
 import sys
@@ -22,10 +21,11 @@ import psutil
 from fastapi import APIRouter, Body, HTTPException, Request
 
 import containers
+import env
 
 router = APIRouter()
-WRITE = os.environ.get("DASH_ZFS_WRITE", "0") == "1"  # off unless turned on: pool changes can erase everything
-TICK = int(os.environ.get("DASH_ZFS_TICK", "60"))  # seconds between checks for snapshots, scrubs and TRIMs that are due
+WRITE = env.flag("LABKEEL_ALLOW_ZFS_CHANGES")  # off unless turned on: pool changes can erase everything
+TICK = env.number("LABKEEL_ZFS_CHECK_SECONDS", 60, minimum=1)  # seconds between checks for snapshots, scrubs and TRIMs that are due
 _mut = threading.Lock()        # one change to the pools at a time
 _st_lock = threading.RLock()   # zfs.json
 
@@ -140,7 +140,7 @@ class changing:
     def __enter__(self):
         """Refused (403) when changes are off, or (409) while another change is still running."""
         if not WRITE:
-            raise HTTPException(403, "Pool changes are turned off for this dashboard. An admin can turn them on with DASH_ZFS_WRITE=1.")
+            raise HTTPException(403, "Pool changes are turned off for this dashboard. An admin can turn them on with LABKEEL_ALLOW_ZFS_CHANGES=1.")
         if not _mut.acquire(timeout=5):
             raise HTTPException(409, "Another pool change is still running. Try again once it's finished.")
         return self
@@ -647,7 +647,7 @@ def api_schedule(pool: str, body: dict = Body(...)):
     """Set a pool's scrub and TRIM schedules."""
     name, _ = pool_or_404(pool)
     if not WRITE:
-        raise HTTPException(403, "Pool changes are turned off for this dashboard. An admin can turn them on with DASH_ZFS_WRITE=1.")
+        raise HTTPException(403, "Pool changes are turned off for this dashboard. An admin can turn them on with LABKEEL_ALLOW_ZFS_CHANGES=1.")
     with _st_lock:
         st = _load()
         sch = st.setdefault("schedule", {}).setdefault(name, {})
@@ -1263,7 +1263,7 @@ def api_rollback(request: Request, body: dict = Body(...)):
 def api_autosnap(request: Request, body: dict = Body(...)):
     """Set a dataset's automatic snapshots: how many hourly, daily, weekly and monthly ones to keep."""
     if not WRITE:
-        raise HTTPException(403, "Pool changes are turned off for this dashboard. An admin can turn them on with DASH_ZFS_WRITE=1.")
+        raise HTTPException(403, "Pool changes are turned off for this dashboard. An admin can turn them on with LABKEEL_ALLOW_ZFS_CHANGES=1.")
     pool, d = _ds_or_404(str(body.get("dataset") or ""))
     try:
         pol = {k: max(0, min(KEEP_MAX[k], int(body.get(k) or 0))) for k in KEEP_MAX}
@@ -1453,7 +1453,7 @@ def _sched_one(pool, what, sch, now, pools, detail):
 
 
 def tick():
-    """Every DASH_ZFS_TICK seconds: scheduled scrubs and TRIMs, and automatic snapshots."""
+    """Every LABKEEL_ZFS_CHECK_SECONDS seconds: scheduled scrubs and TRIMs, and automatic snapshots."""
     with _st_lock:
         st = _load()
     if not st.get("autosnap") and not st.get("schedule"):
@@ -1488,7 +1488,7 @@ def tick():
 
 
 def loop():
-    """Background thread: tick, every DASH_ZFS_TICK seconds, or straight after a change."""
+    """Background thread: tick, every LABKEEL_ZFS_CHECK_SECONDS seconds, or straight after a change."""
     time.sleep(min(40, TICK))
     while True:
         try:

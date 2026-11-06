@@ -42,6 +42,9 @@
   src: url(/assets/jetbrains-mono-latin-500-normal.woff2) format("woff2");
 }
 :root {
+  /* the phone layout's fixed top bar and tab bar (0 on wider screens): sticky things sit clear of them */
+  --top-bar: 0px;
+  --tab-bar: 0px;
   --bg: #16202a;
   --panel: #1d2935;
   --panel-2: #22303e;
@@ -158,11 +161,13 @@ select {
   display: grid;
   grid-template-columns: 220px 1fr;
   min-height: 100vh;
+  min-height: 100dvh; /* the visible height on phones, whose toolbars come and go */
 }
 .rail {
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh;
   border-right: 1px solid var(--rule);
   padding: 22px 14px;
   display: flex;
@@ -241,6 +246,72 @@ select {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+/* the account menu (phones only: on wider screens the sidebar shows Account and Sign out) */
+.me-wrap {
+  display: none;
+  position: relative;
+}
+.me-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--rule-2);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+.me-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--rule-2);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+.me-menu[hidden] {
+  display: none;
+}
+.me-who {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px 10px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 4px;
+  font-size: 15px;
+  color: var(--text);
+}
+.me-who span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.me-menu a,
+.me-menu button {
+  text-align: left;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  padding: 11px 12px;
+  border-radius: 7px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.me-menu a:hover,
+.me-menu a:focus-visible,
+.me-menu button:hover,
+.me-menu button:focus-visible {
+  background: var(--panel-2);
 }
 .linkbtn {
   background: none;
@@ -1027,7 +1098,7 @@ body.viewer #c-bulk {
   border-radius: 10px;
   background: var(--panel-2);
   position: sticky;
-  top: 8px;
+  top: calc(var(--top-bar) + 8px);
   z-index: 5;
 }
 .bulkbar b {
@@ -1163,6 +1234,10 @@ body.viewer #c-check {
 .s-summary .led {
   width: 10px;
   height: 10px;
+}
+.s-summary > .led + span {
+  flex: 1 1 200px; /* the message stays beside its light on narrow screens */
+  min-width: 0;
 }
 .s-summary b {
   font-weight: 600;
@@ -2689,7 +2764,7 @@ pre.raw {
   color: var(--muted);
   background: var(--panel-2);
   position: sticky;
-  top: 0;
+  top: 0; /* of the file list, which scrolls by itself */
 }
 .frow.head button {
   background: none;
@@ -3354,7 +3429,7 @@ dialog.dlg::backdrop {
 }
 .savebar {
   position: sticky;
-  bottom: 16px;
+  bottom: calc(var(--tab-bar) + 16px);
   margin-top: 16px;
   display: flex;
   justify-content: space-between;
@@ -3413,7 +3488,7 @@ dialog.dlg::backdrop {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 24px;
+  bottom: calc(var(--tab-bar) + 24px);
   transform: translateX(-50%);
   z-index: 70;
   width: max-content;
@@ -3523,6 +3598,7 @@ dialog.dlg::backdrop {
   display: block;
   max-width: 100%;
   max-height: 80vh;
+  max-height: 80dvh;
   margin: 18px auto;
 }
 .drawer-body audio {
@@ -3558,31 +3634,47 @@ dialog.dlg::backdrop {
   body {
     -webkit-tap-highlight-color: transparent;
   }
+  :root {
+    --top-bar: calc(55px + env(safe-area-inset-top));
+    --tab-bar: calc(61px + env(safe-area-inset-bottom));
+  }
   .app {
-    grid-template-columns: 1fr;
+    display: block;
   }
 
-  /* top bar: host, uptime, theme */
+  /* top bar: host, uptime, theme, and your account menu. Fixed with a set height (not sticky in the page's
+     flow): on a short page a flowing bar took a share of the spare height and reached halfway down the screen,
+     and Safari doesn't always keep a fixed tab bar in place inside a sticky one. */
   .rail {
-    position: sticky;
+    position: fixed;
     top: 0;
+    left: 0;
+    right: 0;
     z-index: 30;
-    height: auto;
+    height: var(--top-bar);
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+    padding: calc(10px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 10px
+      calc(16px + env(safe-area-inset-left));
     border-right: 0;
     border-bottom: 1px solid var(--rule);
     background: var(--bg);
-  } /* no backdrop-filter here: it would trap the fixed tab bar inside this header */
+  }
   .host {
     padding: 0;
     min-width: 0;
   }
   .host-name {
     font-size: 17px;
+    word-break: normal;
+  }
+  #host-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .host-sub {
     display: none;
@@ -3607,6 +3699,13 @@ dialog.dlg::backdrop {
   #theme-btn .tb-ic {
     display: block;
   }
+  #account-link,
+  #signout-btn {
+    display: none;
+  }
+  .me-wrap:not([hidden]) {
+    display: block;
+  }
   #theme-btn .tb-text {
     position: absolute;
     width: 1px;
@@ -3626,11 +3725,10 @@ dialog.dlg::backdrop {
     display: grid;
     grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 0;
-    padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+    padding: 4px calc(4px + env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom))
+      calc(4px + env(safe-area-inset-left));
     border-top: 1px solid var(--rule);
-    background: color-mix(in srgb, var(--bg) 94%, transparent);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: var(--bg); /* solid: see-through and blurred, it looked smeared under the browser's own toolbar */
   }
   .nav a {
     position: relative;
@@ -3687,7 +3785,16 @@ dialog.dlg::backdrop {
   }
 
   main {
-    padding: 18px 16px calc(84px + env(safe-area-inset-bottom));
+    padding: calc(var(--top-bar) + 18px) calc(16px + env(safe-area-inset-right)) calc(var(--tab-bar) + 24px)
+      calc(16px + env(safe-area-inset-left));
+  }
+  /* while the on-screen keyboard is up the tab bar steps aside: some phones would otherwise float it
+     over the middle of the page */
+  body.kb-open .nav {
+    display: none;
+  }
+  body.kb-open {
+    --tab-bar: 0px;
   }
   h1 {
     font-size: 24px;
@@ -3701,9 +3808,6 @@ dialog.dlg::backdrop {
   }
   section + section {
     margin-top: 26px;
-  }
-  .savebar {
-    bottom: calc(72px + env(safe-area-inset-bottom));
   }
 
   /* overview: 2 × 2 stats */
@@ -4007,16 +4111,18 @@ dialog.dlg::backdrop {
     margin-top: 6px;
   }
 
-  #signout-btn {
-    display: none;
-  }
   .list {
     padding: 0 14px;
   }
 
-  /* settings */
+  /* settings: a card's buttons go under its heading rather than squeeze it */
   .set-head {
     padding: 14px;
+    flex-wrap: wrap;
+  }
+  .set-head > div:first-child {
+    flex: 1 1 220px;
+    min-width: 0;
   }
   .set-body {
     padding: 0 14px 14px;
@@ -4031,13 +4137,14 @@ dialog.dlg::backdrop {
     border-left: 0;
   }
   .drawer-head {
-    padding: calc(12px + env(safe-area-inset-top)) 14px 12px;
+    padding: calc(12px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) 12px
+      calc(14px + env(safe-area-inset-left));
+  }
+  .drawer-body {
+    padding-bottom: env(safe-area-inset-bottom); /* clear of the iPhone's home bar */
   }
   .drawer-head .toolbar {
     width: 100%;
-  }
-  .toast {
-    bottom: calc(80px + env(safe-area-inset-bottom));
   }
 }
 @media (max-width: 360px) {
@@ -4118,7 +4225,7 @@ body.viewer .admin-only {
 /* transfers: one line at the top of every page while files upload, copy or move */
 .xfer {
   position: sticky;
-  top: 10px;
+  top: calc(var(--top-bar) + 10px);
   z-index: 40;
   display: flex;
   align-items: center;
@@ -4276,7 +4383,6 @@ body.viewer .admin-only {
 }
 @media (max-width: 820px) {
   .xfer {
-    top: 64px;
     font-size: 13.5px;
   }
 }
@@ -4519,8 +4625,8 @@ a.svc-row:hover {
   margin-bottom: 22px;
   border: 1px solid color-mix(in srgb, var(--good) 35%, var(--rule));
   border-radius: 14px;
-  background:
-    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--good) 16%, transparent), transparent 55%), var(--panel);
+  background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--good) 16%, transparent), transparent 55%),
+    var(--panel);
   overflow: hidden;
 }
 .s-shield {

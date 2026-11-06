@@ -184,7 +184,7 @@ def api_register_options(request: Request, body: dict = Body(default={})):
     if len(keys) >= MAX_KEYS:
         raise HTTPException(409, f"There are already {MAX_KEYS} passkeys. Remove one you don't use first.")
     opts = w.generate_registration_options(
-        rp_id=rp_id, rp_name=f"{M().HOST_INFO.get('hostname') or 'Homelab'} dashboard", user_name=me["name"],
+        rp_id=rp_id, rp_name=f"LabKeel on {M().HOST_INFO.get('hostname') or 'this server'}", user_name=me["name"],
         user_id=me["id"].encode(), user_display_name=me["name"],
         authenticator_selection=AuthenticatorSelectionCriteria(resident_key=ResidentKeyRequirement.REQUIRED,
                                                                user_verification=UserVerificationRequirement.REQUIRED),

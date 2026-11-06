@@ -22,6 +22,7 @@ from fastapi import APIRouter, Body, HTTPException, Request
 
 import containers
 import selfupdate
+import updates
 
 router = APIRouter()
 
@@ -54,7 +55,7 @@ def compose_info(c):
             and selfupdate._SAFE_PATH.match(info["workdir"]) and all(selfupdate._SAFE_PATH.match(f) for f in info["files"])):
         raise Refused("This container's compose project has a name or folder LabKeel won't pass to a command.")
     if not sys.modules["main"].HOST_NS:
-        raise Refused("LabKeel can't run commands on this machine (DASH_HOST_NS is off), so it can't run docker compose.")
+        raise Refused("LabKeel can't run commands on this machine (LABKEEL_HOST_COMMANDS is off), so it can't run docker compose.")
     return info
 
 
@@ -109,8 +110,9 @@ def run(name, info, ref, old_image):
     job = _jobs[name]
     say = lambda text: job["steps"].append({"t": time.time(), "text": text})  # noqa: E731
     host, compose = selfupdate.host, selfupdate.compose_args(info)
-    cl = containers.dclient()
+    final = {}  # how it ended: applied to the job last, after the re-check, so the page sees the new badge
     try:
+        cl = containers.dclient()
         say(f"Downloading the newest {ref}")
         r = host(compose + ["pull", info["service"]], PULL_TIMEOUT)
         if r.returncode != 0:
@@ -120,7 +122,7 @@ def run(name, info, ref, old_image):
         except Exception:
             new_image = None
         if new_image == old_image:
-            job.update(state="done", result="current")
+            final.update(state="done", result="current")
             say("Already on the newest image: nothing to change")
             return
         say("Re-creating the container on the new image")
@@ -131,7 +133,7 @@ def run(name, info, ref, old_image):
         say("Checking the new container works")
         problem = _healthy_enough(cl, info, say)
         if problem is None:
-            job.update(state="done", result="updated")
+            final.update(state="done", result="updated")
             say("Updated")
             U().log("container", f"Updated {name} to the newest {ref}")
             return
@@ -141,14 +143,19 @@ def run(name, info, ref, old_image):
         r = host(compose + ["up", "-d", "--no-deps", info["service"]], UP_TIMEOUT)
         if r.returncode != 0:
             raise RuntimeError(f"{problem}, and going back failed too: {selfupdate._err(r)[0]}")
-        job.update(state="failed", result="rolled_back", detail=problem)
+        final.update(state="failed", result="rolled_back", detail=problem)
         say("Back on the previous image")
         U().log("error", f"Updating {name} failed ({problem}), so it was put back on its previous image")
     except Exception as e:
-        job.update(state="failed", result="error", detail=str(e))
+        final.update(state="failed", result="error", detail=str(e))
         say(f"Stopped: {e}")
         U().log("error", f"Updating {name} failed: {e}")
     finally:
+        try:
+            updates.recheck(ref)  # so the Update badge goes now, not at the next scheduled check
+        except Exception as e:  # the registry may be unreachable: the next scheduled check will put it right
+            say(f"Couldn't re-check the image for updates ({type(e).__name__})")
+        job.update(final or {"state": "failed", "result": "error"})
         job["finished"] = time.time()
         containers.refresh_soon()
 

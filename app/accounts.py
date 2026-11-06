@@ -6,7 +6,7 @@ Where accounts come from
   command line inside the container (see the bottom of this file):
       docker exec -it labkeel python accounts.py add alice --role viewer
       docker exec -it labkeel python accounts.py passwd sam        (a forgotten password)
-- Optionally one admin from the environment: DASH_USER with DASH_PASS_HASH, an Argon2id hash from
+- Optionally one admin from the environment: LABKEEL_ADMIN_USER with LABKEEL_ADMIN_PASSWORD_HASH, an Argon2id hash from
   `python accounts.py hash`. It can't be changed or removed from the dashboard: change it in
   docker-compose.yml. Changing it signs that account out everywhere. Passwords are only ever stored as
   hashes, never as text anyone could read.
@@ -34,7 +34,9 @@ from pathlib import Path
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
-DATA_DIR = Path(os.environ.get("DASH_DATA", "/data"))
+import env
+
+DATA_DIR = Path(env.text("LABKEEL_DATA_DIR", "/data"))
 ROLES = ("admin", "viewer")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$")
 ID_RE = re.compile(r"^[0-9a-f]{16}$")
@@ -101,11 +103,11 @@ def _env():
     """The admin set in the environment, or None. Read once."""
     if "env" in _dummy:
         return _dummy["env"]
-    name = (os.environ.get("DASH_USER") or "").strip()
-    phash = (os.environ.get("DASH_PASS_HASH") or "").strip()
+    name = env.text("LABKEEL_ADMIN_USER").strip()
+    phash = env.text("LABKEEL_ADMIN_PASSWORD_HASH").strip()
     acct = None
     if phash and not phash.startswith("$argon2"):
-        print("DASH_PASS_HASH isn't an Argon2 hash (make one with: python accounts.py hash); ignoring it.", flush=True)
+        print("LABKEEL_ADMIN_PASSWORD_HASH isn't an Argon2 hash (make one with: python accounts.py hash); ignoring it.", flush=True)
         phash = ""
     if name and phash:
         acct = {
@@ -115,7 +117,7 @@ def _env():
             "stamp": hashlib.sha256(f"env|{name}|{phash}".encode()).hexdigest()[:32],
         }
     elif name:
-        print("DASH_USER is set without DASH_PASS_HASH, so it isn't an account. Add DASH_PASS_HASH, or remove DASH_USER.",
+        print("LABKEEL_ADMIN_USER is set without LABKEEL_ADMIN_PASSWORD_HASH, so it isn't an account. Add LABKEEL_ADMIN_PASSWORD_HASH, or remove LABKEEL_ADMIN_USER.",
               flush=True)
     _dummy["env"] = acct
     return acct
@@ -236,7 +238,7 @@ def _change(uid, fn):
         if u is None:
             env = _env()
             if env and env["id"] == uid:
-                raise Problem("This account is set in docker-compose.yml (DASH_USER), so change it there.")
+                raise Problem("This account is set in docker-compose.yml (LABKEEL_ADMIN_USER), so change it there.")
             raise Problem("There's no such account.")
         fn(u, users)
         _save_file(users)
@@ -296,7 +298,7 @@ def remove(uid):
         if u is None:
             env = _env()
             if env and env["id"] == uid:
-                raise Problem("This account is set in docker-compose.yml (DASH_USER), so remove it there.")
+                raise Problem("This account is set in docker-compose.yml (LABKEEL_ADMIN_USER), so remove it there.")
             raise Problem("There's no such account.")
         if u["role"] == "admin" and _admins_after(users, removed=uid) == 0:
             raise Problem("That's the last admin. Make someone else an admin first.")
@@ -358,11 +360,11 @@ def _cli(argv):
     r.add_argument("role", choices=ROLES)
     d = sub.add_parser("remove", help="remove an account")
     d.add_argument("name")
-    sub.add_parser("hash", help="print an Argon2id hash of a password, for DASH_PASS_HASH")
+    sub.add_parser("hash", help="print an Argon2id hash of a password, for LABKEEL_ADMIN_PASSWORD_HASH")
     args = ap.parse_args(argv)
     try:
         if args.cmd == "hash":
-            print(hash_password(_ask_password("DASH_PASS_HASH")))
+            print(hash_password(_ask_password("LABKEEL_ADMIN_PASSWORD_HASH")))
         elif args.cmd == "list":
             for u in all_users():
                 print(f"{u['name']:24} {u['role']:7} {'(from docker-compose.yml)' if u.get('source') == 'env' else ''}")

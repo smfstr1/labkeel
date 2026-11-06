@@ -28,36 +28,42 @@ services:
     privileged: true
 
     environment:
-      # What LabKeel may change. All three start OFF: turn on only what you need.
-      - DASH_FILES_WRITE=0      # 1 = upload, edit, move and delete files in the file browser
-      - DASH_ZFS_WRITE=0        # 1 = create, change and destroy ZFS pools, datasets and snapshots
-      - DASH_ALLOW_REBOOT=0     # 1 = restart and shut down the machine
+      # ---- What LabKeel may change on this machine. All start off: turn on only what you need. ----
+      - LABKEEL_ALLOW_FILE_CHANGES=0   # 1 = upload, edit, move and delete files in the file browser
+      - LABKEEL_ALLOW_ZFS_CHANGES=0    # 1 = create, change and destroy ZFS pools, datasets and snapshots
+      - LABKEEL_ALLOW_RESTART=0        # 1 = restart and shut down the machine
 
-      # Accounts are made on the set-up page and the Account page; nothing is needed here.
-      # Optionally, one admin set here instead (it can't be changed from the dashboard):
-      # - DASH_USER=admin
-      # - DASH_PASS_HASH=$$argon2id$$v=19$$...   # from: docker exec -it labkeel python accounts.py hash
-      #                                          # (write each $ as $$ in this file)
+      # ---- Sign-in ----
+      # Accounts are made on the set-up page and the Account page, so nothing is needed here.
+      # Or set one admin here instead (it can't then be changed from the dashboard). Make the hash with
+      #   docker exec -it labkeel python accounts.py hash
+      # and write each $ in it as $$ in this file:
+      # - LABKEEL_ADMIN_USER=admin
+      # - LABKEEL_ADMIN_PASSWORD_HASH=$$argon2id$$v=19$$...
 
-      # Optional
-      # - DASH_PORT=8787
-      # - DASH_TLS=auto          # auto | tailscale | self-signed | off (off = plain HTTP behind your own HTTPS
-      #                          # proxy, which then needs DASH_TRUSTED_PROXY: sign-in only happens over HTTPS)
-      # - DASH_HSTS=1            # tell browsers to always use https:// for this name. Only if nothing else
-      #                          # on the same host name uses plain http:// (HSTS covers every port)
-      # - DASH_UPLOAD_MAX_GB=10  # largest single upload; leave out for no limit
-      # - DASH_TRASH_DAYS=30     # days deleted files stay in the bin
-      # - TZ=Europe/London       # only if the machine has no /etc/timezone; used for scheduled restarts
+      # ---- Optional ----
+      # - LABKEEL_PORT=8787            # the port to open in your browser
+      # - LABKEEL_HTTPS=auto           # auto | tailscale | self-signed | off
+      #                                #   off = plain HTTP behind your own HTTPS proxy, which then needs
+      #                                #   LABKEEL_TRUSTED_PROXY below (LabKeel only signs people in over HTTPS)
+      # - LABKEEL_HSTS=1               # tell browsers to always use https:// for this name. Only if nothing else
+      #                                #   on the same name uses plain http:// (it covers every port)
+      # - LABKEEL_UPLOAD_LIMIT_GB=10   # largest single upload (leave out for no limit)
+      # - LABKEEL_BIN_DAYS=30          # days deleted files stay in the Bin
+      # - TZ=Europe/London             # only if the machine has no /etc/timezone (used for scheduled restarts)
 
-      # Behind a reverse proxy (Caddy, nginx, Traefik). Only requests from these addresses may say who the
-      # visitor really is (X-Forwarded-For) or that they came over HTTPS (X-Forwarded-Proto):
-      # - DASH_TRUSTED_PROXY=127.0.0.1
+      # ---- Behind a reverse proxy (Caddy, nginx, Traefik) ----
+      # Only requests from these addresses may say who the visitor is (X-Forwarded-For) or that they came
+      # over HTTPS (X-Forwarded-Proto):
+      # - LABKEEL_TRUSTED_PROXY=127.0.0.1
       # Let the proxy sign people in (Authelia, Authentik, oauth2-proxy). It must set this header itself and
       # remove any copy the visitor sends. Names with a LabKeel account get that account's role; others need
-      # to be listed here ("*" lets everyone the proxy signs in view):
-      # - DASH_AUTH_HEADER=Remote-User
-      # - DASH_PROXY_ADMINS=alice
-      # - DASH_PROXY_VIEWERS=*
+      # listing here ("*" lets everyone the proxy signs in view):
+      # - LABKEEL_PROXY_USER_HEADER=Remote-User
+      # - LABKEEL_PROXY_ADMINS=alice
+      # - LABKEEL_PROXY_VIEWERS=*
+      #
+      # Every setting is described in docs/settings.md. Names from before 0.1.2 (DASH_...) still work.
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock   # list, start, stop and restart containers

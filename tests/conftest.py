@@ -3,7 +3,7 @@ Shared set-up for the tests.
 
 The app reads its settings from environment variables when it's imported, so they're set here,
 before anything imports it, pointing at a throwaway folder. Nothing touches the real machine:
-DASH_HOST_NS=0 keeps every command inside this process's own view of the system.
+LABKEEL_HOST_COMMANDS=0 keeps every command inside this process's own view of the system.
 """
 import os
 import shutil
@@ -18,7 +18,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 
-TMP = Path(tempfile.mkdtemp(prefix="dash-test-"))
+TMP = Path(tempfile.mkdtemp(prefix="labkeel-test-"))
 for d in ("data", "config", "certs", "browse"):
     (TMP / d).mkdir()
 (TMP / "config" / "config.json").write_text('{"title": "Test lab"}')
@@ -30,16 +30,16 @@ from argon2 import PasswordHasher  # noqa: E402
 PASSWORD_HASH = PasswordHasher().hash(PASSWORD)
 
 os.environ.update({
-    "DASH_DATA": str(TMP / "data"),
-    "DASH_CONFIG": str(TMP / "config" / "config.json"),
-    "DASH_CERTS": str(TMP / "certs"),
-    "DASH_BROWSE_ROOT": str(TMP / "browse"),
-    "DASH_HOST_NS": "0",
-    "DASH_USER": USER,
-    "DASH_PASS_HASH": PASSWORD_HASH,
-    "DASH_ALLOW_REBOOT": "0",
-    "DASH_FILES_WRITE": "1",
-    "DASH_ZFS_WRITE": "1",
+    "LABKEEL_DATA_DIR": str(TMP / "data"),
+    "LABKEEL_CONFIG_FILE": str(TMP / "config" / "config.json"),
+    "LABKEEL_CERTS_DIR": str(TMP / "certs"),
+    "LABKEEL_FILES_DIR": str(TMP / "browse"),
+    "LABKEEL_HOST_COMMANDS": "0",
+    "LABKEEL_ADMIN_USER": USER,
+    "LABKEEL_ADMIN_PASSWORD_HASH": PASSWORD_HASH,
+    "LABKEEL_ALLOW_RESTART": "0",
+    "LABKEEL_ALLOW_FILE_CHANGES": "1",
+    "LABKEEL_ALLOW_ZFS_CHANGES": "1",
 })
 
 import main  # noqa: E402

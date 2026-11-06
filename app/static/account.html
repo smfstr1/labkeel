@@ -7,11 +7,12 @@
 <title>Account</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/app-icon.png">
-<meta name="theme-color" content="#151b23">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16202a">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#eef2f5">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Homelab">
+<meta name="apple-mobile-web-app-title" content="LabKeel">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='5' width='26' height='22' rx='5' fill='%2316202A'/%3E%3Crect x='7' y='10' width='18' height='4' rx='2' fill='%236FA8EE'/%3E%3Crect x='7' y='18' width='18' height='4' rx='2' fill='%234CC2AE'/%3E%3Ccircle cx='22' cy='12' r='1.2' fill='%2316202A'/%3E%3Ccircle cx='22' cy='20' r='1.2' fill='%2316202A'/%3E%3C/svg%3E">
 <style>
 @font-face { font-family: "Hanken Grotesk"; font-style: normal; font-weight: 400; font-display: swap; src: url(/assets/hanken-grotesk-latin-400-normal.woff2) format("woff2"); }
@@ -36,7 +37,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
 body { background: var(--bg); color: var(--text); font: 15px/1.45 var(--sans); -webkit-font-smoothing: antialiased;
-  min-height: 100vh; padding: 24px 16px; }
+  min-height: 100vh; min-height: 100dvh; padding: 24px 16px; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .box { width: 100%; max-width: 720px; margin: 0 auto 18px; background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 26px 24px 22px; }
 .host { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 17px; margin-bottom: 18px; }

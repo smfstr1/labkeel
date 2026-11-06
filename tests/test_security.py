@@ -165,8 +165,8 @@ def test_unknown_names_still_cost_a_password_check(users, monkeypatch):
 def test_hash_from_environment(monkeypatch):
     h = accounts.hash_password(OTHER)
     saved = accounts._dummy.pop("env", None)
-    monkeypatch.setenv("DASH_USER", "envy")
-    monkeypatch.setenv("DASH_PASS_HASH", h)
+    monkeypatch.setenv("LABKEEL_ADMIN_USER", "envy")
+    monkeypatch.setenv("LABKEEL_ADMIN_PASSWORD_HASH", h)
     try:
         u = accounts._env()
         assert u["name"] == "envy" and accounts.verify(u["hash"], OTHER) and not accounts.verify(u["hash"], PASSWORD)
@@ -176,8 +176,8 @@ def test_hash_from_environment(monkeypatch):
 
 def test_user_name_alone_is_not_an_account(monkeypatch):
     saved = accounts._dummy.pop("env", None)
-    monkeypatch.setenv("DASH_USER", "envy")
-    monkeypatch.delenv("DASH_PASS_HASH", raising=False)
+    monkeypatch.setenv("LABKEEL_ADMIN_USER", "envy")
+    monkeypatch.delenv("LABKEEL_ADMIN_PASSWORD_HASH", raising=False)
     try:
         assert accounts._env() is None  # only a hash makes an account from docker-compose.yml
     finally:
@@ -186,8 +186,8 @@ def test_user_name_alone_is_not_an_account(monkeypatch):
 
 def test_bad_hash_in_environment_is_ignored(monkeypatch):
     saved = accounts._dummy.pop("env", None)
-    monkeypatch.setenv("DASH_USER", "envy")
-    monkeypatch.setenv("DASH_PASS_HASH", "plaintext-not-a-hash")
+    monkeypatch.setenv("LABKEEL_ADMIN_USER", "envy")
+    monkeypatch.setenv("LABKEEL_ADMIN_PASSWORD_HASH", "plaintext-not-a-hash")
     try:
         assert accounts._env() is None  # no account rather than one with a broken hash
     finally:
@@ -470,23 +470,27 @@ def test_passkeys_are_private_to_their_account(users, monkeypatch):
 
 
 # --------------------------------------------------------------------------- safe defaults
-def test_destructive_features_are_off_unless_turned_on():
-    import importlib
+def test_destructive_features_are_off_unless_turned_on(monkeypatch):
     import sys
+
+    import env
     src = {m: open(sys.modules[m].__file__).read() for m in ("fileops", "zfsmgr", "upkeep")}
-    assert 'os.environ.get("DASH_FILES_WRITE", "0") == "1"' in src["fileops"]
-    assert 'os.environ.get("DASH_ZFS_WRITE", "0") == "1"' in src["zfsmgr"]
-    assert 'os.environ.get("DASH_ALLOW_REBOOT", "0") == "1"' in src["upkeep"]
-    del importlib
+    assert 'WRITE = env.flag("LABKEEL_ALLOW_FILE_CHANGES")' in src["fileops"]     # no default given: off
+    assert 'WRITE = env.flag("LABKEEL_ALLOW_ZFS_CHANGES")' in src["zfsmgr"]
+    assert 'ALLOW_REBOOT = env.flag("LABKEEL_ALLOW_RESTART")' in src["upkeep"]
+    for name in ("LABKEEL_ALLOW_FILE_CHANGES", "LABKEEL_ALLOW_ZFS_CHANGES", "LABKEEL_ALLOW_RESTART"):
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.delenv(env.RENAMED[name], raising=False)
+        assert env.flag(name) is False
 
 
 # --------------------------------------------------------------------------- the command line
 def test_command_line_lists_and_refuses_unknown_names(tmp_path):
     import subprocess
     import sys
-    env = {**os.environ, "DASH_DATA": str(tmp_path)}
-    env.pop("DASH_USER", None)
-    env.pop("DASH_PASS_HASH", None)
+    env = {**os.environ, "LABKEEL_DATA_DIR": str(tmp_path)}
+    env.pop("LABKEEL_ADMIN_USER", None)
+    env.pop("LABKEEL_ADMIN_PASSWORD_HASH", None)
     app = os.path.join(os.path.dirname(accounts.__file__), "accounts.py")
     r = subprocess.run([sys.executable, app, "list"], env=env, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0 and "No accounts yet" in r.stdout
@@ -510,7 +514,7 @@ def test_nothing_over_plain_http(method, path):
 
 def test_plain_http_explains_itself():
     r = plain().get("/")
-    assert "isn't encrypted" in r.text and "DASH_TRUSTED_PROXY" in r.text
+    assert "isn't encrypted" in r.text and "LABKEEL_TRUSTED_PROXY" in r.text
     assert "script-src 'none'" in r.headers["content-security-policy"]
 
 
@@ -527,7 +531,7 @@ def test_setup_refused_over_plain_http(no_accounts, monkeypatch):
 def test_https_claim_only_believed_from_the_proxy(proxy):
     r = plain(client=("10.0.0.99", 1)).post("/api/login", json={"username": USER, "password": PASSWORD},
                                              headers={"X-Forwarded-Proto": "https"})
-    assert r.status_code == 403  # anyone can send that header; only DASH_TRUSTED_PROXY is believed
+    assert r.status_code == 403  # anyone can send that header; only LABKEEL_TRUSTED_PROXY is believed
     r = plain(client=PROXY).post("/api/login", json={"username": USER, "password": PASSWORD},
                                  headers={"X-Forwarded-Proto": "https"})
     assert r.status_code == 200

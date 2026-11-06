@@ -5,8 +5,8 @@ trusted reverse proxy, and checks that block other websites from sending request
 Also the headers every answer carries, and the pages' content security policy.
 
 Sign-in is on as soon as there's an account: one made on the first-run set-up page, one from the
-command line, or DASH_USER with DASH_PASS_HASH. Without any, the dashboard shows only the
-set-up page, unless DASH_ALLOW_NO_AUTH=1 says you really want it open (and even then it only answers
+command line, or LABKEEL_ADMIN_USER with LABKEEL_ADMIN_PASSWORD_HASH. Without any, the dashboard shows only the
+set-up page, unless LABKEEL_ALLOW_NO_SIGN_IN=1 says you really want it open (and even then it only answers
 to this machine's own names).
 
 How a session works: the cookie is "<account id>.<random id>.<expiry>.<signature>". The signature is an
@@ -18,7 +18,7 @@ that one cookie stops working even if it was copied.
 Every request goes through guard() below, which is locked by default: a page or API that isn't on the
 short public list needs a signed-in account, and a viewer account only gets the read-only status APIs.
 Nothing but the health check is served over plain HTTP: sign-in only happens over HTTPS (LabKeel's own,
-or a trusted proxy's, see DASH_TRUSTED_PROXY).
+or a trusted proxy's, see LABKEEL_TRUSTED_PROXY).
 """
 import asyncio
 import base64
@@ -40,6 +40,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from starlette.middleware.gzip import GZipMiddleware
 
 import accounts
+import env
 
 router = APIRouter()
 COOKIE = "hd_session"            # plain-HTTP fallback name
@@ -51,8 +52,8 @@ PUBLIC = {"/login", "/api/login", "/api/login-info", "/api/health", "/api/login/
 PUBLIC_PREFIXES = ("/assets/",)
 SETUP_PATHS = {"/setup", "/api/setup", "/api/setup-info", "/api/health"}
 MAX_BODY = 1_000_000  # bytes: the most any request may send, except file uploads (see body_limit)
-ALLOW_NO_AUTH = os.environ.get("DASH_ALLOW_NO_AUTH", "0") == "1"
-HSTS = os.environ.get("DASH_HSTS", "0") == "1"
+ALLOW_NO_AUTH = env.flag("LABKEEL_ALLOW_NO_SIGN_IN")
+HSTS = env.flag("LABKEEL_HSTS")
 PEERS = {}  # filled by serve.py: local port of the inner connection -> real client address
 _fails = {}  # address -> [[time, account name or None], ...] of recent wrong passwords
 _lock = threading.Lock()
@@ -84,14 +85,14 @@ def _nets(spec):
             try:
                 out.append(ipaddress.ip_network(part, strict=False))
             except ValueError:
-                print(f"DASH_TRUSTED_PROXY: {part!r} isn't an address or network; ignoring it.", flush=True)
+                print(f"LABKEEL_TRUSTED_PROXY: {part!r} isn't an address or network; ignoring it.", flush=True)
     return out
 
 
-TRUSTED = _nets(os.environ.get("DASH_TRUSTED_PROXY", ""))
-PROXY_HEADER = (os.environ.get("DASH_AUTH_HEADER") or "").strip()
-PROXY_ADMINS = {n.strip().casefold() for n in os.environ.get("DASH_PROXY_ADMINS", "").split(",") if n.strip()}
-PROXY_VIEWERS = {n.strip().casefold() for n in os.environ.get("DASH_PROXY_VIEWERS", "").split(",") if n.strip()}
+TRUSTED = _nets(env.text("LABKEEL_TRUSTED_PROXY"))
+PROXY_HEADER = env.text("LABKEEL_PROXY_USER_HEADER").strip()
+PROXY_ADMINS = {n.casefold() for n in env.names("LABKEEL_PROXY_ADMINS")}
+PROXY_VIEWERS = {n.casefold() for n in env.names("LABKEEL_PROXY_VIEWERS")}
 
 
 def trusted(ip):
@@ -109,7 +110,7 @@ def proxy_auth_on():
 class ProxyHeaders:
     """The outermost layer. Works out who is really on the other end of each request:
     - With HTTPS on, connections arrive through serve.py's relay from 127.0.0.1; PEERS says who's behind it.
-    - When that address is a trusted proxy (DASH_TRUSTED_PROXY), its X-Forwarded-For and X-Forwarded-Proto
+    - When that address is a trusted proxy (LABKEEL_TRUSTED_PROXY), its X-Forwarded-For and X-Forwarded-Proto
       are believed: the client is the right-most address in X-Forwarded-For that isn't itself a proxy.
     The immediate peer is kept as scope["labkeel.peer"], so sign-in by proxy header can check the request
     really came from the proxy. Headers from anywhere else are ignored."""
@@ -177,7 +178,7 @@ def enabled():
 
 
 def open_ok():
-    """Without any account the dashboard only opens if you've said so explicitly (DASH_ALLOW_NO_AUTH=1).
+    """Without any account the dashboard only opens if you've said so explicitly (LABKEEL_ALLOW_NO_SIGN_IN=1).
     Listening on 127.0.0.1 alone isn't enough: a reverse proxy, any container on the host network,
     or a web page using DNS rebinding can all reach 127.0.0.1."""
     return ALLOW_NO_AUTH and not enabled()
@@ -188,7 +189,7 @@ def needs_setup():
     return not enabled() and not ALLOW_NO_AUTH
 
 
-EXTRA_HOSTS = {h.strip().lower() for h in os.environ.get("DASH_HOSTNAMES", "").split(",") if h.strip()}
+EXTRA_HOSTS = {h.lower() for h in env.names("LABKEEL_HOSTNAMES")}
 
 
 def host_name(request: Request):
@@ -199,7 +200,7 @@ def host_name(request: Request):
 
 
 def host_ok(request: Request):
-    """Without sign-in, only answer to this machine's own names and addresses (DASH_HOSTNAMES adds more),
+    """Without sign-in, only answer to this machine's own names and addresses (LABKEEL_HOSTNAMES adds more),
     so another website can't point its own name at the dashboard and use it (DNS rebinding)."""
     name = host_name(request)
     if not name:
@@ -347,7 +348,7 @@ def cookie_name(request: Request):
 def _proxy_user(request: Request):
     """The account named by the proxy's header, if the request came straight from a trusted proxy. A local
     account of the same name gives its role (and its password for confirming big changes); otherwise the
-    name must be in DASH_PROXY_ADMINS or DASH_PROXY_VIEWERS ("*" lets anyone the proxy signed in view).
+    name must be in LABKEEL_PROXY_ADMINS or LABKEEL_PROXY_VIEWERS ("*" lets anyone the proxy signed in view).
     Returns None (no proxy sign-in), or an account, or False (signed in at the proxy but not allowed here)."""
     if not proxy_auth_on() or not trusted(peer_ip(request)):
         return None
@@ -370,7 +371,7 @@ _NOBODY = object()
 
 def current_user(request: Request):
     """The signed-in account for this request (worked out once per request), or None.
-    With sign-in off (DASH_ALLOW_NO_AUTH=1 and no accounts) everyone counts as an admin."""
+    With sign-in off (LABKEEL_ALLOW_NO_SIGN_IN=1 and no accounts) everyone counts as an admin."""
     cached = request.scope.get("labkeel.user", _NOBODY)
     if cached is not _NOBODY:
         return cached
@@ -660,8 +661,8 @@ def _security_headers(resp, request, path):
     return resp
 
 
-INSECURE_MSG = ("This connection isn't encrypted, so LabKeel won't sign anyone in over it. Remove DASH_TLS=off, "
-                "or behind a reverse proxy that uses HTTPS, set DASH_TRUSTED_PROXY to the proxy's address.")
+INSECURE_MSG = ("This connection isn't encrypted, so LabKeel won't sign anyone in over it. Remove LABKEEL_HTTPS=off, "
+                "or behind a reverse proxy that uses HTTPS, set LABKEEL_TRUSTED_PROXY to the proxy's address.")
 
 
 def _insecure_response(path):
@@ -697,7 +698,7 @@ async def guard(request: Request, call_next):
                                  else JSONResponse({"error": "The dashboard is already set up"}, status_code=409), request, path)
     if not enabled() and path not in SETUP_PATHS and not host_ok(request):  # set-up is protected by its one-time code
         return JSONResponse({"error": "This dashboard has no sign-in, so it only answers to this machine's own names and addresses. "
-                                      "Add the name you used to DASH_HOSTNAMES, or better, set up an account."}, status_code=421)
+                                      "Add the name you used to LABKEEL_HOSTNAMES, or better, set up an account."}, status_code=421)
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         # block requests that another website (including others on your tailnet) tries to send through your browser
         origin = request.headers.get("origin")

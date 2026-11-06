@@ -7,7 +7,6 @@ dashboard has just read back from `zpool status` itself. A replacement drive is 
 number from the drives that are actually free, never from a path sent by the browser.
 """
 import json
-import os
 import re
 import sys
 import threading
@@ -17,6 +16,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Body, HTTPException, Request
 
 import containers
+import env
 
 router = APIRouter()
 _lock = threading.RLock()   # drivecare.json
@@ -28,7 +28,7 @@ SECTIONS = {"logs", "cache", "spares", "special", "dedup"}  # zpool status secti
 FAILED = {"FAULTED", "UNAVAIL", "REMOVED"}                   # drive states that mean it's no longer in use
 NEEDS_SWAP = ("failed", "offline", "failing")                # case stages waiting for you to replace the drive
 NO_REDUNDANCY = ("failed", "offline", "replacing")           # case stages where the pool has lost its protection
-TICK = int(os.environ.get("DASH_DRIVECARE_TICK", "20"))     # seconds between looks at the pools
+TICK = env.number("LABKEEL_POOL_CHECK_SECONDS", 20, minimum=1)     # seconds between looks at the pools
 
 
 def M():
@@ -506,7 +506,7 @@ def snapshot(fresh=False):
     return data
 
 
-FULL_EVERY = int(os.environ.get("DASH_DRIVECARE_FULL", "120"))  # seconds between full looks while all is well
+FULL_EVERY = env.number("LABKEEL_POOL_FULL_CHECK_SECONDS", 120, minimum=1)  # seconds between full looks while all is well
 _full = {"t": 0.0}
 
 
@@ -527,7 +527,7 @@ def _all_well():
 
 
 def tick():
-    """One look at the pools (every DASH_DRIVECARE_TICK seconds). Opens a case when a drive fails and follows it
+    """One look at the pools (every LABKEEL_POOL_CHECK_SECONDS seconds). Opens a case when a drive fails and follows it
     to its replacement; sends reminders; offers newly plugged-in drives (or starts the rebuild itself, with
     auto-replace on); pauses the chosen containers while a pool has no redundancy; reminds about scrubs;
     notices failed self-tests. Alerts and changes happen after the lock is released."""
@@ -775,7 +775,7 @@ def _act(act):
 
 
 def loop():
-    """Background thread: tick, every DASH_DRIVECARE_TICK seconds, or straight after a change."""
+    """Background thread: tick, every LABKEEL_POOL_CHECK_SECONDS seconds, or straight after a change."""
     time.sleep(min(30, TICK))  # let the drive and container pollers fill in first
     while True:
         try:
@@ -883,9 +883,9 @@ def _zerr(r):
 
 def _run(args):
     """Run a zpool command that changes a pool, then have everything read the pools afresh. Refused with
-    DASH_ZFS_WRITE isn't 1."""
+    LABKEEL_ALLOW_ZFS_CHANGES isn't 1."""
     if not sys.modules["zfsmgr"].WRITE:
-        raise HTTPException(403, "Pool changes are turned off for this dashboard. An admin can turn them on with DASH_ZFS_WRITE=1.")
+        raise HTTPException(403, "Pool changes are turned off for this dashboard. An admin can turn them on with LABKEEL_ALLOW_ZFS_CHANGES=1.")
     r = host(args, timeout=120)
     if r.returncode != 0:
         raise HTTPException(409, _zerr(r))

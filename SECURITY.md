@@ -18,7 +18,7 @@ mount. Treat an admin account like a root password.
 | --- | --- |
 | Locked by default | Every request passes one gatekeeper; only the sign-in, set-up, health check and static files are public. New routes are protected automatically, and the tests sweep every route to check. |
 | First run | Nothing works until an account exists. The set-up page needs a one-time code printed in the container's log, so whoever reaches the page first can't claim it. |
-| Passwords | Stored only as salted Argon2id hashes in `data/users.json` (readable by its owner only), or given as a hash in `DASH_PASS_HASH`. Never accepted or stored as readable text. At least 12 characters; common passwords refused. |
+| Passwords | Stored only as salted Argon2id hashes in `data/users.json` (readable by its owner only), or given as a hash in `LABKEEL_ADMIN_PASSWORD_HASH`. Never accepted or stored as readable text. At least 12 characters; common passwords refused. |
 | Roles | **Admin**: everything. **Viewer**: the status pages only; no changes, files, container logs, process list or settings. Enforced on the server for every request. |
 | Sign-in limits | 5 wrong passwords from one address pause it for 15 minutes (with an alert); 100 from everywhere together pause all sign-in. Signing in to one account doesn't reset guesses at another. Sign-ins take the same time whether or not the name exists. |
 | Sessions | Signed cookies tied to the account: `__Host-` prefixed, Secure, HttpOnly, SameSite=Strict. A new password or role ends that account's other sessions; signing out revokes the cookie even if it was copied. |
@@ -26,10 +26,10 @@ mount. Treat an admin account like a root password.
 | Passkeys | WebAuthn with user verification, each tied to one account. |
 | Other websites | Changes are refused when the browser says they came from another site (`Origin`, `Sec-Fetch-Site`). |
 | Pages | A strict Content Security Policy: only each page's own script may run. No framing. Uploaded web pages are shown as text, never run. |
-| File browser | Can't leave the mounted folders, follow links out of them, or open SSH keys, `.env` files, ZFS snapshot folders or LabKeel's own data. Changing files is off unless `DASH_FILES_WRITE=1`. |
+| File browser | Can't leave the mounted folders, follow links out of them, or open SSH keys, `.env` files, ZFS snapshot folders or LabKeel's own data. Changing files is off unless `LABKEEL_ALLOW_FILE_CHANGES=1`. |
 | Off by default | File changes, ZFS changes, and restarting the machine each need turning on. |
-| HTTPS only | Sign-in only happens over HTTPS (TLS 1.2 and 1.3). Plain `http://` is redirected to HTTPS, or, with HTTPS turned off, refused: only the health check answers. Behind a proxy, its word that the visitor used HTTPS is only taken from `DASH_TRUSTED_PROXY`. HSTS is opt-in (`DASH_HSTS=1`) because it applies to every port on the host name. |
-| Behind a proxy | Forwarded addresses, and sign-in by header, are only believed from `DASH_TRUSTED_PROXY`. |
+| HTTPS only | Sign-in only happens over HTTPS (TLS 1.2 and 1.3). Plain `http://` is redirected to HTTPS, or, with HTTPS turned off, refused: only the health check answers. Behind a proxy, its word that the visitor used HTTPS is only taken from `LABKEEL_TRUSTED_PROXY`. HSTS is opt-in (`LABKEEL_HSTS=1`) because it applies to every port on the host name. |
+| Behind a proxy | Forwarded addresses, and sign-in by header, are only believed from `LABKEEL_TRUSTED_PROXY`. |
 | Updating itself | Admins only, password again. Runs fixed commands (`git pull --ff-only`, `docker compose`) for LabKeel's own compose project, read from Docker's labels on its container; every value is shell-quoted, and the script is kept in `data/update.sh` to read. Git never overwrites local edits. |
 | Activity log | Records who did what, from which address, for every change, including ones that finish later in the background. |
 
@@ -50,7 +50,7 @@ LabKeel makes no outgoing connections of its own except these:
 
 - Keep LabKeel off the open internet. Use a VPN such as Tailscale or WireGuard, or a reverse proxy with its own sign-in.
 - Give out admin accounts sparingly; use viewer accounts for everyone else.
-- If you set an admin in `docker-compose.yml`, it's with `DASH_PASS_HASH`: a hash, never the password itself.
+- If you set an admin in `docker-compose.yml`, it's with `LABKEEL_ADMIN_PASSWORD_HASH`: a hash, never the password itself.
 - Forgot the password? On the server: `docker exec -it labkeel python accounts.py passwd <name>`.
 
 ## Checking it yourself

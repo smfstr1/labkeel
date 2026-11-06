@@ -5,24 +5,26 @@ With HTTPS on (the default), one port does both jobs: encrypted connections go t
 app, and anyone who opens the old http:// address is redirected to the secure https:// one.
 """
 import asyncio
-import os
+import html
 import re
 import signal
 import socket
 import sys
 import time
+import urllib.parse
 from datetime import datetime
 
 import uvicorn
 
+import env
 import main
 import security
 import tls
 
-HOST = os.environ.get("DASH_HOST", "0.0.0.0")  # a server for the network, signed in and HTTPS-only  # nosec B104
-PORT = int(os.environ.get("DASH_PORT", "8787"))
-LOG_LEVEL = os.environ.get("DASH_LOG_LEVEL", "warning")
-MAX_CONNECTIONS = int(os.environ.get("DASH_MAX_CONNECTIONS", "512"))
+HOST = env.text("LABKEEL_LISTEN_ADDRESS", "0.0.0.0")  # a server for the network, signed in and HTTPS-only  # nosec B104
+PORT = env.number("LABKEEL_PORT", 8787, minimum=1)
+LOG_LEVEL = env.text("LABKEEL_LOG_LEVEL", "warning").strip().lower() or "warning"
+MAX_CONNECTIONS = env.number("LABKEEL_MAX_CONNECTIONS", 512, minimum=16)
 MAX_PER_CLIENT = 64   # a browser opens about 6; this only stops one address hogging the server
 HELLO_TIMEOUT = 10    # seconds a new connection gets to start talking (and to send a whole http:// request)
 IDLE_TIMEOUT = 120    # an open connection with nothing moving in either direction is closed
@@ -85,6 +87,9 @@ def _redirect_target(host_header, path):
     port = "" if PORT == 443 else f":{PORT}"
     if not path.startswith("/") or path.startswith("//"):
         path = "/"
+    # whatever the request line held, the path goes back out percent-encoded: nothing in it can break the
+    # Location header or the little page below it
+    path = urllib.parse.quote(path, safe="/?&=%#:@!$'()*+,;~-._")
     return f"https://{target}{port}{path}"
 
 
@@ -101,20 +106,21 @@ async def _plain_http_redirect(first, reader, writer):
 
     try:  # one deadline for the whole request, so trickling a byte at a time doesn't keep it open
         await asyncio.wait_for(read_head(), timeout=HELLO_TIMEOUT)
-    except (asyncio.TimeoutError, ConnectionError, OSError):
+    except (TimeoutError, ConnectionError, OSError):
         pass
     head = bytes(buf).split(b"\r\n\r\n", 1)[0].decode("latin-1", "replace").split("\r\n")
     parts = head[0].split(" ") if head else []
     path = parts[1] if len(parts) >= 2 else "/"
     host = next((h.split(":", 1)[1].strip() for h in head[1:] if h.lower().startswith("host:")), "")
     loc = _redirect_target(host, path)
-    body = f'<a href="{loc}">This dashboard only works over a secure connection. Continue to {loc}</a>'.encode()
+    shown = html.escape(loc)
+    body = f'<a href="{shown}">This dashboard only works over a secure connection. Continue to {shown}</a>'.encode()
     writer.write(b"HTTP/1.1 301 Moved Permanently\r\nLocation: " + loc.encode() +
                  b"\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: " + str(len(body)).encode() +
                  b"\r\nConnection: close\r\n\r\n" + body)
     try:
         await asyncio.wait_for(writer.drain(), timeout=HELLO_TIMEOUT)
-    except (asyncio.TimeoutError, ConnectionError, OSError):
+    except (TimeoutError, ConnectionError, OSError):
         pass
     finally:
         _close(writer)
@@ -127,7 +133,7 @@ def front_handler(internal_port):
     async def serve_one(reader, writer, peer):
         try:
             first = await asyncio.wait_for(reader.read(4096), timeout=HELLO_TIMEOUT)
-        except (asyncio.TimeoutError, ConnectionError, OSError):
+        except (TimeoutError, ConnectionError, OSError):
             _close(writer)
             return
         if not first:
@@ -138,7 +144,7 @@ def front_handler(internal_port):
             return
         try:
             ur, uw = await asyncio.wait_for(asyncio.open_connection("127.0.0.1", internal_port), timeout=HELLO_TIMEOUT)
-        except (asyncio.TimeoutError, OSError):
+        except (TimeoutError, OSError):
             _close(writer)
             return
         local_port = uw.get_extra_info("sockname")[1]
@@ -172,15 +178,21 @@ def front_handler(internal_port):
 def _warn_if_open():
     """Notes in the log about sign-in: the one-time set-up code until there's an account, and warnings."""
     import accounts
+    renamed = env.old_names_in_use()
+    if renamed:
+        print("Note: some settings in docker-compose.yml use their old names. They still work, but please rename them:",
+              flush=True)
+        for old, new in renamed:
+            print(f"  {old}  ->  {new}", flush=True)
     if tls.MODE == "off" and not security.TRUSTED:
-        print("WARNING: HTTPS is off (DASH_TLS=off) and no DASH_TRUSTED_PROXY is set, so LabKeel will refuse every "
-              "sign-in: it only signs people in over HTTPS. Remove DASH_TLS=off, or set DASH_TRUSTED_PROXY to your "
+        print("WARNING: HTTPS is off (LABKEEL_HTTPS=off) and no LABKEEL_TRUSTED_PROXY is set, so LabKeel will refuse every "
+              "sign-in: it only signs people in over HTTPS. Remove LABKEEL_HTTPS=off, or set LABKEEL_TRUSTED_PROXY to your "
               "HTTPS reverse proxy's address.", flush=True)
     if security.enabled():
         return
     if security.open_ok():
-        print("WARNING: sign-in is off (DASH_ALLOW_NO_AUTH=1). Anyone who can reach this port can use the dashboard. "
-              "It only answers to this machine's own names and addresses (add others with DASH_HOSTNAMES).", flush=True)
+        print("WARNING: sign-in is off (LABKEEL_ALLOW_NO_SIGN_IN=1). Anyone who can reach this port can use the dashboard. "
+              "It only answers to this machine's own names and addresses (add others with LABKEEL_HOSTNAMES).", flush=True)
     else:
         print("=" * 72, flush=True)
         print("  No account yet. Open the dashboard in your browser to set one up.", flush=True)
@@ -188,12 +200,23 @@ def _warn_if_open():
         print("=" * 72, flush=True)
 
 
+def _inner_socket():
+    """The app's own port, on 127.0.0.1 only: the front port passes HTTPS connections through to it.
+
+    IPPROTO_TCP is said outright because asyncio only turns Nagle's algorithm off (TCP_NODELAY) on sockets that
+    name it. With it on, every response waited about 40 ms for the other end's delayed acknowledgement."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("127.0.0.1", 0))
+    return sock
+
+
 async def run():
-    """Start the dashboard: plain HTTP with DASH_TLS=off, otherwise HTTPS through the front port."""
+    """Start the dashboard: plain HTTP with LABKEEL_HTTPS=off, otherwise HTTPS through the front port."""
     _warn_if_open()
     if tls.MODE == "off":
-        print(f"Dashboard on http://{HOST}:{PORT} (HTTPS is off: DASH_TLS=off)", flush=True)
-        # forwarded headers from DASH_TRUSTED_PROXY are handled by security.ProxyHeaders, which also keeps
+        print(f"LabKeel is on http://{HOST}:{PORT} (HTTPS is off: LABKEEL_HTTPS=off)", flush=True)
+        # forwarded headers from LABKEEL_TRUSTED_PROXY are handled by security.ProxyHeaders, which also keeps
         # the proxy's own address (sign-in by proxy header needs to know the request came from the proxy)
         config = uvicorn.Config(main.app, host=HOST, port=PORT, proxy_headers=False, limit_concurrency=MAX_CONNECTIONS,
                                 log_level=LOG_LEVEL, access_log=False, server_header=False)
@@ -203,14 +226,12 @@ async def run():
     crt, key = await asyncio.to_thread(tls.obtain)
     st = tls.state
     where = st.get("domain") or (socket.gethostname() if HOST in ("0.0.0.0", "::") else HOST)  # only a comparison  # nosec B104
-    print(f"Dashboard on https://{where}:{PORT} using a {st['mode']} certificate, valid until "
+    print(f"LabKeel is on https://{where}:{PORT} using a {st['mode']} certificate, valid until "
           f"{datetime.fromtimestamp(st['expires']):%d %b %Y}", flush=True)
     if st.get("error"):
         print(f"  Note: {st['error']}", flush=True)
 
-    inner = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    inner.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    inner.bind(("127.0.0.1", 0))
+    inner = _inner_socket()
     inner_port = inner.getsockname()[1]
 
     config = uvicorn.Config(main.app, ssl_certfile=str(crt), ssl_keyfile=str(key),

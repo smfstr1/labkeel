@@ -66,6 +66,7 @@ def dock(monkeypatch):
         monkeypatch.setattr(main, "HOST_NS", True)
         monkeypatch.setattr(ctrupdate, "WATCH", 0.2)
         monkeypatch.setattr(ctrupdate.time, "sleep", lambda s: None)
+        monkeypatch.setattr(ctrupdate.updates, "recheck", lambda ref: d.calls.append(("recheck", ref)))
         ctrupdate._jobs.clear()
         return d
     return make
@@ -131,3 +132,22 @@ def test_refused_without_host_access(dock, monkeypatch):
     monkeypatch.setattr(main, "HOST_NS", False)
     with pytest.raises(ctrupdate.Refused):
         ctrupdate.compose_info(d._ctr())
+
+
+def test_badge_rechecked_before_the_job_says_done(client, dock, monkeypatch):
+    """The page reloads the badges when the job finishes, so the image is re-checked before that."""
+    dock()
+    seen = []
+    monkeypatch.setattr(ctrupdate.updates, "recheck", lambda ref: seen.append((ref, dict(ctrupdate._jobs["sonarr"]))))
+    assert _update(client)["result"] == "updated"
+    assert [r for r, _ in seen] == ["lscr.io/linuxserver/sonarr:latest"]
+    assert seen[0][1]["state"] == "running" and seen[0][1]["finished"] is None
+
+
+def test_recheck_trouble_doesnt_spoil_the_update(client, dock, monkeypatch):
+    dock()
+    def boom(ref):
+        raise OSError("registry down")
+    monkeypatch.setattr(ctrupdate.updates, "recheck", boom)
+    j = _update(client)
+    assert j["result"] == "updated" and any("Couldn't re-check" in s["text"] for s in j["steps"])

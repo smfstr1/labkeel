@@ -26,7 +26,9 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-DATA_DIR = Path(os.environ.get("DASH_DATA", "/data"))
+import env
+
+DATA_DIR = Path(env.text("LABKEEL_DATA_DIR", "/data"))
 _local = threading.local()
 _init_lock = threading.Lock()
 _ready = {"path": None}

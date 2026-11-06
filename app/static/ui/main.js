@@ -12,7 +12,10 @@ applyTheme(getTheme());
     Tiles.apply();
     $("#signout-btn").classList.toggle("hidden", !S.meta.auth);
     $("#account-link").classList.toggle("hidden", !S.meta.auth);
-    if (S.meta.user) $("#account-link").textContent = S.meta.user.name;
+    if (S.meta.user) {
+      $("#account-link").textContent = S.meta.user.name;
+      if (S.meta.auth) MeMenu.setUp(S.meta.user);
+    }
     if (S.meta.user && S.meta.user.role !== "admin") {
       // a viewer: status pages only (the server enforces this too)
       document.body.classList.add("viewer");
@@ -26,13 +29,13 @@ applyTheme(getTheme());
       $("#global-banner").innerHTML = `<div class="banner bad">${esc(S.meta.config_error)}</div>`;
     if (!S.meta.auth)
       $("#auth-banner").innerHTML =
-        `<div class="banner bad">Sign-in is off, so anyone who can reach this address can use the dashboard. Remove <span class="mono">DASH_ALLOW_NO_AUTH</span> from docker-compose.yml and restart it to set up an account.</div>`;
+        `<div class="banner bad">Sign-in is off, so anyone who can reach this address can use the dashboard. Remove <span class="mono">LABKEEL_ALLOW_NO_SIGN_IN</span> from docker-compose.yml and restart it to set up an account.</div>`;
   } catch {}
   applyRefresh(S.meta?.refresh_ms || 2000);
-  poll(loadSystem, () => S.refreshMs);
+  Polls.system = poll(loadSystem, systemEvery);
   poll(loadAttention, 15000);
   poll(loadDriveCare, 10000);
-  poll(loadContainers, 4000);
+  Polls.containers = poll(loadContainers, containersEvery);
   poll(loadUpdates, 60000);
   poll(loadServices, 30000);
   poll(loadStorage, 30000);

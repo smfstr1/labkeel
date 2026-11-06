@@ -101,7 +101,7 @@ def test_image_install_found(machine):
 
 
 @pytest.mark.parametrize("break_it, words", [
-    (lambda m, mp: mp.setattr(main, "HOST_NS", False), "DASH_HOST_NS"),
+    (lambda m, mp: mp.setattr(main, "HOST_NS", False), "LABKEEL_HOST_COMMANDS"),
     (lambda m, mp: m.me.attrs["Config"].update(Labels={}), "Docker Compose"),
     (lambda m, mp: m.me.attrs["Config"]["Labels"].update({"com.docker.compose.project.working_dir": "/x\n; rm -rf /"}), "won't pass"),
     (lambda m, mp: m.me.attrs.update(Mounts=[]), "data folder"),
@@ -250,7 +250,7 @@ def test_install_refused_when_git_cant_move_forward(machine, client):
 def test_install_not_possible_says_why(machine, client, monkeypatch):
     monkeypatch.setattr(main, "HOST_NS", False)
     st = client.get("/api/labkeel/update?fresh=true").json()
-    assert not st["possible"] and "DASH_HOST_NS" in st["reason"]
+    assert not st["possible"] and "LABKEEL_HOST_COMMANDS" in st["reason"]
     assert client.post("/api/labkeel/update/check").status_code == 409
 
 

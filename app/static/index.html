@@ -6,7 +6,8 @@
 <title>LabKeel</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/app-icon.png">
-<meta name="theme-color" content="#151b23">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16202a">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#eef2f5">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -33,6 +34,14 @@
       <span id="uptime"></span>
       <a class="linkbtn hidden" id="account-link" href="/account">Account</a>
       <button class="linkbtn hidden" id="signout-btn" type="button">Sign out</button>
+      <div class="me-wrap" id="me-wrap" hidden>
+        <button class="me-btn" id="me-btn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="me-menu" aria-label="Your account"><span id="me-initial" aria-hidden="true"></span></button>
+        <div class="me-menu" id="me-menu" role="menu" hidden>
+          <div class="me-who"><b id="me-name"></b><span id="me-role"></span></div>
+          <a role="menuitem" href="/account">Account and passkeys</a>
+          <button role="menuitem" type="button" id="me-signout">Sign out</button>
+        </div>
+      </div>
       <button class="linkbtn" id="theme-btn" type="button"><svg class="tb-ic" width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 0 0 0 14z" fill="currentColor"/></svg><span class="tb-text">Switch to light theme</span></button>
     </div>
   </aside>

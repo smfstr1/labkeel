@@ -1,22 +1,31 @@
 """
-Homelab Dashboard: the web app.
+LabKeel: the web app.
 
 How the code fits together
 --------------------------
-serve.py      starts everything: HTTPS on the dashboard's port, passing connections to this app.
-main.py       (this file) the FastAPI app itself, plus the live readings: CPU, memory and network,
-              Docker containers, filesystems and pools, drive health (SMART), the file browser's
-              reading side, service checks and the "needs attention" list on the Overview.
-security.py   sign-in, sessions, the password-again check for big changes, and the page headers.
-passkeys.py   signing in (and confirming) with a passkey instead of the password.
-tls.py        the HTTPS certificate: your own, Tailscale's, or one made here.
-upkeep.py     settings, scheduled restarts, alerts, Docker clean-up and the activity log.
-metrics.py    GPU and power readings, and the history behind the Overview charts.
-drivecare.py  the pools' drives: failing drives, replacing them, scrubs and SMART self-tests.
-zfsmgr.py     pool and dataset management, snapshots, scheduled scrubs and TRIMs.
-fileops.py    changing files from the file browser: uploads, moves, copies, the Bin.
-static/       the pages (index.html is the dashboard's markup; login.html, setup.html), fonts, and ui/: the
-              dashboard's scripts (one file per page, loaded in order) and styles (app.css).
+serve.py       starts everything: HTTPS on LabKeel's port, passing connections to this app.
+main.py        (this file) the FastAPI app itself, plus the live readings: CPU, memory and network,
+               filesystems and pools, drive health (SMART), the file browser's reading side, service checks
+               and the "needs attention" list on the Overview.
+env.py         the settings from docker-compose.yml (LABKEEL_... environment variables).
+security.py    sign-in, sessions, the password-again check for big changes, and the page headers.
+accounts.py    the accounts and their Argon2id password hashes; also `python accounts.py` for the command line.
+passkeys.py    signing in (and confirming) with a passkey instead of the password.
+tls.py         the HTTPS certificate: your own, Tailscale's, or one made here.
+db.py          the SQLite database (activity log, update checks) and its migrations.
+upkeep.py      settings, scheduled restarts, alerts, Docker clean-up and the activity log.
+metrics.py     GPU and power readings, and the history behind the Overview charts.
+containers.py  Docker containers: the list, their figures, logs, and start, stop, pause and remove.
+updates.py     whether a newer image is out for each container (asks the registries).
+ctrupdate.py   updating a container to its newest image, with a way back if it doesn't start.
+selfupdate.py  LabKeel updating itself, from Settings.
+drivecare.py   the pools' drives: failing drives, replacing them, scrubs and SMART self-tests.
+zfsmgr.py      pool and dataset management, snapshots, scheduled scrubs and TRIMs.
+fileops.py     changing files from the file browser: uploads, moves, copies, the Bin.
+version.py     LabKeel's version, from the VERSION file.
+healthcheck.py Docker's health check.
+static/        the pages (index.html is the dashboard's markup; login.html, setup.html, account.html), fonts,
+               and ui/: the dashboard's scripts (one file per page, loaded in order) and styles (app.css).
 
 The other modules reach this one (and each other) through small helpers such as M() that look the
 module up in sys.modules when called, rather than importing it, because they're imported from the
@@ -26,13 +35,13 @@ Background threads (started in _start at the bottom): system_sampler, container_
 smart_poller here, plus each module's own loop. They read the host every few seconds while a page
 is open and slow right down when nobody is looking.
 
-Everything the dashboard remembers is in the data folder (DASH_DATA, /data in the container):
+Everything the dashboard remembers is in the data folder (LABKEEL_DATA_DIR, /data in the container):
 settings.json, state.json, labkeel.db (activity log and update checks, see db.py), overrides.json (names you've given things),
 drivecare.json, zfs.json, trash.json, moves.json, uploads.json, passkeys.json, revoked.json,
 session.key, history.db (charts), app-icon.png and tls/ (certificates).
 """
-import fnmatch
 import asyncio
+import fnmatch
 import json
 import mimetypes
 import os
@@ -48,21 +57,23 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import deque
-from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import psutil
-from version import USER_AGENT, VERSION
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+import env
+from version import USER_AGENT, VERSION
+
 # --------------------------------------------------------------------------- config
-CONFIG_PATH = os.environ.get("DASH_CONFIG", "/config/config.json")
-BROWSE_ROOT = Path(os.environ.get("DASH_BROWSE_ROOT", "/browse"))
-HOST_NS = os.environ.get("DASH_HOST_NS", "1") == "1"  # run df/zpool/lsblk inside the host mount namespace
-SMART_INTERVAL = int(os.environ.get("DASH_SMART_INTERVAL", "600"))  # seconds between drive health checks
+CONFIG_PATH = env.text("LABKEEL_CONFIG_FILE", "/config/config.json")
+BROWSE_ROOT = Path(env.text("LABKEEL_FILES_DIR", "/browse"))
+HOST_NS = env.flag("LABKEEL_HOST_COMMANDS", True)  # run df/zpool/lsblk inside the host mount namespace
+SMART_INTERVAL = env.number("LABKEEL_DRIVE_CHECK_SECONDS", 600, minimum=10)  # seconds between drive health checks
 STATIC = Path(__file__).parent / "static"
 
 # names the file browser never shows (config.json → files.deny replaces this list): keys and secrets
@@ -682,14 +693,14 @@ def _smart_scan():
 
 
 def smart_poller():
-    """Background thread: re-reads drive health every DASH_SMART_INTERVAL seconds (10 minutes), or straight away
+    """Background thread: re-reads drive health every LABKEEL_DRIVE_CHECK_SECONDS seconds (10 minutes), or straight away
     when something sets _smart_event (Re-check drives, a drive change, new limits)."""
     while True:
         _drives["refreshing"] = True
         try:
             _drives.update(items=_smart_scan(), error=None, updated=time.time())
         except FileNotFoundError:
-            _drives.update(error="smartctl not installed in this container", updated=time.time())
+            _drives.update(error="smartctl isn't installed in this container, so drive health can't be read", updated=time.time())
         except Exception as e:
             _drives.update(error=f"{type(e).__name__}: {e}", updated=time.time())
         _drives["refreshing"] = False
@@ -745,7 +756,7 @@ def private_from_mounts(mounts, labels, alone_in_project, browse_root="/browse",
     own.update(files)
     workdir = labels.get("com.docker.compose.project.working_dir")
     if workdir:
-        own.add(f"{workdir.rstrip('/')}/.env")  # compose reads variables (like DASH_PASS_HASH) from here
+        own.add(f"{workdir.rstrip('/')}/.env")  # compose reads variables (like LABKEEL_ADMIN_PASSWORD_HASH) from here
         if alone_in_project:  # the dashboard has a folder of its own: hide all of it
             own.add(workdir)
     out = set()
@@ -1305,7 +1316,7 @@ def api_services(request: Request = None, fresh: bool = False):
 
 
 # --------------------------------------------------------------------------- display names
-DATA_DIR = Path(os.environ.get("DASH_DATA", "/data"))
+DATA_DIR = Path(env.text("LABKEEL_DATA_DIR", "/data"))
 _ov_lock = threading.Lock()
 MAX_OVERRIDES = 500  # per kind: far more than any homelab has, small enough that the file stays tiny
 
@@ -1527,10 +1538,11 @@ def app_icon():
 @app.get("/manifest.webmanifest")
 def manifest():
     """The web app manifest, so 'Add to Home Screen' makes a proper app with the dashboard's name and icon."""
-    title = load_config().get("title") or HOST_INFO.get("hostname") or "Homelab"
+    title = load_config().get("title") or HOST_INFO.get("hostname") or "LabKeel"
     v = int(_icon_path().stat().st_mtime)
-    return JSONResponse({"name": f"{title} dashboard", "short_name": title[:12], "start_url": "/", "scope": "/",
-                         "display": "standalone", "background_color": "#151b23", "theme_color": "#151b23",
+    return JSONResponse({"name": f"{title} · LabKeel" if title != "LabKeel" else title, "short_name": title[:12],
+                         "start_url": "/", "scope": "/", "display": "standalone",
+                         "background_color": "#16202a", "theme_color": "#16202a",  # the dark theme's page colour
                          "icons": [{"src": f"/app-icon.png?v={v}", "sizes": "512x512", "type": "image/png", "purpose": "any"},
                                    {"src": f"/app-icon.png?v={v}", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}]},
                         media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})

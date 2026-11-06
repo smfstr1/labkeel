@@ -18,11 +18,11 @@ function renderAll() {
 setInterval(() => {
   const led = $("#live-led"),
     age = Date.now() - S.lastOk,
-    ok = age < Math.max(8000, S.refreshMs * 4);
+    ok = age < Math.max(8000, systemEvery() * 3);
   led.className = "led " + (S.lastOk && ok ? "live" : S.lastOk ? "stale" : "");
   led.title = S.lastOk
     ? ok
-      ? `Live, updating every ${S.refreshMs / 1000} s`
+      ? `Live, updating every ${systemEvery() / 1000} s`
       : `No update for ${Math.round(age / 1000)}s`
     : "Connecting";
 }, 1000);
@@ -69,7 +69,7 @@ function renderSystem() {
   if (!d || !d.cpu) return;
   const h = d.host || {};
   $("#host-name").textContent = h.hostname || "server";
-  document.title = `${h.hostname || "Homelab"} · ${Math.round(d.cpu.percent)}% CPU`;
+  document.title = `${h.hostname || "LabKeel"} · ${Math.round(d.cpu.percent)}% CPU`;
   $("#host-sub").textContent = h.os || "";
   $("#uptime").textContent = `Up ${fmtDur(d.uptime)}`;
   $("#ov-cpu-model").textContent = h.cpu_model ? `${h.cpu_model} · ${h.cores_physical}C/${h.cores_logical}T` : "";

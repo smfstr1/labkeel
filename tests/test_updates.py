@@ -419,3 +419,28 @@ def test_check_results_survive_in_the_database(client, lab):
     assert json.dumps(rows) and {r["image"]: r["status"] for r in rows}["nginx"] == "update"
     with pytest.raises(Exception):   # the database itself refuses a status that doesn't exist
         db.execute("INSERT INTO image_checks (image, status, checked) VALUES ('x', 'maybe', 0)")
+
+
+def test_recheck_after_an_update(client, lab, monkeypatch):
+    """After LabKeel updates a container, its image is checked again straight away, so the badge goes."""
+    client.post("/api/updates/check")
+    assert client.get("/api/updates").json()["containers"]["web"]["status"] == "update"
+    lab["digests"]["img-nginx-new"] = ["nginx@" + D(2)]                    # pulled, and re-created on it
+    images = {"nginx": {"img-nginx-new"}, "redis:7": {"img-redis"}}
+    monkeypatch.setattr(updates, "_inventory", lambda: (images, lab["digests"]))
+    containers.state["items"][0]["image_id"] = "img-nginx-new"
+    row = updates.recheck("nginx")
+    assert row["status"] == "current"
+    got = client.get("/api/updates").json()
+    assert got["containers"]["web"] == {"status": "current", "detail": None}
+    assert got["count"] == 1                                                # only plex is still behind
+    assert updates.recheck("gone/image:1") is None                          # no container uses it any more
+
+
+def test_stale_container_after_a_pull_with_containerd_store(world):
+    """containerd image store: `docker compose pull` moves the name to the new image, and the old one (still
+    running) is left with no digests. That's a container behind, not a local build."""
+    digests = {"img-old": [], "img-new": ["nginx@" + D(2)]}
+    row = _check(world, "nginx", {"img-old"}, digests)
+    assert row["status"] == "update"
+    assert _check(world, "labkeel-test/mine:1", {"img-local"}, {"img-local": []})["status"] == "local"

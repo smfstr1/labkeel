@@ -21,9 +21,10 @@ import psutil
 from fastapi import APIRouter, Query
 
 import containers
+import env
 
 router = APIRouter()
-POWERCAP = Path(os.environ.get("DASH_POWERCAP", "/sys/class/powercap"))
+POWERCAP = Path(env.text("LABKEEL_POWERCAP_DIR", "/sys/class/powercap"))
 GPU_INTERVAL_MS = 5000
 GPU_STALE = 15  # seconds without a new line from nvidia-smi before a reading stops counting
 SAMPLE_EVERY = 5  # seconds

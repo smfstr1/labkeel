@@ -24,3 +24,10 @@ def test_nothing_else_sets_its_own_version():
     v = version.VERSION
     for p in [*ROOT.glob("app/*.py"), ROOT / "Dockerfile", ROOT / "docker-compose.example.yml"]:
         assert v not in p.read_text(), f"{p.name} repeats the version; read it from VERSION instead"
+
+
+def test_alpha_and_beta_labels():
+    import version
+    for v in ("0.1.2-alpha", "0.1.2-beta.1", "1.0.0rc1", "0.1.0.dev0"):
+        assert version.read(v) == v
+    assert version.read("0.1.2 (Alpha)") is None  # spaces would break the release tag and the User-Agent

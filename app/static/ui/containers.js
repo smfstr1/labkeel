@@ -360,9 +360,11 @@ document.addEventListener("keydown", e => {
 const Logs = {
   timer: null,
   cid: null,
+  cname: null,
   open(cid) {
     this.cid = cid;
     const c = (S.containers.items || []).find(x => x.id === cid) || { name: cid };
+    this.cname = c.name;
     Drawer.open(
       dname(c),
       "",
@@ -405,8 +407,15 @@ const Logs = {
   renderCtl() {
     const ctl = $("#lg-ctl");
     if (!ctl) return;
-    const c = (S.containers.items || []).find(x => x.id === this.cid);
-    if (!c) return;
+    const items = S.containers.items || [];
+    let c = items.find(x => x.id === this.cid);
+    if (!c) {
+      // Re-created (an update, or docker compose up): same name, new ID. Follow it rather than freeze.
+      c = items.find(x => x.name === this.cname);
+      if (!c) return;
+      this.cid = c.id;
+      if ($("#lg-pre")) this.load(true);
+    }
     const run = c.state === "running" || c.state === "restarting";
     $("#drawer-sub").innerHTML =
       `<span class="tag ${cState(c)}"><span class="dot ${cState(c)}"></span>${esc(cStateText(c))}</span>` +
@@ -604,6 +613,15 @@ const CtrUpdate = {
         else toast(`Updating ${name} didn't work: ${j.detail}`, "bad");
         await loadContainers();
         await loadUpdates();
+        // The container list can lag the re-create by a moment: look again shortly, so the badge goes
+        for (const ms of [3000, 8000])
+          setTimeout(
+            () =>
+              loadContainers()
+                .then(loadUpdates)
+                .catch(() => {}),
+            ms,
+          );
         return;
       }
       await new Promise(r => setTimeout(r, 1500));

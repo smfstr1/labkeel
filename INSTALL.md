@@ -248,7 +248,7 @@ wait for a ZFS update, or boot the previous kernel. See [OpenZFS's Fedora guide]
 
 </details>
 
-Then, to let LabKeel create and change pools rather than just watch them, set `DASH_ZFS_WRITE=1` in
+Then, to let LabKeel create and change pools rather than just watch them, set `LABKEEL_ALLOW_ZFS_CHANGES=1` in
 step 3. Its **New pool** button only offers drives that are completely unused (not your system drive, and
 not USB), so it can't wipe the wrong thing.
 
@@ -297,11 +297,14 @@ up in the Files page:
 
 | Setting | Set to `1` to let LabKeel… |
 | --- | --- |
-| `DASH_FILES_WRITE` | upload, edit, move and delete files |
-| `DASH_ZFS_WRITE` | create and change ZFS pools, datasets and snapshots |
-| `DASH_ALLOW_REBOOT` | restart and shut down the machine |
+| `LABKEEL_ALLOW_FILE_CHANGES` | upload, edit, move and delete files |
+| `LABKEEL_ALLOW_ZFS_CHANGES` | create and change ZFS pools, datasets and snapshots |
+| `LABKEEL_ALLOW_RESTART` | restart and shut down the machine |
 
 Not sure? Leave them at `0`. You can watch everything without them, and switch them on later.
+
+Every other setting (ports, HTTPS, reverse proxies, upload limits) is explained in
+[docs/settings.md](docs/settings.md).
 
 **Optional: switch on your services.** `config/config.json` comes with ready-made tiles for popular apps
 (Plex, Jellyfin, Immich, Home Assistant, Pi-hole and friends), all switched off. Set `"enabled": true` on
@@ -401,10 +404,10 @@ Since Docker now comes from Docker's own repository, that keeps you on the lates
 
 | What's happening | What to do |
 | --- | --- |
-| It keeps restarting, and the log says "address already in use" | Something else is using port 8787. Add `- DASH_PORT=8788` under `environment:`. |
+| It keeps restarting, and the log says "address already in use" | Something else is using port 8787. Add `- LABKEEL_PORT=8788` under `environment:`. |
 | Browser says the connection isn't private | Expected without a trusted certificate. Continue once, or turn on Tailscale HTTPS (step 6). |
 | "Emulate Docker CLI using podman", or "Error while fetching server API version" | That's Podman or an old Compose, not Docker. Install Docker as in [step 1](#1-get-the-essentials). |
-| "This connection isn't encrypted" | LabKeel only signs people in over HTTPS. Use the `https://` address, remove `DASH_TLS=off`, or behind a reverse proxy set `DASH_TRUSTED_PROXY`. |
+| "This connection isn't encrypted" | LabKeel only signs people in over HTTPS. Use the `https://` address, remove `LABKEEL_HTTPS=off`, or behind a reverse proxy set `LABKEEL_TRUSTED_PROXY`. |
 | Lost the set-up code | Run `docker logs labkeel` again, or `docker compose restart` for a fresh one. |
 | Forgot your password | `docker exec -it labkeel python accounts.py passwd <your name>` |
 | "Too many wrong passwords" | Wait 15 minutes, or `docker compose restart`. |

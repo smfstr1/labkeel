@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.2-alpha
 
 ### Security
 - **Accounts and roles.** Several accounts, each an **admin** or a **viewer** (status pages only).
@@ -9,18 +9,18 @@
   At least 12 characters; common passwords are refused.
 - **First-run set-up page.** With no account, the dashboard asks you to create one, using a one-time
   code printed in its log.
-- **Destructive features start off.** `DASH_FILES_WRITE`, `DASH_ZFS_WRITE` and `DASH_ALLOW_REBOOT`
+- **Destructive features start off.** `LABKEEL_ALLOW_FILE_CHANGES`, `LABKEEL_ALLOW_ZFS_CHANGES` and `LABKEEL_ALLOW_RESTART`
   must now be set to `1` to turn them on.
-- **Sign-in through a reverse proxy** (Authelia, Authentik, oauth2-proxy) with `DASH_AUTH_HEADER`, only
-  believed from `DASH_TRUSTED_PROXY`. Forwarded addresses are handled the same way.
-- **HSTS**, opt-in with `DASH_HSTS=1`.
+- **Sign-in through a reverse proxy** (Authelia, Authentik, oauth2-proxy) with `LABKEEL_PROXY_USER_HEADER`, only
+  believed from `LABKEEL_TRUSTED_PROXY`. Forwarded addresses are handled the same way.
+- **HSTS**, opt-in with `LABKEEL_HSTS=1`.
 - Signing in to one account no longer resets the wrong-password count for guesses at another.
 - Sign-in takes the same time whether or not the user name exists.
 - Passkeys belong to an account; confirming a big change only accepts your own.
-- **`DASH_PASS` is removed.** The admin set in `docker-compose.yml` now needs `DASH_PASS_HASH`, an Argon2id hash,
+- **`DASH_PASS` is removed.** The admin set in `docker-compose.yml` now needs `LABKEEL_ADMIN_PASSWORD_HASH`, an Argon2id hash,
   so a password is never stored there in plain text.
 - **Sign-in only over HTTPS.** Over plain HTTP, LabKeel answers only its health check and a page explaining
-  how to turn HTTPS on. Behind a reverse proxy, set `DASH_TRUSTED_PROXY` so its HTTPS is recognised.
+  how to turn HTTPS on. Behind a reverse proxy, set `LABKEEL_TRUSTED_PROXY` so its HTTPS is recognised.
 
 ### Added
 - **Update a container from its panel.** "Update now" pulls the newer image and re-creates the container with
@@ -57,6 +57,19 @@
 - `docs/services.md` explains every field, placeholder and check.
 
 ### Changed
+- **Settings in `docker-compose.yml` have clearer names, all starting `LABKEEL_`**: `LABKEEL_ALLOW_FILE_CHANGES`,
+  `LABKEEL_ALLOW_ZFS_CHANGES`, `LABKEEL_ALLOW_RESTART`, `LABKEEL_HTTPS` and so on. The old `DASH_` names still
+  work, and LabKeel lists any it finds in its log with their new names. [docs/settings.md](docs/settings.md)
+  describes every setting. On/off settings now also take `true`/`false`, `yes`/`no` and `on`/`off`, and a value
+  that can't be read is reported in the log instead of stopping LabKeel from starting.
+- **Every page and update is faster**: each answer from LabKeel used to wait about 40 ms before being sent
+  (Nagle's algorithm on its internal connection). It now takes a few milliseconds.
+- The page fetches live figures every 10 seconds, and the container list every 20, while you're on a page that
+  doesn't show them (instead of every 2 and 4). Arriving on the Overview or Containers brings them up to date
+  straight away.
+- Phones: tapping your initial in the top bar opens a menu with your account and **Sign out**. The tab bar has
+  a solid background, and steps aside while you type.
+- The guide (docs/guide.md) is up to date and no longer describes one particular server.
 - Uploads, copies and moves show as one slim strip at the top of every page (and a percentage beside Files),
   instead of a box in the corner and a separate Moves panel. The Moves button is gone.
 - Files on a phone: the search box on its own row, Folders, Upload and More (for everything else), and each
@@ -75,6 +88,20 @@
   dependency updates weekly.
 
 ### Fixed
+- Phones: on a short page (Files, some Settings pages) the top bar grew to fill half the screen, and Safari
+  could leave the tab bar floating mid-screen. The top bar now stays put at its own height, sticky toolbars sit
+  below it, and nothing hides under the notch, the home bar or the browser's toolbars.
+- Phones: there was no way to sign out from the top bar.
+- The status bar and browser toolbar on phones now match the page in the light theme too.
+- Settings on a phone: the chosen page's tab scrolls into view; card buttons go under the heading instead of
+  squeezing it.
+- The activity log no longer repeats the name on "… signed in" lines.
+- The plain-HTTP redirect now encodes the path it sends you back to, so an odd request can't add anything to
+  the redirect or its page.
+- After **Update now**, the container's Update badge and note now go straight away: its image is checked again
+  before the update says it's done, and the open log panel follows the re-created container instead of freezing.
+- With Docker's containerd image store, a container left on an old image after a pull showed as a local build;
+  it now shows as having an update.
 - Update checks could see only one name of an image that has several (Docker's containerd image store lists
   just one), so most images showed as "built locally" instead of being checked.
 - On a machine with few CPU threads, the per-thread bars on the Overview stretched across the whole page.
@@ -84,9 +111,9 @@
 
 ### Upgrading from the original dashboard
 1. Add these to `environment:` to keep everything working as before:
-   `DASH_FILES_WRITE=1`, `DASH_ZFS_WRITE=1`, `DASH_ALLOW_REBOOT=1`.
-2. Replace `DASH_PASS` with `DASH_PASS_HASH` (from `docker exec -it <container> python accounts.py hash`),
+   `LABKEEL_ALLOW_FILE_CHANGES=1`, `LABKEEL_ALLOW_ZFS_CHANGES=1`, `LABKEEL_ALLOW_RESTART=1`.
+2. Replace `DASH_PASS` with `LABKEEL_ADMIN_PASSWORD_HASH` (from `docker exec -it <container> python accounts.py hash`),
    writing each `$` as `$$`, or remove both and create an account on the set-up page.
 3. Everyone signs in once more (the session cookie's format changed). Existing passkeys keep working.
-4. If you run with `DASH_TLS=off` behind a proxy, set `DASH_TRUSTED_PROXY` to the proxy's address, or
+4. If you run with `LABKEEL_HTTPS=off` behind a proxy, set `LABKEEL_TRUSTED_PROXY` to the proxy's address, or
    nobody can sign in.

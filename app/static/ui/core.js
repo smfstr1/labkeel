@@ -234,6 +234,9 @@ function applyTheme(t) {
   const tt = effectiveTheme() === "dark" ? "Switch to light theme" : "Switch to dark theme";
   $("#theme-btn .tb-text").textContent = tt;
   $("#theme-btn").title = tt;
+  // the phone's status bar and browser toolbar take this colour: keep it the same as the page
+  const bg = getComputedStyle(document.body).getPropertyValue("--bg").trim();
+  $$('meta[name="theme-color"]').forEach(m => m.setAttribute("content", bg));
   drawSparks();
   if (window.historyReady) renderHistory();
 }
@@ -247,6 +250,18 @@ $("#theme-btn").addEventListener("click", () => {
 // The saved theme goes on straight away, so the page never flashes the other one; main.js finishes the job
 // (button text, redrawing charts) once every file is loaded.
 if (getTheme()) document.documentElement.dataset.theme = getTheme();
+
+// Touch screens: note when the on-screen keyboard is up (a text box has focus), so the tab bar can step aside
+const TYPING =
+  'input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=file]):not([type=range]), textarea, select, [contenteditable="true"]';
+if (matchMedia("(pointer: coarse)").matches) {
+  document.addEventListener("focusin", e => document.body.classList.toggle("kb-open", !!e.target.closest?.(TYPING)));
+  document.addEventListener("focusout", () =>
+    setTimeout(() => {
+      if (!document.activeElement?.closest?.(TYPING)) document.body.classList.remove("kb-open");
+    }, 50),
+  );
+}
 
 /* ---------- router ---------- */
 function route() {
@@ -275,26 +290,48 @@ function route() {
   }
   if (currentView === "pool") PoolV.open(arg || "");
   else PoolV.stop();
+  // arriving on a page whose figures were being fetched slowly: bring them up to date, and quicken the pace
+  if (currentView === "overview") Polls.system?.now();
+  if (currentView === "overview" || currentView === "containers") Polls.containers?.now();
   renderAll();
 }
 window.addEventListener("hashchange", route);
 
 /* ---------- pollers ---------- */
+// Runs fn now and then again every `ms` (a number, or a function so a new rate applies from the next turn),
+// skipping turns while the tab is hidden. poll(...).now() runs it straight away and starts the wait again.
+const Polls = {};
 function poll(fn, ms) {
-  // ms can be a function, so a new refresh rate applies from the next tick
+  let timer = 0,
+    busy = false,
+    again = false;
   const tick = async () => {
-    if (!document.hidden) {
-      try {
-        await fn();
-      } catch (e) {
-        console.warn(e);
-      }
+    clearTimeout(timer);
+    if (busy) {
+      again = true; // asked again mid-fetch: go once more as soon as this one's done
+      return;
     }
-    setTimeout(tick, typeof ms === "function" ? ms() : ms);
+    busy = true;
+    do {
+      again = false;
+      if (!document.hidden)
+        try {
+          await fn();
+        } catch (e) {
+          console.warn(e);
+        }
+    } while (again);
+    busy = false;
+    timer = setTimeout(tick, typeof ms === "function" ? ms() : ms);
   };
   tick();
+  return { now: tick };
 }
 S.refreshMs = 2000;
+// How often the live figures and the container list are fetched: quickly on the pages that show them, slowly
+// elsewhere (the sidebar counts and the charts' history still fill in, since each fetch catches up).
+const systemEvery = () => (currentView === "overview" ? S.refreshMs : 10000);
+const containersEvery = () => (currentView === "overview" || currentView === "containers" ? 4000 : 20000);
 function applyRefresh(ms) {
   S.refreshMs = ms;
   document.documentElement.style.setProperty("--tick", `${Math.min(0.6, (ms / 1000) * 0.9).toFixed(2)}s`);

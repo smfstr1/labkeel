@@ -10,7 +10,7 @@ To release: change VERSION, commit, then tag that commit v<the same version>.
 import re
 from pathlib import Path
 
-_SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:[.-]?(?:dev|a|b|rc)\d*)?$")
+_SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:[.-]?(?:dev|a|b|rc|alpha|beta)\.?\d*)?$", re.I)
 
 
 def read(text):

@@ -248,7 +248,8 @@ def _inventory():
         name = ((c.attrs.get("Config") or {}).get("Image") or "").strip()
         if name:
             by_name.setdefault(name, set()).add(c.attrs.get("Image"))
-    return by_name, repo_digests(cl, set().union(*by_name.values()) if by_name else set())
+    # every image, not just the ones in use: the newest pull of a name tells a stale container from a local build
+    return by_name, repo_digests(cl)
 
 
 async def check_image(http, name, image_ids, digests):
@@ -264,10 +265,13 @@ async def check_image(http, name, image_ids, digests):
                 "detail": "Fixed to one exact build (name@sha256:…), so it never changes by itself"}
     mine = {i: local_digests(digests.get(i), ref) for i in image_ids}
     have = set().union(*mine.values()) if mine else set()
-    if not have:
+    # With Docker's containerd image store, an image loses its digests when a pull moves its name to a newer one,
+    # so a container still on the old one shows none: it's behind, not a local build, if the name was pulled.
+    pulled = set().union(*(local_digests(d, ref) for d in digests.values())) if not have else set()
+    if not have and not pulled:
         return {**row, "status": "local",
                 "detail": "Built or loaded on this machine rather than pulled from a registry, so there's nothing to compare with"}
-    row["local_digest"] = sorted(have)[0]
+    row["local_digest"] = sorted(have or pulled)[0]
     try:
         remote = await remote_digest(http, ref)
     except CheckFailed as e:
@@ -276,7 +280,7 @@ async def check_image(http, name, image_ids, digests):
         return {**row, "detail": f"{ref.api_host} didn't answer in time"}
     except httpx.HTTPError as e:
         return {**row, "detail": f"Couldn't reach {ref.api_host} ({type(e).__name__})"}
-    behind = any(remote not in d for d in mine.values() if d)  # a container still on an older pull
+    behind = not have or any(remote not in d for d in mine.values() if d)  # a container still on an older pull
     return {**row, "status": "update" if behind else "current", "remote_digest": remote}
 
 
@@ -318,6 +322,27 @@ async def check_all():
     manual = bool((sys.modules["security"].ACTOR.get() or {}).get("user"))
     await asyncio.to_thread(_report, rows, counts, new, manual)
     return {"checked": len(rows), "counts": counts, "new": new}
+
+
+def recheck(name):
+    """(Blocking: run in a thread.) Check one image name again and store the answer: after LabKeel updates a
+    container, so its badge reflects what's running now instead of waiting for the next scheduled check."""
+    by_name, digests = _inventory()
+    if name not in by_name:
+        with db.transaction() as con:
+            con.execute("DELETE FROM image_checks WHERE image = ?", (name,))
+        return None
+
+    async def go():
+        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True, headers={"User-Agent": USER_AGENT},
+                                     transport=_transport()) as http:
+            return await check_image(http, name, by_name[name], digests)
+    row = asyncio.run(go())
+    with db.transaction() as con:
+        con.execute("INSERT OR REPLACE INTO image_checks (image, status, local_digest, remote_digest, detail, checked) "
+                    "VALUES (:image, :status, :local_digest, :remote_digest, :detail, :checked)", row)
+    _img_cache["t"] = 0.0   # read the images' digests afresh on the next look
+    return row
 
 
 def _report(rows, counts, new, manual):

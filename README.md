@@ -19,7 +19,7 @@
 - **Containers**: see, start, stop and restart Docker containers, and read their logs
 - **Storage**: ZFS pools, datasets and snapshots, plus disk space for every filesystem
 - **Drive health**: SMART readings, self-tests and warnings before a drive fails
-- **Files**: browse, upload, edit, move and delete files, with a trash you can restore from
+- **Files**: browse, upload, edit, move and delete files, with a Bin you can restore from
 - **Services**: links to everything you run, each with a live up/down check
 - **Alerts**: to ntfy or Discord when something needs attention
 - **Accounts**: admins and view-only accounts, passwords or passkeys, over HTTPS by default
@@ -34,7 +34,7 @@ Keep it off the open internet, and only make admin accounts for people you'd tru
 control of the server. See [SECURITY.md](SECURITY.md) for how it's protected.
 
 ## Screenshots
-![test](images/main.png)
+![The Overview page with live CPU, memory, GPU and network stats](images/main.png)
 **Dashboard**: monitor live activity
 >
 
@@ -84,6 +84,15 @@ docker logs labkeel        # this is your one-time lab set-up code
 
 Then open `https://<your server's address>:8787`. The friendly, step-by-step version, including
 updating and uninstalling, is in **[INSTALL.md](INSTALL.md)**.
+
+## Documentation
+
+- [INSTALL.md](INSTALL.md): installing, updating and uninstalling, step by step
+- [The guide](docs/guide.md): every page and feature, and how LabKeel keeps the machine safe
+- [Settings](docs/settings.md): every `docker-compose.yml` setting
+- [Services](docs/services.md): adding your apps to the Services page
+- [Updates](docs/updates.md): how container and LabKeel updates work
+- [SECURITY.md](SECURITY.md): what LabKeel can do to your machine, and how it's protected
 
 ## Development
 
