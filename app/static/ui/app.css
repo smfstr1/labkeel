@@ -42,6 +42,7 @@
   src: url(/assets/jetbrains-mono-latin-500-normal.woff2) format("woff2");
 }
 :root {
+  --ov-gap: 20px; /* between the Overview's two columns: the charts and the lists below share it */
   /* the phone layout's fixed top bar and tab bar (0 on wider screens): sticky things sit clear of them */
   --top-bar: 0px;
   --tab-bar: 0px;
@@ -627,7 +628,7 @@ section + section {
 .hist-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 14px var(--ov-gap);
 }
 .ccard {
   border: 1px solid var(--rule);
@@ -899,8 +900,8 @@ section + section {
 
 .cols {
   display: grid;
-  grid-template-columns: 1.15fr 1fr;
-  gap: 34px;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); /* the same columns as the charts above, so they line up */
+  gap: 34px var(--ov-gap);
   margin-top: 34px;
 }
 .cols > div {
@@ -2147,10 +2148,6 @@ body.viewer #c-check {
   font-size: 14.5px;
   font-weight: 600;
 }
-.input.time-inline {
-  width: 108px;
-  padding: 3px 8px;
-}
 .st-note {
   font-size: 13px;
   color: var(--muted);
@@ -3341,6 +3338,50 @@ dialog.dlg::backdrop {
   width: 62px;
   padding: 2px 6px;
 }
+/* Settings → Alerts: one row per alert, grouped, with any limit lined up on the right */
+.alert-groups {
+  gap: 20px;
+}
+.alert-group h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.alert-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  min-height: 44px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.alert-row:last-child {
+  border-bottom: 0;
+}
+.alert-row .check {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.alert-limit {
+  display: flex;
+  align-items: center;
+  margin-left: auto; /* stays on the right, even when a narrow screen puts it on a line of its own */
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.alert-limit .input {
+  color: var(--text);
+}
+.alert-limit:has(input:disabled) {
+  opacity: 0.5;
+}
 .nested {
   margin-left: 25px;
   max-width: 460px;
@@ -3623,7 +3664,8 @@ dialog.dlg::backdrop {
   .crow > .c-net {
     display: none;
   }
-  .cols {
+  .cols,
+  .hist-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -3811,9 +3853,6 @@ dialog.dlg::backdrop {
   }
 
   /* overview: 2 × 2 stats */
-  .hist-grid {
-    grid-template-columns: 1fr;
-  }
   .chart {
     min-height: 150px;
   }

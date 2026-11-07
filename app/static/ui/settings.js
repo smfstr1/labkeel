@@ -256,6 +256,7 @@ const Settings = {
       f["drivecare.selftest_long_monthly"].disabled =
         !st;
     f["alerts.quiet_start"].disabled = f["alerts.quiet_end"].disabled = !f["alerts.quiet"].checked;
+    $("#st-quiet-body").classList.toggle("off", !f["alerts.quiet"].checked);
   },
   async save() {
     const btn = $("#st-savebar .primary");

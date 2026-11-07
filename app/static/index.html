@@ -402,27 +402,48 @@
         </section>
 
         <section class="set" data-page="alerts">
-          <div class="set-head"><div><h2>Alerts</h2><p class="muted set-lede">Get a notification when something needs you. Each problem is sent once, and again when it's fixed.</p></div></div>
+          <div class="set-head"><div><h2>Alerts</h2><p class="muted set-lede">Get a notification on your phone or in Discord when something needs you. Each problem is sent once, and again when it's fixed.</p></div></div>
           <div class="set-body">
             <label class="field wide"><span>Send alerts to</span>
               <span class="row"><input class="input" type="url" name="alerts.url" placeholder="https://ntfy.sh/your-topic or a Discord webhook" autocomplete="off" spellcheck="false"><button class="btn" type="button" id="st-test">Send test</button></span>
               <span class="faint small" id="st-test-result">Works with the ntfy phone app or a Discord webhook. Leave it empty to only record alerts in the activity log.</span>
             </label>
-            <fieldset class="checks">
-              <legend>Tell me when</legend>
-              <label class="check"><input type="checkbox" name="alerts.drives"> A drive shows signs of failing or overheating</label>
-              <label class="check"><input type="checkbox" name="alerts.pools"> A ZFS pool is degraded, has damaged files, or an automatic snapshot fails</label>
-              <label class="check"><input type="checkbox" name="alerts.pool_space"> A ZFS pool is more than <input class="input tiny" type="number" name="alerts.pool_threshold" min="50" max="99" data-num aria-label="Percent full"> % full</label>
-              <label class="check"><input type="checkbox" name="alerts.disk_space"> A disk, or a dataset with a size limit, is more than <input class="input tiny" type="number" name="alerts.disk_threshold" min="50" max="99" data-num aria-label="Percent full"> % full</label>
-              <label class="check"><input type="checkbox" name="alerts.containers"> A container crashes or keeps restarting</label>
-              <label class="check"><input type="checkbox" name="alerts.services"> A service stops responding</label>
-              <label class="check"><input type="checkbox" name="alerts.restarts"> The server restarts or comes back online</label>
-              <label class="check"><input type="checkbox" name="alerts.updates"> Newer images are out for your containers</label>
-              <label class="check"><input type="checkbox" name="alerts.slow"> The server slows down: no readings for more than <input class="input tiny" type="number" name="alerts.slow_secs" min="5" max="300" data-num aria-label="Seconds"> seconds</label>
-            </fieldset>
-            <div class="subset">
-              <label class="check"><input type="checkbox" name="alerts.quiet"> Quiet hours from <input class="input time-inline" type="time" name="alerts.quiet_start" aria-label="Quiet hours start"> to <input class="input time-inline" type="time" name="alerts.quiet_end" aria-label="Quiet hours end"></label>
-              <p class="st-note" id="st-quiet-note">Alerts that can wait arrive as one summary when quiet hours end. A failing drive, a degraded pool or repeated wrong passwords still get through straight away.</p>
+          </div>
+        </section>
+
+        <section class="set" data-page="alerts">
+          <div class="set-head"><div><h2>What to tell you about</h2></div></div>
+          <div class="set-body alert-groups">
+            <div class="alert-group">
+              <h3>Drives and storage</h3>
+              <div class="alert-row"><label class="check"><input type="checkbox" name="alerts.drives"> A drive shows signs of failing or overheating</label></div>
+              <div class="alert-row"><label class="check"><input type="checkbox" name="alerts.pools"> A ZFS pool is degraded, has damaged files, or a scheduled snapshot fails</label></div>
+              <div class="alert-row"><label class="check"><input type="checkbox" name="alerts.pool_space"> A ZFS pool is filling up</label><label class="alert-limit">over <input class="input tiny" type="number" name="alerts.pool_threshold" min="50" max="99" data-num aria-label="Percent full, for ZFS pools"> % full</label></div>
+              <div class="alert-row"><label class="check"><input type="checkbox" name="alerts.disk_space"> A disk, or a dataset with a size limit, is filling up</label><label class="alert-limit">over <input class="input tiny" type="number" name="alerts.disk_threshold" min="50" max="99" data-num aria-label="Percent full, for disks and datasets"> % full</label></div>
+            </div>
+            <div class="alert-group">
+              <h3>Containers and services</h3>
+              <div class="alert-row"><label class="check"><input type="checkbox" name="alerts.containers"> A container crashes or keeps restarting</label></div>
+              <div class="alert-row"><label class="check"><input type="checkbox" name="alerts.services"> A service stops responding</label></div>
+              <div class="alert-row"><label class="check"><input type="checkbox" name="alerts.updates"> Newer images are out for your containers</label></div>
+            </div>
+            <div class="alert-group">
+              <h3>The server</h3>
+              <div class="alert-row"><label class="check"><input type="checkbox" name="alerts.restarts"> The server restarts, or comes back online</label></div>
+              <div class="alert-row"><label class="check"><input type="checkbox" name="alerts.slow"> The server slows down</label><label class="alert-limit">no readings for <input class="input tiny" type="number" name="alerts.slow_secs" min="5" max="300" data-num aria-label="Seconds without readings"> seconds</label></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="set" data-page="alerts">
+          <div class="set-head">
+            <div><h2>Quiet hours</h2><p class="muted set-lede" id="st-quiet-note">Alerts that can wait arrive as one summary when quiet hours end. A failing drive, a degraded pool or repeated wrong passwords still get through straight away.</p></div>
+            <label class="switch"><input type="checkbox" name="alerts.quiet"><span class="switch-ui" aria-hidden="true"></span><span class="sr">Quiet hours</span></label>
+          </div>
+          <div class="set-body" id="st-quiet-body">
+            <div class="fields">
+              <label class="field"><span>From</span><input class="input" type="time" name="alerts.quiet_start"></label>
+              <label class="field"><span>To</span><input class="input" type="time" name="alerts.quiet_end"></label>
             </div>
           </div>
         </section>

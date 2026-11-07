@@ -88,6 +88,10 @@
   dependency updates weekly.
 
 ### Fixed
+- The Overview's charts and the Services and Storage lists below them now share the same two columns, so
+  their middles line up. They also go to one column at the same width.
+- Settings → Alerts is tidier: alerts are grouped (drives and storage, containers and services, the server),
+  limits line up on the right, and quiet hours have their own card with a switch and full-size time boxes.
 - Phones: on a short page (Files, some Settings pages) the top bar grew to fill half the screen, and Safari
   could leave the tab bar floating mid-screen. The top bar now stays put at its own height, sticky toolbars sit
   below it, and nothing hides under the notch, the home bar or the browser's toolbars.
