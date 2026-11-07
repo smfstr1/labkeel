@@ -47,3 +47,10 @@ def test_every_setting_is_documented():
     doc = (Path(__file__).resolve().parent.parent / "docs" / "settings.md").read_text()
     for new, old in env.RENAMED.items():
         assert f"`{new}`" in doc and f"| `{old}` | `{new}` |" in doc, new
+    # and every setting the code reads, renamed or not
+    import re
+    app = Path(__file__).resolve().parent.parent / "app"
+    read = {m for f in app.glob("*.py") for m in re.findall(r'env\.(?:text|flag|number)\(\s*"(LABKEEL_[A-Z_]+)"',
+                                                             f.read_text())}
+    assert len(read) > 30
+    assert not [n for n in sorted(read) if f"`{n}`" not in doc]

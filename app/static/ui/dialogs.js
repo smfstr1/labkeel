@@ -1,4 +1,4 @@
-// LabKeel dashboard — dialogs.js (8 of 10; index.html loads them in order).
+// LabKeel dashboard — dialogs.js (10 of 12; index.html loads them in order).
 // Shared dialogs and helpers: banners, Confirm, the password prompt (and passkeys for it), the phone app
 // icon, and apiSend() (which asks for the password again when the server wants it).
 "use strict";

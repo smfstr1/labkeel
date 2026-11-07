@@ -10,6 +10,8 @@ LabKeel is one container that shows your server at a glance and lets you look af
 - **Storage**: a one-line health summary, any drive problems with what to do about them, then each ZFS pool (usable space, layout, last scrub, scrub controls) with its drives inside it, then your other drives with what's on them. A drive ZFS can't see any more stays on the page as an outline, with its name, serial and slot, so you know which one to pull. Each drive tile shows its status, temperature, wear and age. Select one for full details: SMART self-check, spare, media errors, sector counts, data written and read, power-on hours and cycles, model, serial and firmware, plus renaming. Mounted filesystems are listed below. Each pool has its own page for datasets, snapshots (including automatic ones), scrubs, TRIM and changing its layout, and you can create and import pools (see [Pools](#pools)).
 - **Files**: a folder tree with previews for text, images, video and audio, downloads and folder sizes; in folders mounted read-write, uploads, new folders, renaming, moving, editing text and a 30-day Bin
 - **Services**: links to everything you run, each with a live up/down check (HTTP, TCP, or a Minecraft Bedrock ping that shows players online), as logos, a list or detailed cards
+- **Apps** (admins): a catalogue of popular self-hosted apps, or your own compose file. LabKeel writes the compose file into the app's own folder, starts it, waits until it answers and adds it to Services. Off until `LABKEEL_ALLOW_APP_INSTALLS=1` ([apps.md](apps.md)).
+- **Servers**: your other machines (a NAS, a Raspberry Pi, a second server), each running LabKeel's small agent and reporting here over HTTPS, with their figures, containers, storage and drive health. The arrow beside the machine's name switches between them, and **Containers → All servers** lists every container on every machine. For now they're shown, not changed ([servers.md](servers.md)).
 - **Settings**: alerts, restart schedules, update checks, drive care, accounts and LabKeel's own updates, each on its own page
 
 
@@ -169,7 +171,7 @@ Keyboard shortcuts work on the Files page (press `?` for the list): arrows, Ente
 
 The dashboard's own folder, hidden names (below), `.zfs` snapshot folders and the top-level folders themselves can't be changed, and each change is checked against the folder actually opened, so a link swapped in at the wrong moment can't redirect it. Folders and files matching `files.deny` in `config.json` (SSH keys, `.env` files, cloud credentials) are hidden and can't be opened, even by typing the path. Matching ignores upper and lower case, so `ID_RSA` counts as `id_rsa`.
 
-The dashboard also hides its own folder: its `docker-compose.yml` holds your password, and `./data` holds the key that signs sessions. It finds that folder from its own container's mounts, so this works wherever you put it. To hide other folders as well, list them under `files.hide` in `config.json` as browser paths, for example `["/browse/Servers/homelab/secrets"]`.
+The dashboard also hides its own folder: its `docker-compose.yml` can hold the admin's password hash, and `./data` holds the key that signs sessions. It finds that folder from its own container's mounts, so this works wherever you put it. To hide other folders as well, list them under `files.hide` in `config.json` as browser paths, for example `["/browse/Servers/homelab/secrets"]`.
 
 ZFS snapshot folders (`.zfs`) can't be browsed: they hold old copies of everything, including the dashboard's own folder. Each file is checked again after it's opened, so swapping a folder for a link at just the wrong moment can't lead the browser somewhere hidden. If Docker can't be asked which folders are the dashboard's own, the file browser closes for a moment rather than guessing.
 
@@ -214,6 +216,9 @@ Every Python file starts with a description of what it does, and each function s
 | `app/containers.py` | Docker containers: the list and their figures, logs, and the start, stop, pause and remove buttons. |
 | `app/updates.py`, `app/ctrupdate.py` | Checking registries for newer images, and updating a container with a way back. |
 | `app/selfupdate.py` | LabKeel updating itself from Settings. |
+| `app/apps.py` | The Apps page: the catalogue, writing an app's compose file, and adding and removing it. |
+| `app/servers.py` | The Servers page: join codes, the agents' reports, and alerts about other machines. |
+| `app/agent.py`, `agent.compose.yml` | The agent that runs on another machine and reports to this one. |
 | `app/drivecare.py` | Following failing drives through to their replacement, scrubs, SMART self-tests. |
 | `app/zfsmgr.py` | Pools and datasets: creating, importing, changing the layout, snapshots, scheduled scrubs and TRIMs. |
 | `app/fileops.py` | Changing files: new folders and files, editing, resumable uploads, renaming, moving and copying, the Bin. |
@@ -226,6 +231,7 @@ Every Python file starts with a description of what it does, and each function s
 Everything LabKeel remembers is in `./data`: `settings.json`, `state.json` (schedules and open alerts),
 `labkeel.db` (the activity log and update checks), `overrides.json` (names you've given things),
 `drivecare.json`, `zfs.json`, `trash.json`, `moves.json`, `uploads.json`, `passkeys.json`, `revoked.json`,
+`apps.json` (apps added from the Apps page), `servers.json` (your other machines, with their tokens hashed),
 `session.key`, `history.db` (the charts), your home-screen icon and `tls/`.
 
 Only Python packages that the code imports are in `requirements.txt`, each with a note saying what it's

@@ -1,4 +1,4 @@
-// LabKeel dashboard — services.js (6 of 10; index.html loads them in order).
+// LabKeel dashboard — services.js (6 of 12; index.html loads them in order).
 // The Services page, and the rename dialog for containers, services and drives.
 "use strict";
 
@@ -92,14 +92,19 @@ $("#svc-body").addEventListener("click", e => {
 const ICON_PEN = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M11.2 2.3a1.5 1.5 0 0 1 2.1 2.1L5.5 12.2l-2.9.8.8-2.9z"/></svg>`;
 // The rename dialog for containers, services and drives (names are only shown here; nothing is renamed in Docker or ZFS)
 const Rename = {
-  open(kind, key, current, after, realName) {
+  // saveFn: for names kept somewhere other than the shared names list (a server's own name)
+  open(kind, key, current, after, realName, saveFn) {
+    this.saveFn = saveFn || null;
     this.kind = kind;
     this.key = key;
     this.after = after;
     this.realName = realName;
-    $("#rn-title").textContent = { containers: "Rename container", services: "Rename service", drives: "Rename drive" }[
-      kind
-    ];
+    $("#rn-title").textContent = {
+      containers: "Rename container",
+      services: "Rename service",
+      drives: "Rename drive",
+      servers: "Rename server",
+    }[kind];
     $("#rn-orig").textContent = realName || key;
     $("#rn-input").value = current || key;
     $("#rn-error").textContent = "";
@@ -108,11 +113,13 @@ const Rename = {
   },
   async save(name) {
     try {
-      await api("/api/names", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: this.kind, key: this.key, name }),
-      });
+      if (this.saveFn) await this.saveFn(name.trim());
+      else
+        await api("/api/names", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: this.kind, key: this.key, name }),
+        });
       $("#rename-dlg").close();
       const shown = name.trim() && name.trim() !== this.key ? name.trim() : this.realName || this.key;
       if (this.after) await this.after(shown);
@@ -226,7 +233,7 @@ const AppLinks = {
   target(s) {
     const a = s.app,
       to = a?.[this.os];
-    if (!to || this.read("lk-no-app", []).includes(s.name)) return null;
+    if (!to || this.read("lk-no-app", []).includes(`${s.name} ${to}`)) return null;
     if (this.os === "android" && a.android_package) {
       // Chrome's way to name the app and a web page to fall back on if it isn't installed
       const [scheme, rest] = to.split(/:\/\/(.*)/s);
@@ -244,7 +251,7 @@ const AppLinks = {
       const t = setTimeout(() => {
         document.removeEventListener("visibilitychange", left);
         if (document.hidden) return;
-        this.write("lk-no-app", [...this.read("lk-no-app", []), s.name]);
+        this.write("lk-no-app", [...this.read("lk-no-app", []), `${s.name} ${s.app.ios}`]); // tried again if the link changes
         location.href = s.url;
       }, 1800);
       document.addEventListener("visibilitychange", left, { once: true });

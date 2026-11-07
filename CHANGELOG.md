@@ -23,6 +23,18 @@
   how to turn HTTPS on. Behind a reverse proxy, set `LABKEEL_TRUSTED_PROXY` so its HTTPS is recognised.
 
 ### Added
+- **Apps.** A catalogue of 18 popular self-hosted apps (Jellyfin, Plex, Immich, Home Assistant, the *arr apps,
+  qBittorrent, Nextcloud, Vaultwarden, Pi-hole, Minecraft Bedrock and more), or your own compose file. Fill in a
+  folder or two and LabKeel writes the compose file into the app's own folder (`/srv/labkeel/apps/<app>`),
+  pulls and starts it, waits until it answers, and adds it to Services. Everything it makes is ordinary Docker
+  Compose. Removing an app stops it and keeps its folder and data; adding it again picks them up. Off until
+  `LABKEEL_ALLOW_APP_INSTALLS=1`; admins only, password again, every step logged. See `docs/apps.md`.
+- **Several servers.** Add your other machines (a NAS, a Raspberry Pi, a second server): each runs LabKeel's
+  small agent (`agent.compose.yml`), which joins with a one-time code and reports over HTTPS. The Servers page
+  shows them all with totals, each has its own page (figures, containers, storage, drive health), a switcher
+  sits beside the machine's name, **Containers → All servers** lists every container, and alerts cover them
+  too. The agent checks it's talking to your LabKeel before sending anything, opens no port, and only reads.
+  See `docs/servers.md`.
 - **Update a container from its panel.** "Update now" pulls the newer image and re-creates the container with
   Docker Compose, checks the new one starts (and passes its health check), and puts the old image back if it
   doesn't. Admins only, password again, logged.
@@ -60,7 +72,8 @@
 - **On a phone, services open in their apps**: tapping Plex, Immich or Home Assistant on the Services page
   or the Overview opens the app instead of the web page, falling back to the web page when the app isn't
   installed. Any service can name its own app with `"app"` in config.json ([docs/services.md](docs/services.md)),
-  and the **Open in apps** switch on the Services page turns it off on that phone.
+  and the **Open in apps** switch on the Services page turns it off on that phone. Names like "Plex Media
+  Server" count too.
 - **Settings in `docker-compose.yml` have clearer names, all starting `LABKEEL_`**: `LABKEEL_ALLOW_FILE_CHANGES`,
   `LABKEEL_ALLOW_ZFS_CHANGES`, `LABKEEL_ALLOW_RESTART`, `LABKEEL_HTTPS` and so on. The old `DASH_` names still
   work, and LabKeel lists any it finds in its log with their new names. [docs/settings.md](docs/settings.md)
@@ -82,7 +95,7 @@
 - The CPU thread bars on the Overview are centred; Settings sections all line up at the same width.
 - The dashboard page is split up: `index.html` holds only the markup, the styles are in `static/ui/app.css`,
   and the script is one file per page in `static/ui/` (core, overview, containers, storage, zfs, services,
-  files, dialogs, settings, main), formatted with Prettier. Browsers keep each file until it changes.
+  apps, servers, files, dialogs, settings, main), formatted with Prettier. Browsers keep each file until it changes.
 - Settings now holds off scheduled restarts for Minecraft players or Plex viewers only if you tick those
   boxes (they were on by default).
 - The image is built on Python 3.13 and Debian 13 (trixie). Container logs are capped at 3 × 10 MB in the
@@ -94,12 +107,14 @@
 ### Fixed
 - The Overview's charts and the Services and Storage lists below them now share the same two columns, so
   their middles line up. They also go to one column at the same width.
-- Settings → Alerts is tidier: alerts are grouped (drives and storage, containers and services, the server),
+- Settings → Alerts is tidier: alerts are grouped (drives and storage, containers and services, servers),
   limits line up on the right, and quiet hours have their own card with a switch and full-size time boxes.
 - Phones: on a short page (Files, some Settings pages) the top bar grew to fill half the screen, and Safari
   could leave the tab bar floating mid-screen. The top bar now stays put at its own height, sticky toolbars sit
   below it, and nothing hides under the notch, the home bar or the browser's toolbars.
 - Phones: there was no way to sign out from the top bar.
+- A side panel (the Bin, a drive's details) stayed open over the next page after going back or switching
+  page; it now closes when you leave the page it belongs to.
 - The status bar and browser toolbar on phones now match the page in the light theme too.
 - Settings on a phone: the chosen page's tab scrolls into view; card buttons go under the heading instead of
   squeezing it.

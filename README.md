@@ -21,6 +21,8 @@
 - **Drive health**: SMART readings, self-tests and warnings before a drive fails
 - **Files**: browse, upload, edit, move and delete files, with a Bin you can restore from
 - **Services**: links to everything you run, each with a live up/down check
+- **Apps**: add Jellyfin, Immich, Home Assistant and more in a couple of clicks, as ordinary Docker Compose
+- **Several servers**: your NAS, Raspberry Pi or second server on the same dashboard, through a small agent
 - **Alerts**: to ntfy or Discord when something needs attention
 - **Accounts**: admins and view-only accounts, passwords or passkeys, over HTTPS by default
 
@@ -91,6 +93,8 @@ updating and uninstalling, is in **[INSTALL.md](INSTALL.md)**.
 - [The guide](docs/guide.md): every page and feature, and how LabKeel keeps the machine safe
 - [Settings](docs/settings.md): every `docker-compose.yml` setting
 - [Services](docs/services.md): adding your apps to the Services page
+- [Apps](docs/apps.md): adding an app from the catalogue, or your own compose file
+- [Several servers](docs/servers.md): showing your other machines, with LabKeel's agent
 - [Updates](docs/updates.md): how container and LabKeel updates work
 - [SECURITY.md](SECURITY.md): what LabKeel can do to your machine, and how it's protected
 

@@ -9,14 +9,16 @@ reproduce it, and which version you ran. You'll get a reply within a week.
 ## What LabKeel can do, and why that matters
 
 LabKeel runs with privileged access to the machine. Depending on what you turn on, an admin can
-restart or shut down the machine, create and destroy ZFS pools, and change any file in the folders you
-mount. Treat an admin account like a root password.
+restart or shut down the machine, create and destroy ZFS pools, change any file in the folders you
+mount, and add apps whose containers can have full control of the machine. Treat an admin account like a root
+password.
 
 ## How it protects that
 
 | Area | What it does |
 | --- | --- |
-| Locked by default | Every request passes one gatekeeper; only the sign-in, set-up, health check and static files are public. New routes are protected automatically, and the tests sweep every route to check. |
+| Locked by default | Every request passes one gatekeeper; only the sign-in, set-up, health check and static files are public, plus the two addresses agents on your
+other machines report to, which need a join code or an agent's own token. New routes are protected automatically, and the tests sweep every route to check. |
 | First run | Nothing works until an account exists. The set-up page needs a one-time code printed in the container's log, so whoever reaches the page first can't claim it. |
 | Passwords | Stored only as salted Argon2id hashes in `data/users.json` (readable by its owner only), or given as a hash in `LABKEEL_ADMIN_PASSWORD_HASH`. Never accepted or stored as readable text. At least 12 characters; common passwords refused. |
 | Roles | **Admin**: everything. **Viewer**: the status pages only; no changes, files, container logs, process list or settings. Enforced on the server for every request. |
@@ -27,7 +29,9 @@ mount. Treat an admin account like a root password.
 | Other websites | Changes are refused when the browser says they came from another site (`Origin`, `Sec-Fetch-Site`). |
 | Pages | A strict Content Security Policy: only each page's own script may run. No framing. Uploaded web pages are shown as text, never run. |
 | File browser | Can't leave the mounted folders, follow links out of them, or open SSH keys, `.env` files, ZFS snapshot folders or LabKeel's own data. Changing files is off unless `LABKEEL_ALLOW_FILE_CHANGES=1`. |
-| Off by default | File changes, ZFS changes, and restarting the machine each need turning on. |
+| Off by default | File changes, ZFS changes, restarting the machine and adding apps each need turning on. |
+| Apps | Adding or removing an app is admin-only, asks for the password again, and is logged step by step. LabKeel writes only into the app's own folder (`LABKEEL_APPS_DIR`), runs fixed `docker compose` commands there, refuses system folders, whole top-level folders and ports already in use, and never takes over a folder it didn't make. Values you type go into the compose file quoted, with `$` escaped, so they can't add settings of their own. An app asking for full control of the machine (Home Assistant) says so before you add it. See [docs/apps.md](docs/apps.md). |
+| Other machines | An agent joins with a code that works once, for 15 minutes, made by an admin with their password. Each agent then has its own token, kept on the hub only as a hash, and removing the machine revokes it. The agent checks the hub's certificate key before sending anything, opens no port, and only reads: nothing the hub sends can make it change anything. Wrong codes are limited like wrong passwords, counted separately. See [docs/servers.md](docs/servers.md). |
 | HTTPS only | Sign-in only happens over HTTPS (TLS 1.2 and 1.3). Plain `http://` is redirected to HTTPS, or, with HTTPS turned off, refused: only the health check answers. Behind a proxy, its word that the visitor used HTTPS is only taken from `LABKEEL_TRUSTED_PROXY`. HSTS is opt-in (`LABKEEL_HSTS=1`) because it applies to every port on the host name. |
 | Behind a proxy | Forwarded addresses, and sign-in by header, are only believed from `LABKEEL_TRUSTED_PROXY`. |
 | Updating itself | Admins only, password again. Runs fixed commands (`git pull --ff-only`, `docker compose`) for LabKeel's own compose project, read from Docker's labels on its container; every value is shell-quoted, and the script is kept in `data/update.sh` to read. Git never overwrites local edits. |
@@ -45,6 +49,10 @@ LabKeel makes no outgoing connections of its own except these:
 - **Your services**, for their up/down checks, as listed in `config.json`.
 - **Plex**, at the address in Settings, only when scheduled restarts should wait for people watching.
 - **Tailscale**, on this machine, for an HTTPS certificate when Tailscale is installed.
+- **When you add an app**: its images, from their registries (`docker compose pull`), and for Immich, its
+  compose file from Immich's latest GitHub release.
+
+An agent on another machine connects only to your LabKeel, at the address you gave it.
 
 ## Your part
 

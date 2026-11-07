@@ -1,4 +1,4 @@
-// LabKeel dashboard — main.js (10 of 10; index.html loads them in order).
+// LabKeel dashboard — main.js (12 of 12; index.html loads them in order).
 // Start-up: load what the first page needs, then keep everything fresh on timers. Loaded last.
 "use strict";
 
@@ -39,6 +39,7 @@ applyTheme(getTheme());
   poll(loadUpdates, 60000);
   poll(loadServices, 30000);
   poll(loadStorage, 30000);
+  Polls.servers = poll(loadServers, () => (["servers", "containers"].includes(currentView) ? 10000 : 30000));
   poll(loadDrives, 60000);
   if (S.meta?.user?.role === "admin" || (S.meta && !S.meta.auth)) poll(() => SelfUpdate.load(), 600000);
 })();

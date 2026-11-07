@@ -1,4 +1,4 @@
-// LabKeel dashboard — files.js (7 of 10; index.html loads them in order).
+// LabKeel dashboard — files.js (9 of 12; index.html loads them in order).
 // The Files page: tree, list, previews and editing, uploads, search, moving and copying (with background
 // jobs), drag and drop, keyboard shortcuts and the Bin.
 "use strict";

@@ -1,4 +1,4 @@
-// LabKeel dashboard — settings.js (9 of 10; index.html loads them in order).
+// LabKeel dashboard — settings.js (11 of 12; index.html loads them in order).
 // The Settings page: the form and saving, security, the activity log, signing out, and LabKeel updating
 // itself.
 "use strict";

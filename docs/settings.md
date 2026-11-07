@@ -27,6 +27,7 @@ All off by default. Each one is a real power over the machine, so turn on only w
 | `LABKEEL_ALLOW_FILE_CHANGES` | `0` | Uploading, editing, renaming, moving and deleting files in the file browser. Folders mounted `:ro` stay read-only either way. |
 | `LABKEEL_ALLOW_ZFS_CHANGES` | `0` | Creating, changing and destroying ZFS pools, datasets and snapshots, and replacing drives. |
 | `LABKEEL_ALLOW_RESTART` | `0` | Restarting and shutting down the machine, by hand or on a schedule. |
+| `LABKEEL_ALLOW_APP_INSTALLS` | `0` | Adding and removing apps on the Apps page. An app's containers get whatever its compose file asks for, and a few (Home Assistant, Plex) need the machine's network or full control of it. See [apps.md](apps.md). |
 
 ## Sign-in
 
@@ -62,6 +63,23 @@ All off by default. Each one is a real power over the machine, so turn on only w
 | --- | --- | --- |
 | `LABKEEL_UPLOAD_LIMIT_GB` | no limit | The largest single upload, in GB. |
 | `LABKEEL_BIN_DAYS` | `30` | Days deleted files stay in the Bin before they're gone for good. |
+
+## Apps
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `LABKEEL_APPS_DIR` | `/srv/labkeel/apps` | Where each app you add gets its own folder on the machine: its compose file and its settings. A path on the machine, not inside LabKeel's container. |
+
+## The agent, on your other machines
+
+These go in `agent.compose.yml` on the other machine, not in LabKeel's own `docker-compose.yml`. The **Add a
+server** dialog fills them in for you. See [servers.md](servers.md).
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `LABKEEL_HUB` | | Your main LabKeel's address, such as `https://homelab:8787`. Must be `https://`. |
+| `LABKEEL_JOIN_CODE` | | The one-time code from **Add a server** (the arrow beside the machine's name). Works once, for 15 minutes. Not needed once the machine has joined. |
+| `LABKEEL_HUB_KEY` | | Your main LabKeel's certificate key (`sha256:…`), shown beside the code. With it the agent knows it's talking to your LabKeel, even with a self-signed certificate. |
 
 ## Rarely needed
 

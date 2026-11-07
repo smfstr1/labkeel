@@ -98,9 +98,10 @@ def _exit_code(text):
 
 
 # --------------------------------------------------------------------------- running things on the host
-def host(args, timeout=30):
+def host(args, timeout=30, input=None):
     """Run a command on the host (in its mount namespace) with a plain, predictable environment."""
-    return M().host_cmd(["env", "-i", f"PATH={HOST_PATH}", "LANG=C.UTF-8", "GIT_TERMINAL_PROMPT=0", *args], timeout)
+    env = ["env", "-i", f"PATH={HOST_PATH}", "LANG=C.UTF-8", "GIT_TERMINAL_PROMPT=0", *args]
+    return M().host_cmd(env, timeout, input) if input is not None else M().host_cmd(env, timeout)
 
 
 def _ok(r):

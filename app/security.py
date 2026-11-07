@@ -48,7 +48,8 @@ SECURE_COOKIE = "__Host-hd_session"  # over HTTPS: browser-enforced Secure, host
 LONG, SHORT = 30 * 86400, 12 * 3600
 MAX_FAILS, WINDOW = 5, 15 * 60
 PUBLIC = {"/login", "/api/login", "/api/login-info", "/api/health", "/api/login/passkey/options", "/api/login/passkey",
-          "/manifest.webmanifest", "/app-icon.png"}
+          "/manifest.webmanifest", "/app-icon.png",
+          "/api/agent/join", "/api/agent/report"}  # other machines' agents: they check their own join code or token
 PUBLIC_PREFIXES = ("/assets/",)
 SETUP_PATHS = {"/setup", "/api/setup", "/api/setup-info", "/api/health"}
 MAX_BODY = 1_000_000  # bytes: the most any request may send, except file uploads (see body_limit)
@@ -565,7 +566,8 @@ def confirm_password(request: Request, password):
 # Read-only status pages. Not files, container logs, processes (their command lines can hold secrets),
 # settings, the activity log, or anything that lists drives that could be wiped.
 VIEWER_GET = re.compile(r"^/api/(system|meta|containers|updates|storage|drives|services|attention|gpu|history|health|security|"
-                        r"drivecare|login-info|account|passkeys|services/logo/[a-z0-9._-]+|zfs/pool/[^/]+(/(datasets|snapshots|history))?)$")
+                        r"drivecare|login-info|account|passkeys|services/logo/[a-z0-9._-]+|zfs/pool/[^/]+(/(datasets|snapshots|history))?|"
+                        r"servers|servers/[0-9a-f]{12})$")
 VIEWER_POST = {"/api/logout", "/api/account/password", "/api/passkeys/register/options", "/api/passkeys/register/verify",
                "/api/passkeys/rename", "/api/passkeys/delete", "/api/passkeys/confirm/options", "/api/passkeys/confirm"}
 

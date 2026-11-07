@@ -293,13 +293,14 @@ up in the Files page:
       - /home/you/documents:/browse/docs:ro   # :ro = look, don't touch
 ```
 
-**Choose your powers.** LabKeel starts out careful. These three are off until you switch them on:
+**Choose your powers.** LabKeel starts out careful. These four are off until you switch them on:
 
 | Setting | Set to `1` to let LabKeel… |
 | --- | --- |
 | `LABKEEL_ALLOW_FILE_CHANGES` | upload, edit, move and delete files |
 | `LABKEEL_ALLOW_ZFS_CHANGES` | create and change ZFS pools, datasets and snapshots |
 | `LABKEEL_ALLOW_RESTART` | restart and shut down the machine |
+| `LABKEEL_ALLOW_APP_INSTALLS` | add apps from its catalogue, such as Jellyfin or Immich ([docs/apps.md](docs/apps.md)) |
 
 Not sure? Leave them at `0`. You can watch everything without them, and switch them on later.
 
@@ -309,7 +310,8 @@ Every other setting (ports, HTTPS, reverse proxies, upload limits) is explained 
 **Optional: switch on your services.** `config/config.json` comes with ready-made tiles for popular apps
 (Plex, Jellyfin, Immich, Home Assistant, Pi-hole and friends), all switched off. Set `"enabled": true` on
 the ones you run, and they'll appear on the Services page with a link and a live up/down light. There's a
-blank one at the bottom for anything else. [docs/services.md](docs/services.md) has the details.
+blank one at the bottom for anything else. [docs/services.md](docs/services.md) has the details. Apps you
+add from LabKeel's Apps page join the Services page by themselves.
 
 ---
 
@@ -374,6 +376,14 @@ Click your name at the bottom of the sidebar to open **Account**. From there you
 
 Admins can also add a **passkey** in **Settings → Passkeys**, to sign in with Face ID, Touch ID, Windows
 Hello or a phone instead of typing a password.
+
+---
+
+## 8. Bring in your other machines (optional)
+
+Got a NAS, a Raspberry Pi or a second server? Choose the arrow beside your machine's name (top left), then
+**Add a server**, and LabKeel gives you one command to run on the other machine. It installs LabKeel's small
+agent, which reports back here over HTTPS, and the machine joins your fleet within seconds. [docs/servers.md](docs/servers.md) has the details.
 
 ---
 

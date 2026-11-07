@@ -1,4 +1,4 @@
-// LabKeel dashboard — core.js (1 of 10; index.html loads them in order).
+// LabKeel dashboard — core.js (1 of 12; index.html loads them in order).
 // The basics everything else uses: $ and esc, api(), number and date formatting, the page state (S), the
 // theme, routing between pages (#overview, #files:...), polling and the loaders that fetch each kind of data.
 //
@@ -212,7 +212,18 @@ const S = {
   meta: null,
   lastOk: 0,
 };
-const views = ["overview", "containers", "storage", "files", "services", "settings", "pool"];
+const views = [
+  "overview",
+  "containers",
+  "storage",
+  "files",
+  "services",
+  "settings",
+  "pool",
+  "apps",
+  "servers",
+  "server",
+];
 let currentView = "overview";
 
 /* ---------- theme ---------- */
@@ -267,13 +278,17 @@ if (matchMedia("(pointer: coarse)").matches) {
 function route() {
   const raw = location.hash.slice(1) || "overview";
   const [v, arg] = raw.split(/:(.*)/s);
-  if (document.body.classList.contains("viewer") && ["files", "settings"].includes(v)) {
+  if (document.body.classList.contains("viewer") && ["files", "settings", "apps"].includes(v)) {
     location.replace("#overview");
     return;
   }
+  const before = currentView;
   currentView = views.includes(v) ? v : "overview";
+  // leaving a page (the phone's Back button, say) closes its side panel rather than leaving it over the next one
+  if (before !== currentView) Drawer.close(true);
   views.forEach(n => $("#view-" + n).classList.toggle("hidden", n !== currentView));
-  const navView = currentView === "pool" ? "storage" : currentView; // a pool's page sits under Storage
+  // a pool's page sits under Storage, one server's under Servers
+  const navView = currentView === "pool" ? "storage" : currentView === "server" ? "servers" : currentView;
   $$(".nav a").forEach(a =>
     a.dataset.view === navView ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"),
   );
@@ -290,6 +305,10 @@ function route() {
   }
   if (currentView === "pool") PoolV.open(arg || "");
   else PoolV.stop();
+  if (currentView === "apps") Apps.load();
+  if (currentView === "servers" || currentView === "containers") Polls.servers?.now();
+  if (currentView === "server") ServerV.open(arg || "");
+  else ServerV.stop();
   // arriving on a page whose figures were being fetched slowly: bring them up to date, and quicken the pace
   if (currentView === "overview") Polls.system?.now();
   if (currentView === "overview" || currentView === "containers") Polls.containers?.now();

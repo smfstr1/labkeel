@@ -151,7 +151,15 @@ def _self_signed():
                 return crt, key
         except Exception:
             pass
-    k = ec.generate_private_key(ec.SECP256R1())
+    # a new certificate keeps the same key: other machines' agents recognise this LabKeel by it (servers.py)
+    k = None
+    if key.is_file():
+        try:
+            old = serialization.load_pem_private_key(key.read_bytes(), password=None)
+            k = old if isinstance(old, ec.EllipticCurvePrivateKey) else None
+        except Exception:
+            k = None
+    k = k or ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, dns[0] if dns else "homelab"),
                       x509.NameAttribute(NameOID.ORGANIZATION_NAME, "LabKeel (self-signed)")])
     now = datetime.now(timezone.utc)

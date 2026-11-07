@@ -37,7 +37,7 @@ DEFAULTS = {
                 "wait_hours": 2, "if_still_busy": "skip"},
     "plex": {"url": "http://127.0.0.1:32400", "token": ""},
     "alerts": {"url": "", "drives": True, "pools": True, "disk_space": True, "disk_threshold": 90, "pool_space": True, "pool_threshold": 80,
-               "containers": True, "services": True, "restarts": True, "slow": True, "slow_secs": 10, "updates": True,
+               "containers": True, "services": True, "restarts": True, "slow": True, "slow_secs": 10, "updates": True, "servers": True,
                "quiet": False, "quiet_start": "23:00", "quiet_end": "07:00"},
     "cleanup": {"enabled": False, "weekday": 6, "time": "03:30"},
     "power": {"rest_w": 0, "price": 0, "currency": "£"},
@@ -523,7 +523,7 @@ def mark_stopped_on_purpose(name, stopped):
 
 
 ALERT_KINDS = {"drive": "drives", "pool": "pools", "disk": "disk_space", "container": "containers", "service": "services",
-               "poolspace": "pool_space", "quota": "disk_space"}
+               "poolspace": "pool_space", "quota": "disk_space", "server": "servers"}
 
 
 def _conditions(a, active=frozenset(), covered=True):
@@ -617,10 +617,12 @@ def _conditions(a, active=frozenset(), covered=True):
                 continue
             if i["status"]["state"] == "down":
                 out[f"service:{i['name']}"] = ("bad", f"{i.get('display') or i['name']} is down", i["status"].get("detail") or "")
+    if a.get("servers") and "servers" in sys.modules:  # other machines, through their agents
+        out.update(sys.modules["servers"].conditions(a))
     return out
 
 
-NEED = {"drive": 1, "pool": 1, "disk": 2, "container": 2, "service": 3, "poolspace": 2, "quota": 2}  # minutes a problem lasts before it's sent
+NEED = {"drive": 1, "pool": 1, "disk": 2, "container": 2, "service": 3, "poolspace": 2, "quota": 2, "server": 2}  # minutes a problem lasts before it's sent
 CLEAR_AFTER = 3        # minutes a problem has to stay gone before "back to normal"
 COOLDOWN = 30 * 60     # if it comes back within this long of clearing...
 FLAP_NEED = 10         # ...it has to last this many minutes before alerting again
@@ -867,7 +869,8 @@ def api_get_settings():
     return {"settings": _public(s), "status": _status(s)}
 
 
-ALERT_SWITCHES = ("drives", "pools", "disk_space", "pool_space", "containers", "services", "restarts", "slow", "updates")
+ALERT_SWITCHES = ("drives", "pools", "disk_space", "pool_space", "containers", "services", "restarts", "slow", "updates",
+                  "servers")
 
 
 def weakens(cur, new):

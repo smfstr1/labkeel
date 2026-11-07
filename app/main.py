@@ -51,6 +51,7 @@ import ssl
 import stat
 import struct
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -137,19 +138,20 @@ def load_config():
 _stuck = set()  # commands that wouldn't die when killed (stuck inside the kernel on a failing drive)
 
 
-def host_cmd(args, timeout=15):
+def host_cmd(args, timeout=15, input=None):
     """Run a command, inside the host's mount namespace when available. Gives up after `timeout`
     seconds: the command is killed, and if it can't even be killed (a zpool stuck on a dead drive
     sits in the kernel where kill can't reach it until the drive answers), it's left behind rather
-    than holding this thread forever."""
-    return run_bounded((["nsenter", "-t", "1", "-m", "--"] + args) if HOST_NS else args, timeout)
+    than holding this thread forever. `input`: text for the command to read (writing a file, say)."""
+    return run_bounded((["nsenter", "-t", "1", "-m", "--"] + args) if HOST_NS else args, timeout, input)
 
 
-def run_bounded(cmd, timeout=15):
+def run_bounded(cmd, timeout=15, input=None):
     """subprocess.run(capture_output, text, timeout) that can't hang on a child that won't die."""
-    p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    p = subprocess.Popen(cmd, stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
-        out, err = p.communicate(timeout=timeout)
+        out, err = p.communicate(input, timeout=timeout)
     except subprocess.TimeoutExpired:
         p.kill()
         try:
@@ -1281,7 +1283,7 @@ def find_logo(s_or_slug):
 # here by their logo name; any service can set its own with "app" in config.json (docs/services.md).
 #   ios / android: the link that opens the app. android_package: the app, so a phone without it gets the web page.
 APP_LINKS = {
-    "plex": {"ios": "plexapp://", "android": "plex://", "android_package": "com.plexapp.android"},
+    "plex": {"ios": "plex://", "android": "plex://", "android_package": "com.plexapp.android"},
     "immich": {"ios": "immich://", "android": "immich://", "android_package": "app.alextran.immich"},
     "home-assistant": {"ios": "homeassistant://navigate/lovelace", "android": "homeassistant://navigate/lovelace",
                        "android_package": "io.homeassistant.companion.android"},
@@ -1289,6 +1291,16 @@ APP_LINKS = {
 _APP_URL = re.compile(r"[a-z][a-z0-9+.-]{1,30}://[^\s\"'<>]{0,300}", re.I)
 _UNSAFE_SCHEMES = ("javascript", "data", "vbscript", "file", "blob", "about")
 _APP_PACKAGE = re.compile(r"[A-Za-z][\w]*(\.[A-Za-z][\w]*)+")
+
+
+def _known_app(s):
+    """A known app whose name is a whole word of the service's name or logo: "Plex", "Plex Media Server" and
+    "plex-logo.png" are all Plex."""
+    for slug in {logo_slug(s), logo_slug({"name": s.get("name", "")})}:
+        for key, links in APP_LINKS.items():
+            if f"-{key}-" in f"-{slug}-":
+                return links
+    return None
 
 
 def app_links(s):
@@ -1300,7 +1312,7 @@ def app_links(s):
     if isinstance(given, str):
         given = {"ios": given, "android": given}
     if not isinstance(given, dict):
-        given = APP_LINKS.get(logo_slug(s))
+        given = _known_app(s)
     if not given:
         return None
     out = {}
@@ -1334,6 +1346,8 @@ def api_services(request: Request = None, fresh: bool = False):
         if fresh or not _svc_cache["data"] or time.time() - _svc_cache["t"] >= 20:
             cfg = load_config()
             listed = [s for s in (cfg.get("services") or []) if isinstance(s, dict) and s.get("name")]
+            names_listed = {s["name"] for s in listed}
+            listed += [s for s in sys.modules["apps"].service_entries() if s["name"] not in names_listed]  # added on Apps
             svcs = [s for s in listed if enabled_service(s)]
             with ThreadPoolExecutor(max_workers=16) as ex:
                 results = list(ex.map(check_service, svcs))
@@ -1341,7 +1355,7 @@ def api_services(request: Request = None, fresh: bool = False):
             gw = default_gateway() or "router-not-found"
             items = []
             for s, r in zip(svcs, results):
-                item = {k: s.get(k) for k in ("name", "description", "icon", "group", "container")}
+                item = {k: s.get(k) for k in ("name", "description", "icon", "group", "container", "from_apps")}
                 item.update(url=(s.get("url") or "").replace("{gateway}", gw) or None, display=names.get(s["name"]), status=r,
                             logo=f"/api/services/logo/{logo_slug(s)}" if find_logo(s) else None, app=app_links(s))
                 items.append(item)
@@ -1683,3 +1697,7 @@ import ctrupdate  # noqa: E402  (updating a container to its newest image, with 
 app.include_router(ctrupdate.router)
 app.include_router(selfupdate.router)
 BACKGROUND_TASKS.append(selfupdate.scheduler)
+import apps  # noqa: E402  (the Apps page: adding popular apps in a couple of clicks)
+app.include_router(apps.router)
+import servers  # noqa: E402  (other machines, each reporting in through LabKeel's agent)
+app.include_router(servers.router)

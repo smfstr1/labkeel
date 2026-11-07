@@ -19,15 +19,18 @@
 <div class="app">
   <aside class="rail">
     <div class="host">
-      <div class="host-name"><span class="led" id="live-led" title="Connection"></span><span id="host-name">…</span></div>
+      <div class="host-name"><span class="led" id="live-led" title="Connection"></span><span id="host-name">…</span><button class="host-switch" id="host-switch" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="srv-menu" hidden><span class="sr">Switch server</span><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+      <div class="srv-menu" id="srv-menu" role="menu" hidden></div>
       <div class="host-sub" id="host-sub"></div>
     </div>
     <nav class="nav" aria-label="Sections">
+      <a href="#servers" data-view="servers" class="nav-desk" id="nav-servers-link" hidden><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="14" height="5" rx="1.5"/><rect x="3" y="12" width="14" height="5" rx="1.5"/><circle cx="6" cy="5.5" r=".7" fill="currentColor"/><circle cx="6" cy="14.5" r=".7" fill="currentColor"/></svg><span class="nav-lbl">Servers</span> <span class="count" id="nav-servers"></span></a>
       <a href="#overview" data-view="overview"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg><span class="nav-lbl">Overview</span></a>
       <a href="#containers" data-view="containers"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M10 2.5 17 6v8l-7 3.5L3 14V6z"/><path d="M3 6l7 3.5L17 6M10 9.5v8"/></svg><span class="nav-lbl">Containers</span> <span class="count" id="nav-containers"></span></a>
       <a href="#storage" data-view="storage"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="M2.5 11.5h15"/><circle cx="14" cy="13.8" r=".6" fill="currentColor"/></svg><span class="nav-lbl">Storage</span> <span class="count" id="nav-storage"></span></a>
       <a href="#files" data-view="files"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M2.5 5.5A1.5 1.5 0 0 1 4 4h3.6l1.6 1.8H16a1.5 1.5 0 0 1 1.5 1.5v7.2A1.5 1.5 0 0 1 16 16H4a1.5 1.5 0 0 1-1.5-1.5z"/></svg><span class="nav-lbl">Files</span> <span class="count" id="nav-files"></span></a>
       <a href="#services" data-view="services"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15M10 2.5c2.2 2.3 2.2 12.7 0 15M10 2.5c-2.2 2.3-2.2 12.7 0 15"/></svg><span class="nav-lbl">Services</span> <span class="count" id="nav-services"></span></a>
+      <a href="#apps" data-view="apps" class="nav-desk admin-only"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><path d="M14 11v6M11 14h6"/></svg><span class="nav-lbl">Apps</span> <span class="count" id="nav-apps"></span></a>
       <a href="#settings" data-view="settings"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M3 5.5h8M15 5.5h2M3 10h2M9 10h8M3 14.5h6M13 14.5h4"/><circle cx="13" cy="5.5" r="2"/><circle cx="7" cy="10" r="2"/><circle cx="11" cy="14.5" r="2"/></svg><span class="nav-lbl">Settings</span> <span class="count" id="nav-settings"></span></a>
     </nav>
     <div class="rail-foot">
@@ -163,6 +166,7 @@
       <div class="view-head">
         <h1>Containers</h1>
         <div class="toolbar">
+          <select class="input c-scope" id="c-scope" aria-label="Which servers" hidden><option value="this">This server</option><option value="all">All servers</option></select>
           <input class="input" id="c-search" type="search" placeholder="Filter by name or image" aria-label="Filter containers">
           <div class="seg" role="group" aria-label="Show">
             <button type="button" data-cf="all" aria-pressed="true">All</button>
@@ -177,6 +181,7 @@
       <div id="c-error"></div>
       <div class="bulkbar hidden" id="c-bulk" role="region" aria-label="Selected containers"></div>
       <div class="ctable" id="c-table"></div>
+      <div id="c-all" hidden></div>
       <p class="faint" style="font-size:13px;margin-top:10px">CPU is a share of the whole machine. Select a container to read its logs. <span id="c-upd-note"></span></p>
     </div>
 
@@ -428,8 +433,9 @@
               <div class="alert-row"><label class="check"><input type="checkbox" name="alerts.updates"> Newer images are out for your containers</label></div>
             </div>
             <div class="alert-group">
-              <h3>The server</h3>
+              <h3>Servers</h3>
               <div class="alert-row"><label class="check"><input type="checkbox" name="alerts.restarts"> The server restarts, or comes back online</label></div>
+              <div class="alert-row"><label class="check"><input type="checkbox" name="alerts.servers"> Another server you've added stops reporting, or has a problem</label></div>
               <div class="alert-row"><label class="check"><input type="checkbox" name="alerts.slow"> The server slows down</label><label class="alert-limit">no readings for <input class="input tiny" type="number" name="alerts.slow_secs" min="5" max="300" data-num aria-label="Seconds without readings"> seconds</label></div>
             </div>
           </div>
@@ -492,6 +498,33 @@
       </div>
     </div>
 
+    <!-- APPS -->
+    <div class="view hidden" id="view-apps">
+      <div class="view-head"><h1>Apps</h1><div class="toolbar"><button class="btn" type="button" id="apps-custom">Add your own compose file</button></div></div>
+      <p class="view-sub">Add an app in a couple of clicks. LabKeel writes its compose file, starts it, and puts it on your Services page.</p>
+      <div id="apps-off"></div>
+      <div id="apps-jobs"></div>
+      <section id="apps-added-wrap" hidden><h2 class="sub-h">Added here</h2><div class="list" id="apps-added"></div></section>
+      <div class="apps-filter"><input class="input" id="apps-q" type="search" placeholder="Search apps" aria-label="Search apps"><div class="chips" id="apps-cats" role="group" aria-label="Category"></div></div>
+      <div class="apps-grid" id="apps-grid"><div class="muted">Loading…</div></div>
+    </div>
+
+    <!-- SERVERS -->
+    <div class="view hidden" id="view-servers">
+      <div class="view-head"><h1>Servers</h1><div class="toolbar"><button class="btn primary admin-only" type="button" id="srv-add">Add a server</button></div></div>
+      <p class="view-sub">Every machine LabKeel looks after. Other machines run LabKeel's small agent and report in here; for now they're shown, not changed.</p>
+      <div id="srv-problems"></div>
+      <div class="srv-grid" id="srv-grid"><div class="muted">Loading…</div></div>
+      <section id="srv-totals-wrap" hidden><h2 class="sub-h">Across all servers</h2><div class="vitals srv-totals" id="srv-totals"></div></section>
+    </div>
+
+    <!-- ONE SERVER (an agent's) -->
+    <div class="view hidden" id="view-server">
+      <div class="view-head"><h1 id="sv-title">Server</h1><div class="toolbar admin-only"><button class="btn" type="button" id="sv-rename">Rename</button><button class="btn danger" type="button" id="sv-remove">Remove</button></div></div>
+      <p class="view-sub" id="sv-sub"></p>
+      <div id="sv-body"></div>
+    </div>
+
     <!-- SERVICES -->
     <div class="view hidden" id="view-services">
       <div class="view-head">
@@ -499,6 +532,7 @@
         <div class="toolbar"><div class="seg" role="group" aria-label="View" id="svc-view">
             <button type="button" data-sv="logos" aria-pressed="false">Logos</button><button type="button" data-sv="list" aria-pressed="false">List</button><button type="button" data-sv="cards" aria-pressed="true">Detailed</button></div>
           <label class="check svc-apps" id="svc-apps-wrap" hidden><input type="checkbox" id="svc-apps"> Open in apps</label>
+          <a class="btn admin-only" href="#apps" id="svc-add-app">Add an app</a>
           <button class="btn" id="svc-refresh" type="button">Check now</button></div>
       </div>
       <div id="svc-body"></div>
@@ -554,6 +588,44 @@
     </div>
   </form>
 </dialog>
+<dialog id="app-dlg" class="dlg wide" aria-labelledby="app-title">
+  <form id="app-form" method="dialog">
+    <h2 class="app-dlg-h"><span id="app-icon"></span><span id="app-title">Add an app</span></h2>
+    <p class="muted" id="app-lede"></p>
+    <div id="app-fields"></div>
+    <p class="banner bad" id="app-error" role="alert" hidden></p>
+    <div id="app-notes" aria-live="polite"></div>
+    <details id="app-preview-wrap"><summary>The compose file LabKeel will write, in <code id="app-dir"></code></summary><div id="app-preview"></div></details>
+    <div class="toolbar" style="justify-content:flex-end"><button class="btn" type="button" id="app-cancel">Cancel</button><button class="btn primary" type="submit" id="app-ok">Add</button></div>
+  </form>
+</dialog>
+<dialog id="app-files-dlg" class="dlg wide" aria-labelledby="af-title">
+  <form method="dialog">
+    <h2 id="af-title">App</h2>
+    <p class="muted">In <code id="af-dir"></code>. You can change it by hand and run <code>docker compose up -d</code> in that folder.</p>
+    <pre class="code-box" id="af-compose"></pre>
+    <div class="toolbar" style="justify-content:space-between"><button class="btn danger" type="button" id="af-remove">Remove</button><button class="btn" type="submit">Close</button></div>
+  </form>
+</dialog>
+<dialog id="srv-dlg" class="dlg wide" aria-labelledby="srv-dlg-title">
+  <form id="srv-form" method="dialog">
+    <h2 id="srv-dlg-title">Add a server</h2>
+    <p class="muted">Run LabKeel's small agent on the other machine. It connects out to this LabKeel over HTTPS, so that machine needs no open port, and for now it only reports: it changes nothing.</p>
+    <div id="srv-step1">
+      <div class="fields">
+        <label class="field"><span>Name it</span><input class="input" id="srv-name" maxlength="40" placeholder="nas" required></label>
+        <label class="field grow"><span>This LabKeel's address, as the other machine reaches it</span><input class="input" id="srv-hub" spellcheck="false" required></label>
+      </div>
+    </div>
+    <div id="srv-step2" hidden>
+      <div class="field"><span>On the other machine, in a terminal, run</span><pre class="code-box" id="srv-cmd"></pre><span class="toolbar"><button class="btn" type="button" id="srv-copy">Copy</button></span></div>
+      <p class="muted small">It needs Docker and git. The code inside works once, until <b id="srv-until"></b>. Your LabKeel's certificate key is in the command too, so the agent can tell it's really talking to this LabKeel.</p>
+      <div class="banner info" id="srv-wait" style="margin:0"><div><span class="spin" aria-hidden="true"></span> Waiting for <b id="srv-wait-name"></b> to join…</div></div>
+    </div>
+    <p class="banner bad" id="srv-error" role="alert" hidden></p>
+    <div class="toolbar" style="justify-content:flex-end"><button class="btn" type="button" id="srv-cancel">Cancel</button><button class="btn primary" type="submit" id="srv-ok">Make a join code</button></div>
+  </form>
+</dialog>
 <div class="scrim hidden" id="scrim"></div>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <aside class="drawer" id="drawer" hidden aria-labelledby="drawer-title" role="dialog" aria-modal="true">
@@ -571,6 +643,8 @@
 <script src="/ui/storage.js"></script>
 <script src="/ui/zfs.js"></script>
 <script src="/ui/services.js"></script>
+<script src="/ui/apps.js"></script>
+<script src="/ui/servers.js"></script>
 <script src="/ui/files.js"></script>
 <script src="/ui/dialogs.js"></script>
 <script src="/ui/settings.js"></script>

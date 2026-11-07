@@ -1,4 +1,4 @@
-// LabKeel dashboard — containers.js (3 of 10; index.html loads them in order).
+// LabKeel dashboard — containers.js (3 of 12; index.html loads them in order).
 // The Containers page: the list and its filters, update badges, bulk actions, the side drawer, a
 // container's logs, start/stop/restart/remove, and toast messages.
 "use strict";
@@ -10,6 +10,7 @@ $$("[data-cf]").forEach(b =>
     cFilter = b.dataset.cf;
     $$("[data-cf]").forEach(x => x.setAttribute("aria-pressed", x === b));
     renderContainers();
+    renderAllContainers();
   }),
 );
 $("#c-search").addEventListener("input", () => renderContainers());

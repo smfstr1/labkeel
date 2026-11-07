@@ -1,0 +1,45 @@
+# LabKeel's agent, for another machine you want your main LabKeel to show (docs/servers.md).
+# Your LabKeel gives you the exact command (Servers → Add a server). It looks like:
+#
+#   [ -d labkeel-agent ] || git clone https://github.com/smfstr1/labkeel.git labkeel-agent
+#   cd labkeel-agent && LABKEEL_HUB=https://homelab:8787 LABKEEL_JOIN_CODE=K7Q-4MX-92P LABKEEL_HUB_KEY=sha256:... \
+#     docker compose -f agent.compose.yml up -d --build
+#
+# Once it has joined, the code isn't needed again: the agent keeps its own token in ./agent-data.
+
+services:
+  labkeel-agent:
+    build: .
+    container_name: labkeel-agent
+    command: ["python", "agent.py"]
+    restart: unless-stopped
+    stop_grace_period: 10s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # The same three as LabKeel itself, for the same readings: the machine's real network cards (host),
+    # every process and the machine's own commands (pid), and drive health and ZFS (privileged).
+    # The agent only reads, and opens no port.
+    network_mode: host
+    pid: host
+    privileged: true
+
+    environment:
+      - LABKEEL_HUB=${LABKEEL_HUB:-}
+      - LABKEEL_JOIN_CODE=${LABKEEL_JOIN_CODE:-}
+      - LABKEEL_HUB_KEY=${LABKEEL_HUB_KEY:-}
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock   # its containers
+      - ./agent-data:/data                          # its token for the hub
+
+    healthcheck:
+      test: ["CMD", "python", "agent.py", "--health"]
+      interval: 60s
+      timeout: 10s
+      start_period: 2m
+      retries: 3

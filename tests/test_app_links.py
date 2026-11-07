@@ -5,7 +5,9 @@ import main
 
 def test_known_apps_by_name_or_logo():
     plex = main.app_links({"name": "Plex"})
-    assert plex["ios"] == "plexapp://" and plex["android_package"] == "com.plexapp.android"
+    assert plex["ios"] == "plex://" and plex["android_package"] == "com.plexapp.android"
+    assert main.app_links({"name": "Plex Media Server"}) == plex
+    assert main.app_links({"name": "Complex"}) is None            # a whole word only
     assert main.app_links({"name": "Home Assistant"})["android"].startswith("homeassistant://")
     assert main.app_links({"name": "Photos", "logo": "immich.png"})["ios"] == "immich://"
     assert main.app_links({"name": "Sonarr"}) is None
