@@ -1277,6 +1277,43 @@ def find_logo(s_or_slug):
     return None
 
 
+# Opening a service in its phone app instead of the browser. Apps that say how they can be opened are known
+# here by their logo name; any service can set its own with "app" in config.json (docs/services.md).
+#   ios / android: the link that opens the app. android_package: the app, so a phone without it gets the web page.
+APP_LINKS = {
+    "plex": {"ios": "plexapp://", "android": "plex://", "android_package": "com.plexapp.android"},
+    "immich": {"ios": "immich://", "android": "immich://", "android_package": "app.alextran.immich"},
+    "home-assistant": {"ios": "homeassistant://navigate/lovelace", "android": "homeassistant://navigate/lovelace",
+                       "android_package": "io.homeassistant.companion.android"},
+}
+_APP_URL = re.compile(r"[a-z][a-z0-9+.-]{1,30}://[^\s\"'<>]{0,300}", re.I)
+_UNSAFE_SCHEMES = ("javascript", "data", "vbscript", "file", "blob", "about")
+_APP_PACKAGE = re.compile(r"[A-Za-z][\w]*(\.[A-Za-z][\w]*)+")
+
+
+def app_links(s):
+    """How to open this service's phone app: {"ios", "android", "android_package"} (any may be missing), or
+    None. Only links to an app are allowed: never javascript:, data: or the like."""
+    given = s.get("app")
+    if given is False:
+        return None
+    if isinstance(given, str):
+        given = {"ios": given, "android": given}
+    if not isinstance(given, dict):
+        given = APP_LINKS.get(logo_slug(s))
+    if not given:
+        return None
+    out = {}
+    for k in ("ios", "android"):
+        v = given.get(k)
+        if isinstance(v, str) and _APP_URL.fullmatch(v) and v.split(":", 1)[0].lower() not in _UNSAFE_SCHEMES:
+            out[k] = v
+    pkg = given.get("android_package")
+    if isinstance(pkg, str) and _APP_PACKAGE.fullmatch(pkg) and "android" in out:
+        out["android_package"] = pkg
+    return out or None
+
+
 @app.get("/api/services/logo/{slug}")
 def api_service_logo(slug: str):
     """A service's logo from config/logos. SVGs are shown as pictures only: a strict policy stops any script
@@ -1306,7 +1343,7 @@ def api_services(request: Request = None, fresh: bool = False):
             for s, r in zip(svcs, results):
                 item = {k: s.get(k) for k in ("name", "description", "icon", "group", "container")}
                 item.update(url=(s.get("url") or "").replace("{gateway}", gw) or None, display=names.get(s["name"]), status=r,
-                            logo=f"/api/services/logo/{logo_slug(s)}" if find_logo(s) else None)
+                            logo=f"/api/services/logo/{logo_slug(s)}" if find_logo(s) else None, app=app_links(s))
                 items.append(item)
             _svc_cache.update(data={"items": items, "error": cfg.get("_error"), "title": cfg.get("title"),
                                     "turned_off": len(listed) - len(svcs)}, t=time.time())

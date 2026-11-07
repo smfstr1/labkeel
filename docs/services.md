@@ -47,8 +47,32 @@ Leave out `"enabled"` and it's on.
 | `description` | A short line under the name. |
 | `icon` | A letter or emoji for the tile. Leave it out to use the name's first letter. |
 | `logo` | An image file in `config/logos` to show instead (`"logo": "my-app.png"`). Without it, LabKeel looks for one named after the service: `Home Assistant` → `config/logos/home-assistant.svg` (or `.png`, `.webp`, `.jpg`). Up to 2 MB. |
+| `app` | Open it in its phone app instead of the browser (see below). `false` turns that off. |
 | `container` | The Docker container it runs in. The tile shows down if that container stops, even before anything else notices. |
 | `check` | How to tell it's up. Leave it out to check `url`, or, if you've set `container` instead, just to watch the container. See below. |
+
+## Opening the phone app
+
+On a phone, tapping Plex, Immich or Home Assistant opens its app instead of the web page. If the app isn't
+installed, the web page opens instead. On an iPhone that takes a moment the first time, and LabKeel remembers
+it for next time. The **Open in apps** switch on the Services page (phones only) turns this off for that phone.
+
+For any other app that can be opened by a link, give the service an `"app"`:
+
+```json
+{ "name": "My app", "url": "http://{host}:9000",
+  "app": { "ios": "myapp://", "android": "myapp://", "android_package": "com.example.myapp" } }
+```
+
+| Key | What it does |
+| --- | --- |
+| `ios` | The link that opens the app on an iPhone or iPad. |
+| `android` | The link that opens the app on Android. |
+| `android_package` | The app's package name (from its Play Store address, after `id=`). With it, an Android phone without the app opens the web page instead. |
+
+`"app": "myapp://"` uses the same link on both. `"app": false` always opens the web page. Only links to apps
+are allowed, never `javascript:` or `data:` ones. The links an app answers to are up to the app: check its
+documentation.
 
 ## Placeholders
 

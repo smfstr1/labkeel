@@ -51,7 +51,7 @@ function renderServices() {
           .map(
             s => `
       <div class="li"><span class="dot ${svcState(s)}"></span>
-      ${s.url ? `<a class="grow" href="${esc(s.url)}" target="_blank" rel="noopener">${esc(sname(s))}</a>` : `<span class="grow">${esc(sname(s))}</span>`}
+      ${s.url ? `<a class="grow" href="${esc(s.url)}" target="_blank" rel="noopener" data-svc="${esc(s.name)}">${esc(sname(s))}</a>` : `<span class="grow">${esc(sname(s))}</span>`}
       <span class="end" title="${svcLine(s).replace(/"/g, "&quot;")}">${svcShort(s)}</span></div>`,
           )
           .join("")
@@ -160,7 +160,7 @@ const SvcView = {
   },
   link(s, cls, inner) {
     const tag = s.url ? "a" : "div",
-      attrs = s.url ? ` href="${esc(s.url)}" target="_blank" rel="noopener"` : "";
+      attrs = s.url ? ` href="${esc(s.url)}" target="_blank" rel="noopener" data-svc="${esc(s.name)}"` : "";
     return `<${tag} class="${cls}"${attrs}>${inner}</${tag}>`;
   },
   edit(s) {
@@ -196,3 +196,75 @@ $("#svc-view").addEventListener("click", e => {
   if (b) SvcView.set(b.dataset.sv);
 });
 $$("#svc-view [data-sv]").forEach(b => b.setAttribute("aria-pressed", b.dataset.sv === SvcView.get()));
+
+// On a phone, a service with an app (Plex, Immich, Home Assistant, or any with "app" in config.json) opens in
+// that app instead of the browser. If the app isn't there, the web page opens instead: Android does that by
+// itself; on an iPhone, LabKeel notices it's still showing and remembers not to try that app again.
+const AppLinks = {
+  os: /Android/i.test(navigator.userAgent)
+    ? "android"
+    : /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+        (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1)
+      ? "ios"
+      : null,
+  read(key, fallback) {
+    try {
+      return JSON.parse(localStorage.getItem(key)) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  },
+  write(key, v) {
+    try {
+      localStorage.setItem(key, JSON.stringify(v));
+    } catch {}
+  },
+  on() {
+    return this.os && this.read("lk-svc-apps", true);
+  },
+  // the link to follow instead of the web page, or null to just open the web page
+  target(s) {
+    const a = s.app,
+      to = a?.[this.os];
+    if (!to || this.read("lk-no-app", []).includes(s.name)) return null;
+    if (this.os === "android" && a.android_package) {
+      // Chrome's way to name the app and a web page to fall back on if it isn't installed
+      const [scheme, rest] = to.split(/:\/\/(.*)/s);
+      return `intent://${rest}#Intent;scheme=${scheme};package=${a.android_package};S.browser_fallback_url=${encodeURIComponent(s.url)};end`;
+    }
+    return to;
+  },
+  open(s) {
+    const to = this.target(s);
+    if (!to) return false;
+    location.href = to;
+    if (this.os === "ios") {
+      // still here a moment later: the app isn't installed, so open the web page and don't try it again
+      const left = () => clearTimeout(t);
+      const t = setTimeout(() => {
+        document.removeEventListener("visibilitychange", left);
+        if (document.hidden) return;
+        this.write("lk-no-app", [...this.read("lk-no-app", []), s.name]);
+        location.href = s.url;
+      }, 1800);
+      document.addEventListener("visibilitychange", left, { once: true });
+    }
+    return true;
+  },
+};
+document.addEventListener("click", e => {
+  const a = e.target.closest("a[data-svc]");
+  if (!a || !AppLinks.on() || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  const s = (S.services?.items || []).find(x => x.name === a.dataset.svc);
+  if (s && AppLinks.open(s)) e.preventDefault();
+});
+// the switch on the Services page, shown on phones only
+if (AppLinks.os) {
+  const box = $("#svc-apps");
+  $("#svc-apps-wrap").hidden = false;
+  box.checked = AppLinks.read("lk-svc-apps", true);
+  box.addEventListener("change", () => {
+    AppLinks.write("lk-svc-apps", box.checked);
+    if (box.checked) AppLinks.write("lk-no-app", []); // turned back on: try every app again
+  });
+}

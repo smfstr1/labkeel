@@ -57,6 +57,10 @@
 - `docs/services.md` explains every field, placeholder and check.
 
 ### Changed
+- **On a phone, services open in their apps**: tapping Plex, Immich or Home Assistant on the Services page
+  or the Overview opens the app instead of the web page, falling back to the web page when the app isn't
+  installed. Any service can name its own app with `"app"` in config.json ([docs/services.md](docs/services.md)),
+  and the **Open in apps** switch on the Services page turns it off on that phone.
 - **Settings in `docker-compose.yml` have clearer names, all starting `LABKEEL_`**: `LABKEEL_ALLOW_FILE_CHANGES`,
   `LABKEEL_ALLOW_ZFS_CHANGES`, `LABKEEL_ALLOW_RESTART`, `LABKEEL_HTTPS` and so on. The old `DASH_` names still
   work, and LabKeel lists any it finds in its log with their new names. [docs/settings.md](docs/settings.md)

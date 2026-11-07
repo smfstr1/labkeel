@@ -3338,6 +3338,13 @@ dialog.dlg::backdrop {
   width: 62px;
   padding: 2px 6px;
 }
+.svc-apps {
+  font-size: 14px;
+  white-space: nowrap;
+}
+.svc-apps[hidden] {
+  display: none;
+}
 /* Settings → Alerts: one row per alert, grouped, with any limit lined up on the right */
 .alert-groups {
   gap: 20px;
