@@ -381,9 +381,9 @@ Hello or a phone instead of typing a password.
 
 ## 8. Bring in your other machines (optional)
 
-Got a NAS, a Raspberry Pi or a second server? Choose the arrow beside your machine's name (top left), then
-**Add a server**, and LabKeel gives you one command to run on the other machine. It installs LabKeel's small
-agent, which reports back here over HTTPS, and the machine joins your fleet within seconds. [docs/servers.md](docs/servers.md) has the details.
+Got a NAS, a Raspberry Pi or a second server? Open **Servers → Add a server**, and LabKeel gives you one
+command to run on the other machine. It installs LabKeel's small agent, which reports back here over HTTPS,
+and the machine joins your fleet within seconds. [docs/servers.md](docs/servers.md) has the details.
 
 ---
 
