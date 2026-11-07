@@ -216,6 +216,7 @@ Every Python file starts with a description of what it does, and each function s
 | `app/containers.py` | Docker containers: the list and their figures, logs, and the start, stop, pause and remove buttons. |
 | `app/updates.py`, `app/ctrupdate.py` | Checking registries for newer images, and updating a container with a way back. |
 | `app/selfupdate.py` | LabKeel updating itself from Settings. |
+| `app/composefile.py` | Bringing your `docker-compose.yml` up to date with a new version: new settings, new names. |
 | `app/apps.py` | The Apps page: the catalogue, writing an app's compose file, and adding and removing it. |
 | `app/servers.py` | The Servers page: join codes, the agents' reports, and alerts about other machines. |
 | `app/agent.py`, `agent.compose.yml` | The agent that runs on another machine and reports to this one. |

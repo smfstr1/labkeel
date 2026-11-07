@@ -6,7 +6,8 @@ LabKeel is set up in two places:
   and so on. Changes take effect straight away.
 - **`docker-compose.yml`**, for the things that shouldn't be changeable from a web page: what LabKeel is allowed
   to do to the machine, how it's reached, and where it keeps its data. Change a line, then run
-  `docker compose up -d` to apply it.
+  `docker compose up -d` to apply it. When LabKeel updates, it adds any new settings here for you, switched
+  off ([updates.md](updates.md#your-docker-composeyml)).
 
 This page lists every `docker-compose.yml` setting. They go under `environment:`, one per line:
 

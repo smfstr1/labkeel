@@ -19,6 +19,9 @@ containers.py  Docker containers: the list, their figures, logs, and start, stop
 updates.py     whether a newer image is out for each container (asks the registries).
 ctrupdate.py   updating a container to its newest image, with a way back if it doesn't start.
 selfupdate.py  LabKeel updating itself, from Settings.
+composefile.py bringing your docker-compose.yml up to date with a new version (new settings, new names).
+apps.py        the Apps page: adding popular apps (or your own compose file) in a couple of clicks.
+servers.py     other machines, each running LabKeel's agent (agent.py) and reporting in to this one.
 drivecare.py   the pools' drives: failing drives, replacing them, scrubs and SMART self-tests.
 zfsmgr.py      pool and dataset management, snapshots, scheduled scrubs and TRIMs.
 fileops.py     changing files from the file browser: uploads, moves, copies, the Bin.
@@ -1697,6 +1700,8 @@ import ctrupdate  # noqa: E402  (updating a container to its newest image, with 
 app.include_router(ctrupdate.router)
 app.include_router(selfupdate.router)
 BACKGROUND_TASKS.append(selfupdate.scheduler)
+import composefile  # noqa: E402  (bringing your docker-compose.yml up to date after an update)
+app.include_router(composefile.router)
 import apps  # noqa: E402  (the Apps page: adding popular apps in a couple of clicks)
 app.include_router(apps.router)
 import servers  # noqa: E402  (other machines, each reporting in through LabKeel's agent)

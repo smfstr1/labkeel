@@ -473,12 +473,89 @@ const SelfUpdate = {
   async load(fresh) {
     try {
       this.d = await api("/api/labkeel/update" + (fresh ? "?fresh=true" : ""));
+      this.loadCompose();
     } catch (e) {
       if (currentView === "settings") $("#lk-body").innerHTML = `<div class="muted">${esc(e.message)}</div>`;
       return;
     }
     this.render();
     settingsBadge();
+  },
+  // whether docker-compose.yml has caught up with this version (composefile.py)
+  async loadCompose() {
+    try {
+      this.compose = await api("/api/labkeel/compose");
+    } catch {
+      this.compose = null;
+    }
+    this.render();
+  },
+  composeHtml() {
+    const d = this.d,
+      cf = this.compose,
+      lc = d.last?.compose,
+      code = x => `<code>${esc(x)}</code>`,
+      what = c =>
+        [
+          c.added?.length ? `added ${c.added.map(a => code(`${a.name}=${a.value}`)).join(", ")}` : "",
+          c.renamed?.length ? `renamed ${c.renamed.map(r => `${code(r.old)} to ${code(r.new)}`).join(", ")}` : "",
+        ]
+          .filter(Boolean)
+          .join("; ");
+    if (d.running) return "";
+    let h = "";
+    if (lc && Date.now() / 1000 - d.last.t < 86400)
+      h += lc.ok
+        ? lc.changed
+          ? this.row(
+              "good",
+              `${esc(lc.file.split("/").pop())} brought up to date`,
+              `After the update, LabKeel ${what(lc)}. The old one is ${code(lc.backup)}.`,
+            )
+          : ""
+        : this.row("warn", "docker-compose.yml wasn't brought up to date", esc(lc.detail));
+    if (cf?.possible && (cf.changed || cf.notes.length)) {
+      const name = cf.file.split("/").pop(),
+        miss = cf.added.length,
+        old = cf.renamed.length,
+        parts = [
+          miss
+            ? `it doesn't list ${miss === 1 ? "a setting" : `${miss} settings`} this version has (${cf.added.map(a => code(a.name)).join(", ")})`
+            : "",
+          old
+            ? `it uses ${old === 1 ? "an old name" : `${old} old names`} (${cf.renamed.map(r => `${code(r.old)} → ${code(r.new)}`).join(", ")})`
+            : "",
+        ].filter(Boolean),
+        why = parts.length ? parts.join(", and ") : "";
+      h += cf.changed
+        ? this.row(
+            "info",
+            `${esc(name)} is behind this version`,
+            `${why.charAt(0).toUpperCase() + why.slice(1)}. Bringing it up to date changes nothing LabKeel does: new settings go in switched off, your values stay as they are, and the old file is kept as ${code(name + ".bak")}.` +
+              (cf.notes.length ? ` ${cf.notes.map(esc).join(" ")}` : "") +
+              `</p><p><button class="btn" type="button" id="lk-tidy">Bring it up to date…</button>`,
+          )
+        : this.row("info", `${esc(name)} has a line that does nothing`, cf.notes.map(esc).join(" "));
+    }
+    return h ? `<div class="lk-compose">${h}</div>` : "";
+  },
+  tidy() {
+    const name = (this.compose?.file || "docker-compose.yml").split("/").pop();
+    Confirm.open({
+      title: `Bring ${name} up to date?`,
+      ok: "Bring it up to date",
+      safe: true,
+      body: `<p>LabKeel adds the settings this version has, switched off, and gives old names their new ones. Your values, comments and layout stay as they are. Docker Compose checks the new file before it's saved, and the old one is kept as <code>${esc(name)}.bak</code>.</p><p class="muted">Nothing changes in what LabKeel does, so it doesn't restart. The next <code>docker compose up -d</code> picks the file up.</p>`,
+      onOk: async () => {
+        try {
+          const r = await apiSend("/api/labkeel/compose/tidy", {});
+          toast(r.changed ? `${name} is up to date` : `${name} was already up to date`, "good");
+          await this.loadCompose();
+        } catch (e) {
+          if (!e.cancelled && e.message !== "Signed out") toast(e.message, "bad");
+        }
+      },
+    });
   },
   row(lvl, title, text) {
     return `<div class="sec-row"><span class="dot ${lvl}"></span><div><b>${title}</b>${text ? `<p>${text}</p>` : ""}</div></div>`;
@@ -540,6 +617,7 @@ const SelfUpdate = {
       if (d.log && (!last.ok || Date.now() / 1000 - last.t < 86400))
         h += `<details><summary>What the update printed</summary><pre class="lk-log">${esc(d.log)}</pre></details>`;
     }
+    h += this.composeHtml();
     $("#lk-body").innerHTML = h;
     $("#lk-install").hidden = !(d.possible && c?.status === "update" && !d.running);
     $("#lk-check").hidden = !d.possible || !!d.running;
@@ -566,7 +644,9 @@ const SelfUpdate = {
       safe: true,
       body:
         `<p>LabKeel ${this.d.install?.mode === "source" ? "fetches the new code, builds it" : "downloads the new image"} and restarts itself. ` +
-        `It's away for a minute or two; containers, drives and files aren't touched.</p><p class="muted">If anything goes wrong, the current version keeps running and this page shows what happened.</p>`,
+        `It's away for a minute or two; containers, drives and files aren't touched.</p>` +
+        `<p>Afterwards it brings your docker-compose.yml up to date: settings the new version has are added, switched off, and old names get their new ones. Your values stay as they are, and the old file is kept as <code>docker-compose.yml.bak</code>.</p>` +
+        `<p class="muted">If anything goes wrong, the current version keeps running and this page shows what happened.</p>`,
       onOk: async () => {
         try {
           await apiSend("/api/labkeel/update/install", { confirm: "update" });
@@ -610,3 +690,6 @@ const SelfUpdate = {
 };
 $("#lk-check").addEventListener("click", () => SelfUpdate.check());
 $("#lk-install").addEventListener("click", () => SelfUpdate.install());
+$("#lk-body").addEventListener("click", e => {
+  if (e.target.closest("#lk-tidy")) SelfUpdate.tidy();
+});

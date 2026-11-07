@@ -23,6 +23,12 @@
   how to turn HTTPS on. Behind a reverse proxy, set `LABKEEL_TRUSTED_PROXY` so its HTTPS is recognised.
 
 ### Added
+- **Your docker-compose.yml keeps up with updates.** `git pull` leaves it alone (it's your own copy of the
+  example), so new settings never reached it. Now, after LabKeel updates itself, it adds any settings the new
+  version lists, switched off, and gives old `DASH_` names their `LABKEEL_` ones. Your values, comments and
+  layout stay as they are. Docker Compose checks the new file first, and the old one is kept as
+  `docker-compose.yml.bak`. **Settings → LabKeel** shows when the file is behind and can do the same after an
+  update by hand. See `docs/updates.md`.
 - **Apps.** A catalogue of 18 popular self-hosted apps (Jellyfin, Plex, Immich, Home Assistant, the *arr apps,
   qBittorrent, Nextcloud, Vaultwarden, Pi-hole, Minecraft Bedrock and more), or your own compose file. Fill in a
   folder or two and LabKeel writes the compose file into the app's own folder (`/srv/labkeel/apps/<app>`),

@@ -67,6 +67,29 @@ docker compose pull labkeel && docker compose up -d labkeel
 Progress goes to `data/update.log`, and the script that ran is kept in `data/update.sh`. If anything fails,
 the old version keeps running, you get an alert, and Settings shows the output.
 
+### Your docker-compose.yml
+
+Your `docker-compose.yml` is your own copy of `docker-compose.example.yml`, so git leaves it alone: it holds
+your settings, folders and password hash. When a new version brings a new setting, only the example gets it.
+
+So once an update has finished, the new LabKeel brings your copy up to date with it:
+
+- **Settings it should list are added**, at their default, which is off. For example, `LABKEEL_ALLOW_APP_INSTALLS=0`,
+  with the example's note beside it. A setting you already give anywhere (by its old name, in an `env_file`, in
+  another compose file) isn't added again.
+- **Old names get their new ones**: `DASH_FILES_WRITE=1` becomes `LABKEEL_ALLOW_FILE_CHANGES=1`.
+
+Nothing else changes: not your values, comments, order or layout. Before saving, Docker Compose reads the new
+file, and LabKeel checks that LabKeel's environment comes out exactly as before plus those changes. If it
+doesn't, or the file is a link, or you were editing it at the time, the file is left alone and Settings says
+why. The old file is kept as `docker-compose.yml.bak`, with the same owner and permissions as before.
+
+None of this changes what LabKeel does, so it doesn't restart for it: the next `docker compose up -d` picks
+the file up. If you update by hand, **Settings → LabKeel** says when your file is behind and has a **Bring it
+up to date** button (admins only, password again, logged).
+
+### What it won't do
+
 It won't update over local edits to LabKeel's files, or a copy with commits of its own: git would refuse,
 so Settings says so first. It needs the set-up from INSTALL.md (Docker Compose, `privileged`, `pid: host`) and a
 host that runs systemd; otherwise Settings shows the commands to run yourself.

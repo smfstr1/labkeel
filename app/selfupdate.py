@@ -8,6 +8,9 @@ short-lived systemd unit (systemd-run), and does exactly what you'd type yoursel
   installed from source (build: .)   git pull --ff-only, then docker compose up -d --build <service>
   installed from an image            docker compose pull <service>, then docker compose up -d <service>
 
+Afterwards, the new LabKeel brings your docker-compose.yml up to date with it (composefile.py): git leaves that
+file alone, as it's your own copy of docker-compose.example.yml.
+
 Everything about the install is read from LabKeel's own container (Docker Compose labels it with its project,
 folder, compose files and service) and from `docker compose config`, so nothing needs setting up. Git runs as
 the person who owns the folder, with their own git sign-in, so private repositories work too.
@@ -388,7 +391,29 @@ def finish_if_done():
         actor.reset(token)
     with _lock:
         _state["info"] = None
+    if ok:
+        threading.Thread(target=_tidy_after, args=(p.get("by"),), daemon=True, name="selfupdate.compose").start()
     return d["last"]
+
+
+def _tidy_after(who):
+    """After a successful update, bring docker-compose.yml up to date with the new version (composefile.py), as
+    whoever asked for the update, and note how it went beside the update's result."""
+    actor = sys.modules["security"].ACTOR
+    token = actor.set({"user": who} if who else None)
+    try:
+        res = sys.modules["composefile"].after_update()
+    except Exception as e:
+        res = {"ok": False, "detail": f"{type(e).__name__}: {e}"}
+    finally:
+        actor.reset(token)
+    if res is None:
+        return
+    with _lock:
+        d = _load()
+        if d.get("last"):
+            d["last"]["compose"] = {k: res.get(k) for k in ("ok", "detail", "file", "added", "renamed", "backup", "changed")}
+            _save(d)
 
 
 def _failure(tail, lost):

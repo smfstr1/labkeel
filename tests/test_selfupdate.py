@@ -76,9 +76,11 @@ def machine(monkeypatch, tmp_path):
     monkeypatch.setitem(selfupdate._state, "info", None)
     sent = []
     monkeypatch.setattr(upkeep, "notify", lambda *a, **k: sent.append(a) or (True, None))
+    tidied = []
+    monkeypatch.setattr(selfupdate, "_tidy_after", lambda who: tidied.append(who))   # test_composefile.py has it
     for name in ("update.json", "update.log", "update.sh"):
         (main.DATA_DIR / name).unlink(missing_ok=True)
-    yield SimpleNamespace(host=h, me=me, sent=sent)
+    yield SimpleNamespace(host=h, me=me, sent=sent, tidied=tidied)
     for name in ("update.json", "update.log", "update.sh"):
         (main.DATA_DIR / name).unlink(missing_ok=True)
 
@@ -275,6 +277,11 @@ def test_success_reported_after_the_restart(machine, client):
     e = client.get("/api/events", params={"q": "LabKeel updated"}).json()[0]
     assert e["user"] == "sam-admin"                                  # the person who asked, not whoever's here now
     assert selfupdate.finish_if_done() is None                       # reported once
+    for _ in range(100):
+        if machine.tidied:
+            break
+        time.sleep(0.01)
+    assert machine.tidied == ["sam-admin"]                            # then docker-compose.yml is brought up to date
     assert client.get("/api/labkeel/update").json()["last"]["ok"]
 
 
@@ -284,6 +291,7 @@ def test_failure_reported_and_alerted(machine, client):
     last = selfupdate.finish_if_done()
     assert not last["ok"] and "failed to solve" in last["detail"]
     assert machine.sent and "failed" in machine.sent[-1][0]
+    assert machine.tidied == []                                       # but not after a failed update
     st = client.get("/api/labkeel/update").json()
     assert not st["running"] and "failed to solve" in st["log"]
 

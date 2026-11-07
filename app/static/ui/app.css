@@ -3197,6 +3197,11 @@ dialog.dlg::backdrop {
   color: var(--muted);
   max-width: 66ch;
 }
+.lk-compose {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
 .lk-changes {
   margin: 10px 0 0;
   padding-left: 18px;

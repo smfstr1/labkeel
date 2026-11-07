@@ -381,9 +381,9 @@ Hello or a phone instead of typing a password.
 
 ## 8. Bring in your other machines (optional)
 
-Got a NAS, a Raspberry Pi or a second server? Open **Servers → Add a server**, and LabKeel gives you one
-command to run on the other machine. It installs LabKeel's small agent, which reports back here over HTTPS,
-and the machine joins your fleet within seconds. [docs/servers.md](docs/servers.md) has the details.
+Got a NAS, a Raspberry Pi or a second server? Choose the arrow beside your machine's name (top left), then
+**Add a server**, and LabKeel gives you one command to run on the other machine. It installs LabKeel's small
+agent, which reports back here over HTTPS, and the machine joins your fleet within seconds. [docs/servers.md](docs/servers.md) has the details.
 
 ---
 
@@ -403,7 +403,10 @@ git pull
 docker compose up -d --build
 ```
 
-Your accounts, settings and history stay put.
+Your accounts, settings and history stay put. Your `docker-compose.yml` is yours too, so `git pull` leaves it
+alone. After the button's update, LabKeel adds any new settings to it (switched off) and gives old names their
+new ones, keeping your values and a copy of the old file. After an update by hand, **Settings → LabKeel** offers
+the same. See [docs/updates.md](docs/updates.md).
 
 Docker and git update with the rest of your system (`sudo apt upgrade`, or `sudo dnf upgrade` on Fedora).
 Since Docker now comes from Docker's own repository, that keeps you on the latest version too.
