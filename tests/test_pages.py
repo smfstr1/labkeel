@@ -3,7 +3,7 @@ those run."""
 import re
 
 
-UI = ["core", "overview", "containers", "storage", "zfs", "services", "apps", "servers", "files", "dialogs", "settings", "main"]
+UI = ["core", "overview", "containers", "storage", "zfs", "services", "apps", "servers", "files", "panes", "dialogs", "settings", "main"]
 
 
 def test_page_links_every_script_in_order_with_a_version(client):

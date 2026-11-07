@@ -1,4 +1,4 @@
-// LabKeel dashboard — core.js (1 of 12; index.html loads them in order).
+// LabKeel dashboard — core.js (1 of 13; index.html loads them in order).
 // The basics everything else uses: $ and esc, api(), number and date formatting, the page state (S), the
 // theme, routing between pages (#overview, #files:...), polling and the loaders that fetch each kind of data.
 //

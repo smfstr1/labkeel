@@ -8,9 +8,10 @@ How a machine joins:
   3. It sends the code to POST /api/agent/join and gets its own secret token back. From then on it sends a
      report every few seconds to POST /api/agent/report: figures, containers, filesystems, pools and drives.
 
-The agent connects out to the hub, so the other machine needs no port opened, and it only reads: nothing here
-can tell it to change anything (that would come later, one thing at a time, each switched off until allowed on
-that machine). A machine is removed by deleting its token, after which its reports are refused.
+The agent connects out to the hub, so the other machine needs no port opened. Beyond its reports, the hub can
+only ask it for files (remote.py): the Files page's own requests, in the folders shared under /browse there, and
+changes only if LABKEEL_ALLOW_FILE_CHANGES=1 is set there. Its containers and settings are shown, not changed.
+A machine is removed by deleting its token, after which its reports and file requests are refused.
 
 Stored in data/servers.json: each machine's name, a hash of its token (never the token), when it joined and was
 last heard from, and its latest report (so an offline machine still shows what it looked like).
@@ -227,16 +228,21 @@ def api_servers(containers: bool = False):
 
 
 @router.get("/api/servers/{sid}")
-def api_server(sid: str):
-    """One machine's latest report, for its page."""
+def api_server(sid: str, request: Request):
+    """One machine's latest report, for its page. Its shared folders only for admins (viewers don't see Files)."""
     d = _load()
     s = d["servers"].get(sid)
     if not s:
         raise HTTPException(404, "There's no server with that name here.")
     r = _reports.get(sid) or ({"t": s.get("last_seen"), "data": s.get("last")} if s.get("last") else {})
     t = r.get("t")
+    rep = dict(r.get("data") or {})
+    if S().role(request) != "admin":
+        rep.pop("files", None)
+    else:
+        rep["files_connected"] = sys.modules["remote"].connected(sid) if "remote" in sys.modules else False
     return {"id": sid, "name": s.get("name"), "joined": s.get("joined"), "last_seen": t, "state": _state(s, t),
-            "agent_version": s.get("agent_version"), "ip": s.get("ip"), "report": r.get("data"),
+            "agent_version": s.get("agent_version"), "ip": s.get("ip"), "report": rep,
             "problems": [{"level": v[0], "title": v[1], "detail": v[2]} for v in conditions_for(sid, s, r, time.time()).values()]}
 
 
@@ -269,8 +275,10 @@ def command(hub, code, key):
     """What to run on the other machine."""
     envs = f"LABKEEL_HUB={hub} LABKEEL_JOIN_CODE={code}" + (f" LABKEEL_HUB_KEY={key}" if key else "")
     # safe to run again on a machine that has it already (to join afresh with a new code, say)
+    # and agent.local.yml, if it's there: the folders this machine shares with Files (git leaves that file alone)
     return (f"[ -d labkeel-agent ] || git clone {REPO} labkeel-agent\n"
-            f"cd labkeel-agent && {envs} \\\n  docker compose -f agent.compose.yml up -d --build")
+            f"cd labkeel-agent && {envs} \\\n"
+            f"  docker compose -f agent.compose.yml $([ -f agent.local.yml ] && echo -f agent.local.yml) up -d --build")
 
 
 @router.post("/api/servers/code")
@@ -338,12 +346,71 @@ def api_remove(sid: str, request: Request, body: dict = Body(default={})):
     return {"ok": True}
 
 
+RELAY_PER_HOUR = 300
+_relayed = {}  # server id -> [hour, lines repeated in it, said so when it ran over]
+
+
+def _repeat_events(sid, name, events):
+    """File changes made on another machine (through Files here, or there by a copy) also go in this machine's
+    activity log, under whoever made them. At most RELAY_PER_HOUR an hour from each machine, so one that
+    misbehaves can't push everything else out of the log."""
+    actor = S().ACTOR
+    hour = int(time.time() // 3600)
+    seen = _relayed.get(sid)
+    if not seen or seen[0] != hour:
+        seen = _relayed[sid] = [hour, 0, False]  # hour, lines repeated, said so when it ran over
+    keep = events[:max(0, RELAY_PER_HOUR - seen[1])]
+    seen[1] += len(keep)
+    if len(keep) < len(events) and not seen[2]:
+        seen[2] = True
+        U().log("files", f"On {name}: more file changes this hour than are repeated here. Its own activity log has them all.")
+    events = keep
+    for e in events:
+        token = actor.set({"user": e["user"], "ip": name})
+        try:
+            U().log("files", f"On {name}: {e['text']}")
+        finally:
+            actor.reset(token)
+
+
 # --------------------------------------------------------------------------- endpoints for agents (no session:
 # they're public in security.PUBLIC and check their own code or token)
 def _bearer(request):
     h = request.headers.get("authorization") or ""
     m = re.fullmatch(r"Bearer ([0-9a-f]{12})\.([A-Za-z0-9_-]{20,100})", h.strip())
     return (m.group(1), m.group(2)) if m else (None, None)
+
+
+def agent_auth(request):
+    """The agent sending this request, by its token: (server id, its record), or 401."""
+    sid, token = _bearer(request)
+    s = _load()["servers"].get(sid) if sid else None
+    if not s or not hmac.compare_digest(s.get("token") or "", _hash(token or "")):
+        raise HTTPException(401, "This agent isn't joined to this LabKeel (it may have been removed). Join it again with a new code.")
+    return sid, s
+
+
+def _text(x, n):
+    return x[:n] if isinstance(x, str) else None
+
+
+def _clean_files(f):
+    """What a machine shares with Files: whether it allows changes, and its top folders."""
+    if not isinstance(f, dict):
+        return None
+    roots = [{"name": _text(r.get("name"), 255), "writable": r.get("writable") is True}
+             for r in (f.get("roots") if isinstance(f.get("roots"), list) else [])[:200]
+             if isinstance(r, dict) and _text(r.get("name"), 255)]
+    return {"write": f.get("write") is True, "roots": [r for r in roots if "/" not in r["name"]]}
+
+
+def _clean_events(ev):
+    """Lines from the machine's own activity log (its file changes), to repeat in this one's."""
+    out = []
+    for e in (ev if isinstance(ev, list) else [])[:100]:
+        if isinstance(e, dict) and isinstance(e.get("id"), int) and _text(e.get("text"), 500):
+            out.append({"id": e["id"], "text": " ".join(e["text"][:500].split()), "user": _text(e.get("user"), 64)})
+    return out
 
 
 def _clean_report(body):
@@ -361,6 +428,9 @@ def _clean_report(body):
     for k in ("version", "error"):
         if isinstance(body.get(k), str):
             keep[k] = body[k][:300]
+    files = _clean_files(body.get("files"))
+    if files is not None:
+        keep["files"] = files
     return keep
 
 
@@ -398,15 +468,12 @@ async def api_agent_join(request: Request):
 
 @router.post("/api/agent/report")
 async def api_agent_report(request: Request):
-    sid, token = _bearer(request)
-    d = _load()
-    s = d["servers"].get(sid) if sid else None
-    if not s or not hmac.compare_digest(s.get("token") or "", _hash(token or "")):
-        raise HTTPException(401, "This agent isn't joined to this LabKeel (it may have been removed). Join it again with a new code.")
+    sid, s = agent_auth(request)
     body, err = await S()._read_json(request, cap=1_000_000)
     if err:
         return err
     rep = _clean_report(body)
+    _repeat_events(sid, s.get("name") or sid, _clean_events(body.get("events")))
     now = time.time()
     _reports[sid] = {"t": now, "data": rep}
     if now - _saved.get(sid, 0) > 300 or s.get("agent_version") != rep.get("version"):

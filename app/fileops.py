@@ -222,6 +222,14 @@ def _oserr(e, what):
     raise HTTPException(code, f"Couldn't {what}: {msg or e.strerror}")
 
 
+def amount(n):
+    """A size for the activity log: "840 bytes", "52.0 KB", "1.4 MB", "4.56 GB"."""
+    for unit, size, dp in (("TB", 1e12, 2), ("GB", 1e9, 2), ("MB", 1e6, 1), ("KB", 1e3, 1)):
+        if n >= size:
+            return f"{n / size:.{dp}f} {unit}"
+    return f"{n} byte{'s' if n != 1 else ''}"
+
+
 def _log(text):
     """A line in the activity log (never fails the change it's about)."""
     try:
@@ -261,10 +269,10 @@ def _flush_upload(key):
     if not b:
         return
     if b["files"] == 1 and not b["folders"]:
-        _log(f"Uploaded {b['first']} ({b['bytes'] / 1e6:.1f} MB)" + (" replacing the old one (now in the Bin)" if b["replaced"] else ""))
+        _log(f"Uploaded {b['first']} ({amount(b['bytes'])})" + (" replacing the old one (now in the Bin)" if b["replaced"] else ""))
     else:
         bits = [f"{b['files']} file{'s' if b['files'] != 1 else ''}"] + ([f"{b['folders']} folder{'s' if b['folders'] != 1 else ''}"] if b["folders"] else [])
-        _log(f"Uploaded {' and '.join(bits)} ({b['bytes'] / 1e9:.2f} GB) into {key}, starting with {b['first']}"
+        _log(f"Uploaded {' and '.join(bits)} ({amount(b['bytes'])}) into {key}, starting with {b['first']}"
              + (f"; {b['replaced']} replaced (old ones in the Bin)" if b["replaced"] else ""))
 
 
@@ -412,7 +420,11 @@ def _up_public(u):
 
 
 def _owner(request):
-    """Who an upload belongs to: this signed-in browser (see security._session_key)."""
+    """Who an upload belongs to: this signed-in browser (see security._session_key), or, for one sent on by the
+    LabKeel this machine's agent reports to, that browser there (filesapp.py)."""
+    fw = request.scope.get("labkeel.forwarded")
+    if fw:
+        return "via:" + str(fw.get("session") or "")
     return S()._session_key(request) or "open"
 
 
@@ -654,6 +666,12 @@ def _finish(u):
         except FileNotFoundError:
             pass
         _own_like(dfd, u["tmp"], os.fstat(dfd))
+        lm = u.get("lastmod")  # the file's own date (milliseconds), as the browser or the other machine gave it
+        if isinstance(lm, (int, float)) and not isinstance(lm, bool) and 0 < lm < 4102444800000:
+            try:
+                os.utime(u["tmp"], ns=(int(lm * 1e6), int(lm * 1e6)), dir_fd=dfd, follow_symlinks=False)
+            except (OSError, NotImplementedError):
+                pass
         try:
             os.rename(u["tmp"], name, src_dir_fd=dfd, dst_dir_fd=dfd)
         except OSError as e:
@@ -689,7 +707,7 @@ def _tidy_ups():
             _ups.pop(k)
     for u in old:
         _up_drop(u)
-        _log(f"Removed an unfinished upload of {u['rel']}/{u['name']} ({u['received'] / 1e9:.1f} of {u['size'] / 1e9:.1f} GB) "
+        _log(f"Removed an unfinished upload of {u['rel']}/{u['name']} ({amount(u['received'])} of {amount(u['size'])}) "
              f"untouched for {STALE_DAYS} days")
 
 
@@ -774,6 +792,79 @@ def api_search(q: str, path: str = ""):
     stopped, scanned = count["stopped"], count["scanned"]
     found.sort(key=lambda x: (not x["dir"], x["path"].lower()))
     return {"items": found, "stopped": stopped, "scanned": scanned, "in": "" if start == root else str(start.relative_to(root))}
+
+
+WALK_MAX = 200_000
+
+
+@router.get("/api/files/walk")
+def api_walk(path: str):
+    """Everything in a folder, for copying it to another machine (crosscopy.py): its folders, and its files with
+    their sizes and dates. The same rules as listing: hidden names, the dashboard's own folder and the Bin are
+    left out, and links aren't followed (or copied). At most WALK_MAX items."""
+    m = M()
+    root = m.BROWSE_ROOT.resolve()
+    start = m.safe_path(path)
+    if start == root:
+        raise HTTPException(400, "Choose a folder or file inside one of the folders")
+    rel0 = str(start.relative_to(root))
+    try:
+        st0 = os.stat(start)
+    except OSError:
+        raise HTTPException(404, "Not found")
+    if _stat.S_ISREG(st0.st_mode):
+        return {"path": rel0, "dir": False, "dirs": [], "files": [["", st0.st_size, st0.st_mtime]], "bytes": st0.st_size,
+                "links": 0, "truncated": False}
+    if not _stat.S_ISDIR(st0.st_mode):
+        raise HTTPException(400, "Not a file or folder")
+    priv = m.private_paths()
+    out = {"dirs": [], "files": [], "bytes": 0, "links": 0, "truncated": False}
+
+    def walk(fd, sub, depth):
+        try:
+            names = sorted(os.listdir(fd))
+        except OSError:
+            return
+        for n in names:
+            if len(out["dirs"]) + len(out["files"]) >= WALK_MAX:
+                out["truncated"] = True
+                return
+            if m._hidden_part(n) or n == TRASH:
+                continue
+            relp = f"{sub}/{n}" if sub else n
+            if priv and (start / relp) in priv:
+                continue
+            try:
+                st = os.lstat(n, dir_fd=fd)
+            except OSError:
+                continue
+            if _stat.S_ISLNK(st.st_mode):
+                out["links"] += 1
+            elif _stat.S_ISREG(st.st_mode):
+                out["files"].append([relp, st.st_size, st.st_mtime])
+                out["bytes"] += st.st_size
+            elif _stat.S_ISDIR(st.st_mode) and depth < 64:
+                out["dirs"].append(relp)
+                try:
+                    c = os.open(n, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
+                except OSError:
+                    continue
+                try:
+                    walk(c, relp, depth + 1)
+                finally:
+                    os.close(c)
+
+    try:
+        sfd = _open_nofollow(start)
+    except OSError:
+        raise HTTPException(409, "The folder changed while opening it. Try again.")
+    try:
+        if (_real(sfd) or start) != start:
+            raise HTTPException(409, "The folder changed while opening it. Try again.")
+        walk(sfd, "", 0)
+    finally:
+        os.close(sfd)
+    return {"path": rel0, "dir": True, **out}
 
 
 # --------------------------------------------------------------------------- renaming and moving
@@ -1140,14 +1231,14 @@ def _run(j):
         made = False
         if j.get("kind") == "copy":
             j.update(state="done", finished=time.time())
-            _log(f"Copied {j['from']} to {j['to']} ({j['total'] / 1e9:.2f} GB)")
+            _log(f"Copied {j['from']} to {j['to']} ({amount(j['total'])})")
             return
         with _jobs_lock:
             j["state"] = "removing"
             _save_jobs()
         _remove(sfd, j["name"])
         j.update(state="done", finished=time.time())
-        _log(f"Moved {j['from']} to {j['to']} ({j['total'] / 1e9:.2f} GB, copied to the other drive and the original deleted)")
+        _log(f"Moved {j['from']} to {j['to']} ({amount(j['total'])}, copied to the other drive and the original deleted)")
     except _Cancelled:
         if made:
             _remove(dfd, j["tmp"])
@@ -1324,7 +1415,7 @@ def api_delete(request: Request, body: dict = Body(...)):
         if added:
             with _lock:
                 _save_index(_index() + added)
-            _log(f"Deleted {', '.join(done[:5])}{f' and {len(done) - 5} more' if len(done) > 5 else ''} (in the trash for {TRASH_DAYS} days)")
+            _log(f"Deleted {', '.join(done[:5])}{f' and {len(done) - 5} more' if len(done) > 5 else ''} (in the Bin for {TRASH_DAYS} days)")
     return {"deleted": len(done)}
 
 
@@ -1340,26 +1431,26 @@ def _open_trash_item(item):
     m = M()
     root = m.BROWSE_ROOT.resolve()
     if not re.fullmatch(r"\d{8}-\d{6}-[0-9a-f]{8}", item.get("id") or ""):
-        raise HTTPException(400, "Bad trash item")
+        raise HTTPException(400, "That isn't something in the Bin")
     tdir = (root / item["trash"]).resolve()
     if tdir.name != TRASH or root not in tdir.parents:
-        raise HTTPException(400, "Bad trash item")
+        raise HTTPException(400, "That isn't something in the Bin")
     tfd = os.open(tdir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
     if (_real(tfd) or tdir) != tdir:
         os.close(tfd)
-        raise HTTPException(409, "The trash folder changed. Try again.")
+        raise HTTPException(409, "The Bin changed. Try again.")
     return tfd
 
 
 def _take(ids):
     """The Bin records with these ids (404 if none of them are there any more)."""
     if not isinstance(ids, list) or not ids or not all(isinstance(i, str) for i in ids):
-        raise HTTPException(400, "Choose items from the trash")
+        raise HTTPException(400, "Choose things from the Bin")
     with _lock:
         items = _index()
         pick = [x for x in items if x.get("id") in ids]
     if not pick:
-        raise HTTPException(404, "Those aren't in the trash any more")
+        raise HTTPException(404, "Those aren't in the Bin any more")
     return pick
 
 
@@ -1412,7 +1503,7 @@ def api_restore(request: Request, body: dict = Body(...)):
             finally:
                 os.close(tfd)
             restored.append(item["id"])
-            _log(f"Put back {item['from']} from the trash")
+            _log(f"Put back {item['from']} from the Bin")
         finally:
             os.close(fd)
     _forget(restored + missing)  # nothing left to put back for the missing ones: drop them from the list
@@ -1449,7 +1540,7 @@ def api_purge(request: Request, body: dict = Body(...)):
             pass
     _forget(gone)
     if gone:
-        _log(f"Emptied {len(gone)} item{'s' if len(gone) != 1 else ''} from the trash")
+        _log(f"Emptied {len(gone)} item{'s' if len(gone) != 1 else ''} from the Bin")
     return {"deleted": len(gone)}
 
 
@@ -1468,7 +1559,7 @@ def tidy():
             pass
     if gone:
         _forget(gone)
-        _log(f"Emptied {len(gone)} item{'s' if len(gone) != 1 else ''} older than {TRASH_DAYS} days from the trash")
+        _log(f"Emptied {len(gone)} item{'s' if len(gone) != 1 else ''} older than {TRASH_DAYS} days from the Bin")
 
 
 def _loop():

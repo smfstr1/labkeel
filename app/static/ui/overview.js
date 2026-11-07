@@ -1,4 +1,4 @@
-// LabKeel dashboard — overview.js (2 of 12; index.html loads them in order).
+// LabKeel dashboard — overview.js (2 of 13; index.html loads them in order).
 // The Overview page: the live tiles, sparklines, attention list, busiest programs, GPUs, power, and the
 // history charts (drawn as SVG).
 "use strict";
@@ -101,6 +101,7 @@ function renderSystem() {
   renderPowerNow();
   renderHistoryLive();
   const cores = $("#ov-cores");
+  $("#ov-cores-wrap").hidden = d.cpu.per_core.length < 2; // one thread says nothing the CPU tile doesn't
   if (cores.children.length !== d.cpu.per_core.length)
     cores.innerHTML = d.cpu.per_core
       .map((_, i) => `<div class="core" title="Thread ${i}"><i></i><b>${i}</b></div>`)

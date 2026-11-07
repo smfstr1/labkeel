@@ -1,4 +1,4 @@
-// LabKeel dashboard — storage.js (4 of 12; index.html loads them in order).
+// LabKeel dashboard — storage.js (4 of 13; index.html loads them in order).
 // The Storage page: drives and pools as tiles, drive care (self-tests, cases), replacing a drive, and a
 // drive's own drawer.
 "use strict";

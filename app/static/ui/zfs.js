@@ -1,4 +1,4 @@
-// LabKeel dashboard — zfs.js (5 of 12; index.html loads them in order).
+// LabKeel dashboard — zfs.js (5 of 13; index.html loads them in order).
 // A pool's own page and everything ZFS: datasets, snapshots, maintenance, choosing drives, making a new
 // pool and importing one.
 "use strict";

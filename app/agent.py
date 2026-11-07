@@ -1,21 +1,27 @@
 """
 LabKeel's agent: runs on another machine and reports it to your main LabKeel (the hub), which shows it on its
-Servers page. See docs/servers.md.
+Servers page, and its files on the Files page. See docs/servers.md.
 
 It uses the same readings as LabKeel itself (figures, containers, filesystems, pools, drive health) and sends
-them every few seconds. It only connects out, so it needs no open port, and it only reads: nothing the hub
-sends back can make it change anything.
+them every few seconds. It only connects out, so it needs no open port.
+
+Files: the hub hands it requests from its Files page (a few are always waiting at the hub, remote.py), and it
+runs them with LabKeel's own file code (filesapp.py) against the folders mounted under /browse here, and nothing
+else. They can only change anything if LABKEEL_ALLOW_FILE_CHANGES=1 is set here; otherwise they only read.
+Containers, settings and everything else on this machine are never changed from the hub.
 
 Settings (agent.compose.yml passes them in):
   LABKEEL_HUB         the hub's address, https://homelab:8787
-  LABKEEL_JOIN_CODE   the one-time code from the hub (Servers → Add a server); not needed once joined
+  LABKEEL_JOIN_CODE   the one-time code from the hub (Add a server); not needed once joined
   LABKEEL_HUB_KEY     the hub's certificate key, sha256:..., shown beside the code. With it, the agent knows it's
                       talking to your LabKeel even when its certificate is self-signed.
   LABKEEL_DATA_DIR    where it keeps its token (/data)
+  LABKEEL_ALLOW_FILE_CHANGES   1 = the hub's Files page may change files in the folders under /browse here
 
   python agent.py            run
   python agent.py --health   Docker's health check: did the last report get through?
 """
+import asyncio
 import base64
 import hashlib
 import http.client
@@ -60,7 +66,7 @@ def key_of_der(der):
     return "sha256:" + base64.urlsafe_b64encode(hashlib.sha256(spki).digest()).decode().rstrip("=")
 
 
-def _connect(hub, pinned):
+def _connect(hub, pinned, timeout=TIMEOUT):
     """An HTTPS connection to the hub that's been checked: either its certificate is trusted the usual way
     (a Tailscale or Let's Encrypt one, say), or its key is the one this agent was given. Returns
     (connection, the hub's key now). Nothing is sent before the check."""
@@ -69,7 +75,7 @@ def _connect(hub, pinned):
         raise Untrusted(f"LABKEEL_HUB must be an https:// address, not {hub!r}.")
     port = u.port or 443
     try:
-        conn = http.client.HTTPSConnection(u.hostname, port, timeout=TIMEOUT, context=ssl.create_default_context())
+        conn = http.client.HTTPSConnection(u.hostname, port, timeout=timeout, context=ssl.create_default_context())
         conn.connect()
         return conn, key_of_der(conn.sock.getpeercert(binary_form=True))
     except ssl.SSLCertVerificationError:
@@ -77,7 +83,7 @@ def _connect(hub, pinned):
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE  # checked by hand just below, before anything is sent  # nosec B501
-    conn = http.client.HTTPSConnection(u.hostname, port, timeout=TIMEOUT, context=ctx)
+    conn = http.client.HTTPSConnection(u.hostname, port, timeout=timeout, context=ctx)
     conn.connect()
     key = key_of_der(conn.sock.getpeercert(binary_form=True))
     if not pinned or key != pinned:
@@ -87,12 +93,17 @@ def _connect(hub, pinned):
     return conn, key
 
 
-def post(state, path, body, token=None):
-    conn, key = _connect(state["hub"], state.get("hub_key"))
+def _headers(state, token=None):
+    h = {"User-Agent": f"LabKeel-agent/{version()}"}
+    if token:
+        h["Authorization"] = f"Bearer {state['id']}.{token}"
+    return h
+
+
+def post(state, path, body, token=None, timeout=TIMEOUT):
+    conn, key = _connect(state["hub"], state.get("hub_key"), timeout)
     try:
-        headers = {"Content-Type": "application/json", "User-Agent": f"LabKeel-agent/{version()}"}
-        if token:
-            headers["Authorization"] = f"Bearer {state['id']}.{token}"
+        headers = {"Content-Type": "application/json", **_headers(state, token)}
         conn.request("POST", path, body=json.dumps(body, default=str), headers=headers)
         r = conn.getresponse()
         data = r.read(1_000_000)
@@ -175,17 +186,160 @@ def report():
     return {"version": version(), "host": main.HOST_INFO, "system": system,
             "power": {"total": live["power"].get("total")} if live["power"].get("available") else {},
             "containers": ctrs, "filesystems": fss, "pools": pools, "drives": drives, "gpus": gpus,
-            "error": containers.state.get("error") or stg.get("error")}
+            "files": files_info(), "error": containers.state.get("error") or stg.get("error")}
+
+
+def files_info():
+    """The folders this machine shares with the Files page (mounted under /browse), and whether it allows changes."""
+    import fileops
+    import main
+    root = main.BROWSE_ROOT
+    try:
+        real = root.resolve()
+        names = sorted(e.name for e in root.iterdir() if e.is_dir() and not main._hidden_part(e.name))[:200]
+    except OSError:
+        return {"write": fileops.WRITE, "roots": []}
+    return {"write": fileops.WRITE, "roots": [{"name": n, "writable": main._writable(real / n, real)} for n in names]}
+
+
+def new_events(state):
+    """File changes made here since the last report, for the hub's activity log too (oldest first)."""
+    import db
+    try:
+        rows = db.events(limit=100, kind="files")
+    except Exception:
+        return []
+    top = max((r["id"] for r in rows), default=0)
+    last = state.get("events_sent")
+    if last is None or last > top:  # first time (or the database was reset): only what happens from now on
+        state["events_sent"] = top
+        return []
+    return [{"id": r["id"], "text": r["text"], "user": r["user"]} for r in reversed(rows) if r["id"] > last]
 
 
 def _start_readings():
     import containers
+    import fileops
     import main
     import metrics
     for fn in (main.system_sampler, containers.poller, main.smart_poller):
         threading.Thread(target=fn, daemon=True, name=fn.__name__).start()
     for fn in (metrics.gpu_loop, metrics.sample_loop):
         threading.Thread(target=fn, daemon=True, name=fn.__name__).start()
+    fileops.start()  # the Bin's clear-out, unfinished uploads, and moves between drives here
+
+
+# --------------------------------------------------------------------------- file requests from the hub
+WORKERS = 6       # requests the hub can have this machine working on at once
+WAIT_FOR = 45     # seconds to wait for the hub's answer to a wait (it answers within 25)
+_workers = []
+
+
+def _channel(state):
+    """Keep WORKERS threads waiting for file requests from the hub (remote.py)."""
+    alive = [t for t in _workers if t.is_alive()]
+    _workers[:] = alive
+    for _ in range(WORKERS - len(alive)):
+        t = threading.Thread(target=_work, args=(state,), daemon=True, name="files")
+        t.start()
+        _workers.append(t)
+
+
+def _work(state):
+    pause = 1
+    while state.get("token"):
+        try:
+            req = post(state, "/api/agent/wait", {}, token=state["token"], timeout=WAIT_FOR)
+            pause = 1
+        except Refused:
+            return  # removed on the hub: the report loop says so, and starts these again once joined
+        except Untrusted:
+            time.sleep(300)
+            continue
+        except Exception:
+            time.sleep(pause)
+            pause = min(60, pause * 2)
+            continue
+        if req.get("id"):
+            try:
+                _serve(state, req)
+            except Exception as e:
+                say(f"A file request ({req.get('method')} {req.get('path')}) failed: {type(e).__name__}: {e}")
+
+
+def _fetch_body(state, cid, size):
+    conn, _ = _connect(state["hub"], state.get("hub_key"), 120)
+    try:
+        conn.request("GET", f"/api/agent/body/{cid}", headers=_headers(state, state["token"]))
+        r = conn.getresponse()
+        data = r.read(size + 1)
+        if r.status != 200 or len(data) != size:
+            raise RuntimeError(f"couldn't fetch the request's body ({r.status})")
+        return data
+    finally:
+        conn.close()
+
+
+def _working(state, cid, started):
+    if started.is_set():
+        return
+    try:
+        post(state, f"/api/agent/working/{cid}", {}, token=state["token"])
+    except Exception:
+        pass
+
+
+def _serve(state, req):
+    """Run one request with LabKeel's own file code (filesapp.py) and send the answer back as it comes."""
+    cid = str(req["id"])
+    body = None
+    if isinstance(req.get("body"), str):
+        body = base64.b64decode(req["body"])
+    elif isinstance(req.get("stream"), int):
+        if not 0 <= req["stream"] <= 64 * 1024 * 1024:  # one upload piece at most (fileops.CHUNK_MAX)
+            raise ValueError("request body too big")
+        body = _fetch_body(state, cid, req["stream"])
+    started = threading.Event()
+    timer = threading.Timer(5, _working, args=(state, cid, started))  # a slow one: tell the hub it's on its way
+    timer.daemon = True
+    timer.start()
+    try:
+        asyncio.run(_answer(state, req, cid, body, started))
+    finally:
+        timer.cancel()
+
+
+async def _answer(state, req, cid, body, started):
+    import filesapp
+    fw = req.get("forwarded") if isinstance(req.get("forwarded"), dict) else {}
+    fw = {"user": fw.get("user"), "via": str(fw.get("via") or "the hub")[:64], "session": str(fw.get("session") or "")[:64]}
+    status, hdrs, chunks = await filesapp.call(str(req.get("method")), str(req.get("path")), str(req.get("query") or ""),
+                                               req.get("headers") if isinstance(req.get("headers"), dict) else {}, body,
+                                               forwarded=fw)
+    started.set()
+    conn = None
+    try:
+        conn = await asyncio.to_thread(_reply_open, state, cid, status, hdrs)
+        async for c in chunks:
+            await asyncio.to_thread(conn.send, b"%x\r\n" % len(c) + c + b"\r\n")
+        await asyncio.to_thread(conn.send, b"0\r\n\r\n")
+        r = await asyncio.to_thread(conn.getresponse)
+        r.read(10000)
+    finally:
+        await chunks.aclose()
+        if conn:
+            conn.close()
+
+
+def _reply_open(state, cid, status, hdrs):
+    conn, _ = _connect(state["hub"], state.get("hub_key"), 130)  # checked before anything is sent, as ever
+    conn.putrequest("POST", f"/api/agent/reply/{cid}", skip_accept_encoding=True)
+    for k, v in {**_headers(state, state["token"]), "Content-Type": "application/octet-stream",
+                 "Transfer-Encoding": "chunked", "X-LabKeel-Status": str(int(status)),
+                 "X-LabKeel-Headers": json.dumps(hdrs)}.items():
+        conn.putheader(k, v)
+    conn.endheaders()
+    return conn
 
 
 def _healthy(ok, note=""):
@@ -224,7 +378,13 @@ def run():
         try:
             if not state.get("token"):
                 interval = join(state)
-            got = post(state, "/api/agent/report", report(), token=state["token"])
+            rep = report()
+            rep["events"] = new_events(state)
+            got = post(state, "/api/agent/report", rep, token=state["token"])
+            if rep["events"]:
+                state["events_sent"] = rep["events"][-1]["id"]
+                save(state)
+            _channel(state)
             interval = max(5, min(300, int(got.get("interval") or interval)))
             if failures:
                 say(f"Reporting to {state['hub']} again.")

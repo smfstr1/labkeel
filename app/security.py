@@ -51,6 +51,8 @@ PUBLIC = {"/login", "/api/login", "/api/login-info", "/api/health", "/api/login/
           "/manifest.webmanifest", "/app-icon.png",
           "/api/agent/join", "/api/agent/report"}  # other machines' agents: they check their own join code or token
 PUBLIC_PREFIXES = ("/assets/",)
+# other machines' agents fetching and answering file requests (remote.py): each checks the agent's own token
+AGENT_PATHS = re.compile(r"/api/agent/(wait|body/[0-9a-f]{32}|working/[0-9a-f]{32}|reply/[0-9a-f]{32})")
 SETUP_PATHS = {"/setup", "/api/setup", "/api/setup-info", "/api/health"}
 MAX_BODY = 1_000_000  # bytes: the most any request may send, except file uploads (see body_limit)
 ALLOW_NO_AUTH = env.flag("LABKEEL_ALLOW_NO_SIGN_IN")
@@ -551,6 +553,8 @@ def confirm_password(request: Request, password):
 
     Raises 428 when no password was sent (the page then asks for it and sends the request again),
     403 with X-Password: wrong for a wrong one, and 429 while paused."""
+    if request.scope.get("labkeel.forwarded"):
+        return  # sent on by a LabKeel that asked its own user already (filesapp.py); never set from outside
     u = current_user(request)
     if not enabled() or (u and u.get("source") == "proxy"):
         return
@@ -591,16 +595,23 @@ class Compress:
 
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "") if scope["type"] == "http" else ""
-        if path in ("/", "/login", "/account", "/setup") or (path.startswith("/api/") and not path.startswith("/api/files/raw")):
+        if path in ("/", "/login", "/account", "/setup") or (path.startswith("/api/") and "/files/raw" not in path
+                                                                and not path.startswith("/api/agent/")):
             return await self.gz(scope, receive, send)
         return await self.app(scope, receive, send)
 
 
+REMOTE_CHUNK = re.compile(r"/api/remote/[0-9a-f]{12}/files/upload/chunk")
+
+
 def body_limit(path):
-    """1 MB for everything, except a piece of a file upload (64 MB at most)."""
+    """1 MB for everything, except a piece of a file upload (64 MB at most, here or on another machine), and
+    an agent's answer to a file request (a whole file: checked by the agent's token instead)."""
     fo = sys.modules.get("fileops")
-    if fo and path == fo.CHUNK_PATH:
+    if fo and (path == fo.CHUNK_PATH or REMOTE_CHUNK.fullmatch(path)):
         return fo.CHUNK_MAX
+    if path.startswith("/api/agent/reply/"):
+        return 1 << 62
     return MAX_BODY
 
 
@@ -713,7 +724,8 @@ async def guard(request: Request, call_next):
                 return JSONResponse({"error": "Request too large"}, status_code=413)
         except ValueError:
             return JSONResponse({"error": "Bad request"}, status_code=400)
-    public = path in PUBLIC or path.startswith(PUBLIC_PREFIXES) or (needs_setup() and path in SETUP_PATHS)
+    public = (path in PUBLIC or path.startswith(PUBLIC_PREFIXES) or bool(AGENT_PATHS.fullmatch(path))
+              or (needs_setup() and path in SETUP_PATHS))
     if not public:
         if not signed_in(request):
             if request.scope.get("labkeel.proxy_denied"):

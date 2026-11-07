@@ -1,4 +1,4 @@
-// LabKeel dashboard — main.js (12 of 12; index.html loads them in order).
+// LabKeel dashboard — main.js (13 of 13; index.html loads them in order).
 // Start-up: load what the first page needs, then keep everything fresh on timers. Loaded last.
 "use strict";
 

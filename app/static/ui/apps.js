@@ -1,4 +1,4 @@
-// LabKeel dashboard — apps.js (7 of 12; index.html loads them in order).
+// LabKeel dashboard — apps.js (7 of 13; index.html loads them in order).
 // The Apps page: a catalogue of popular apps, the dialog that adds one (with the compose file it will write),
 // its progress, and the apps added here. The server side is app/apps.py.
 "use strict";

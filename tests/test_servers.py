@@ -1,6 +1,7 @@
 """Several servers (servers.py and agent.py): join codes, agents' tokens and reports, what viewers see,
 alerts about other machines, removing one, and the agent checking it's really talking to your LabKeel."""
 import datetime
+import json
 import ssl
 import threading
 import time
@@ -231,3 +232,91 @@ def test_a_report_from_this_machine(monkeypatch):
     assert r["containers"][0] == {"name": "web", "image": "nginx", "state": "running", "health": None, "exit_code": None,
                                   "uptime": None, "restarts": None, "project": None, "cpu": 1.5, "mem": 1e6, "ports": ["80"]}
     assert r["filesystems"][0]["mount"] == "/" and r["host"] == main.HOST_INFO
+
+
+# --------------------------------------------------------------------------- the agent answering file requests
+@pytest.fixture
+def hub2(tmp_path):
+    """A stand-in hub that hands out a request's body and takes the agent's (chunked) answer."""
+    import http.server
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+    k = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "hub")])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(k.public_key())
+            .serial_number(2).not_valid_before(now).not_valid_after(now + datetime.timedelta(days=1)).sign(k, hashes.SHA256()))
+    (tmp_path / "c.pem").write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    (tmp_path / "k.pem").write_bytes(k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                                     serialization.NoEncryption()))
+    got = {"replies": {}, "bodies": {}}
+
+    class H(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_GET(self):
+            body = got["bodies"].get(self.path.rsplit("/", 1)[-1], b"")
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_POST(self):
+            data = b""
+            if self.headers.get("Transfer-Encoding") == "chunked":
+                while True:
+                    n = int(self.rfile.readline().strip(), 16)
+                    data += self.rfile.read(n)
+                    self.rfile.readline()
+                    if n == 0:
+                        break
+            got["replies"][self.path] = {"status": self.headers.get("X-LabKeel-Status"), "auth": self.headers.get("Authorization"),
+                                         "headers": json.loads(self.headers.get("X-LabKeel-Headers") or "{}"), "body": data}
+            out = b'{"ok": true}'
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+
+        def log_message(self, *a):
+            pass
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(tmp_path / "c.pem", tmp_path / "k.pem")
+    srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield {"state": {"hub": f"https://127.0.0.1:{srv.server_port}", "hub_key": servers.key_of(cert), "id": "abcdefabcdef",
+                     "token": "tok-tok-tok-tok-tok-tok"}, "got": got}
+    srv.shutdown()
+
+
+def test_the_agent_answers_file_requests(hub2, browse):
+    st, got = hub2["state"], hub2["got"]
+    fw = {"user": "sam", "via": "LabKeel on homelab", "session": "s" * 32}
+    agent._serve(st, {"id": "a" * 32, "method": "GET", "path": "/api/files/raw", "query": "path=media/notes.txt",
+                      "headers": {}, "forwarded": fw})
+    r = got["replies"]["/api/agent/reply/" + "a" * 32]
+    assert r["status"] == "200" and r["body"] == b"hello\n" and r["auth"] == "Bearer abcdefabcdef.tok-tok-tok-tok-tok-tok"
+    # a change, with its body fetched from the hub (too big to come with the request)
+    body = json.dumps({"path": "media", "name": "from-the-hub"}).encode()
+    got["bodies"]["b" * 32] = body
+    agent._serve(st, {"id": "b" * 32, "method": "POST", "path": "/api/files/mkdir", "query": "",
+                      "headers": {"content-type": "application/json"}, "forwarded": fw, "stream": len(body)})
+    assert got["replies"]["/api/agent/reply/" + "b" * 32]["status"] == "200" and (browse / "media" / "from-the-hub").is_dir()
+    # anything but a file route: refused by the agent too
+    agent._serve(st, {"id": "c" * 32, "method": "GET", "path": "/api/settings", "query": "", "headers": {}, "forwarded": fw})
+    assert got["replies"]["/api/agent/reply/" + "c" * 32]["status"] == "404"
+
+
+def test_the_agent_reports_its_folders_and_new_activity(browse, monkeypatch):
+    info = agent.files_info()
+    assert info["write"] is True and info["roots"] == [{"name": "media", "writable": True}]
+    import db
+    rows = [{"id": 7, "t": 1, "kind": "files", "text": "Made folder x", "user": "sam", "ip": None}]
+    monkeypatch.setattr(db, "events", lambda **kw: list(rows))
+    state = {}
+    assert agent.new_events(state) == [] and state["events_sent"] == 7   # the first time: only what happens next
+    rows.insert(0, {"id": 8, "t": 2, "kind": "files", "text": "Deleted y", "user": None, "ip": None})
+    assert agent.new_events(state) == [{"id": 8, "text": "Deleted y", "user": None}]

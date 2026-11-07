@@ -1,4 +1,4 @@
-// LabKeel dashboard — files.js (9 of 12; index.html loads them in order).
+// LabKeel dashboard — files.js (9 of 13; index.html loads them in order).
 // The Files page: tree, list, previews and editing, uploads, search, moving and copying (with background
 // jobs), drag and drop, keyboard shortcuts and the Bin.
 "use strict";
@@ -14,10 +14,25 @@ const MEDIA = {
   video: ["mp4", "webm", "m4v", "mov"],
   audio: ["mp3", "flac", "m4a", "ogg", "wav", "opus", "aac"],
 };
-// The Files page: the folder tree, the list, previews and editing, selection, and every change (made through /api/files/*)
+// Every file request goes to the machine it's about: this one (/api/files/...), or another through its agent
+// (/api/remote/<id>/files/..., remote.py on the server).
+const fapi = (url, id = Files.m?.id) => (id ? url.replace(/^\/api\/files/, `/api/remote/${id}/files`) : url);
+const fnode = name => ({ name, open: false, loaded: false, children: [] });
+
+// The Files page: the folder tree, the list, previews and editing, selection, and every change (made through /api/files/*).
+// With other machines joined (Servers), each is a group in the tree with its own folders; Files.m is the one on show.
 const Files = {
-  nodes: new Map(), // path -> {name, open, loaded, children: [paths]}
-  roots: [],
+  machines: [], // [{id ("" for this one), name, here, state, connected, write, writable: {root: bool}, roots, nodes}]
+  m: null,
+  get nodes() {
+    return this.m.nodes; // path -> {name, open, loaded, children: [paths]}, for the machine on show
+  },
+  get roots() {
+    return this.m.roots;
+  },
+  get multi() {
+    return this.machines.length > 1;
+  },
   current: null,
   entries: [],
   sort: { key: "name", dir: 1 },
@@ -33,28 +48,107 @@ const Files = {
       $("#f-tree").innerHTML = `<div class="empty">${esc(e.message)}</div>`;
       return;
     }
-    this.roots = S.meta.file_roots || [];
-    for (const r of this.roots) this.nodes.set(r, { name: r, open: false, loaded: false, children: [] });
-    $("#f-trash-btn").hidden = !S.meta.file_write;
-    if (S.meta.file_write) Moves.poll();
+    const here = {
+      id: "",
+      here: true,
+      name: S.meta.host || S.meta.title || "This server",
+      state: "online",
+      connected: true,
+      write: !!S.meta.file_write,
+      writable: S.meta.file_writable || {},
+      roots: S.meta.file_roots || [],
+      nodes: new Map(),
+    };
+    for (const r of here.roots) here.nodes.set(r, fnode(r));
+    this.machines = [here];
+    this.m = here;
+    await this.loadMachines();
+    $("#f-trash-btn").hidden = !this.m.write;
+    if (here.write) Moves.poll();
+    Xfers.poll();
     this.renderTree();
-    if (!this.roots.length)
-      $("#f-list").innerHTML =
-        `<div class="empty">No folders are mounted yet. Add volumes under /browse in docker-compose.yml, for example <span class="mono">/mnt/Plex:/browse/Plex:ro</span>.</div>`;
+    if (Panes.wanted && !narrow()) {
+      Panes.wanted = false;
+      setTimeout(() => Panes.set(true), 0); // once the first folder is open
+    }
+  },
+  // the other machines (Servers), each with the folders its agent shares; quietly none if there are none
+  async loadMachines() {
+    let d = { items: [] };
+    try {
+      d = await api("/api/remote/machines");
+    } catch {}
+    if (d.this?.name) this.machines[0].name = d.this.name;
+    const keep = [this.machines[0]];
+    for (const x of d.items || []) {
+      const m = this.machines.find(y => y.id === x.id) || { id: x.id, nodes: new Map() };
+      Object.assign(m, {
+        name: x.name,
+        state: x.state,
+        connected: x.connected,
+        files: x.files,
+        write: x.write,
+        writable: Object.fromEntries((x.roots || []).map(r => [r.name, r.writable])),
+        roots: (x.roots || []).map(r => r.name),
+      });
+      for (const r of m.roots) if (!m.nodes.has(r)) m.nodes.set(r, fnode(r));
+      keep.push(m);
+    }
+    this.machines = keep;
+    if (!keep.includes(this.m)) this.m = keep[0];
+    document.body.classList.toggle("f-multi", this.multi);
+  },
+  machine(id) {
+    return this.machines.find(m => m.id === (id || "")) || null;
+  },
+  // what a machine can't do right now, in a few words (or "")
+  why(m) {
+    if (m.here) return m.roots.length ? "" : "No folders are mounted under /browse here yet.";
+    if (m.state === "offline") return `${m.name} is offline.`;
+    if (!m.files) return `${m.name}'s agent is older than 0.2.2: update it to see its files here.`;
+    if (!m.connected) return `${m.name}'s agent isn't connected for files yet. Give it a moment.`;
+    if (!m.roots.length) return `${m.name} shares no folders. Mount some under /browse in its agent.compose.yml.`;
+    return "";
+  },
+  // show another machine's files (or this one's): same folder if there's one open, else its first folder
+  use(id) {
+    const m = this.machine(id);
+    if (!m || m === this.m) return m;
+    this.m = m;
+    this.sel.clear();
+    this.search = null;
+    $("#f-trash-btn").hidden = !m.write;
+    return m;
   },
   async open(path) {
     await this.init();
-    if (!this.roots.length) return;
-    await this.list(path || this.current || this.roots[0]);
+    let id = this.m.id;
+    const at = /^@([0-9a-f]{12})(?:\/(.*))?$/.exec(path || "");
+    if (at) {
+      id = at[1];
+      path = at[2] || "";
+    }
+    const m = this.use(id) || this.machines[0];
+    const why = this.why(m);
+    if (why || !m.roots.length) {
+      this.current = "";
+      this.renderTree();
+      this.renderCrumbs();
+      $("#f-list").innerHTML =
+        `<div class="empty">${esc(why || "Nothing is shared here.")}${m.here && !m.roots.length ? ` Add volumes under /browse in docker-compose.yml, for example <span class="mono">/mnt/Plex:/browse/Plex:ro</span>.` : ""}</div>`;
+      $("#f-write").hidden = true;
+      return;
+    }
+    await this.list(path || (this.current && m === this.m ? this.current : "") || m.roots[0], m.id);
   },
-  async loadChildren(path) {
-    const n = this.nodes.get(path);
+  async loadChildren(path, m = this.m) {
+    const n = m.nodes.get(path);
     if (!n || n.loaded) return;
-    const d = await api(`/api/files?path=${encodeURIComponent(path)}`);
+    const d = await api(fapi(`/api/files?path=${encodeURIComponent(path)}`, m.id));
     n.children = d.entries
       .filter(e => e.dir)
       .map(e => {
-        if (!this.nodes.has(e.path)) this.nodes.set(e.path, { name: e.name, open: false, loaded: false, children: [] });
+        if (!m.nodes.has(e.path)) m.nodes.set(e.path, fnode(e.name));
         return e.path;
       });
     n.loaded = true;
@@ -73,12 +167,13 @@ const Files = {
       this.nodes.get(acc).open = true;
     }
   },
-  async toggle(path) {
-    const n = this.nodes.get(path);
+  async toggle(path, id = this.m.id) {
+    const m = this.machine(id);
+    const n = m?.nodes.get(path);
     if (!n) return;
     if (!n.open) {
       try {
-        await this.loadChildren(path);
+        await this.loadChildren(path, m);
       } catch (e) {
         alertBanner(e.message);
         return;
@@ -88,35 +183,64 @@ const Files = {
     this.renderTree();
   },
   renderTree() {
-    const sub = paths =>
+    const sub = (paths, m) =>
       `<ul role="group">${paths
         .map(p => {
-          const n = this.nodes.get(p);
-          const sel = p === this.current;
+          const n = m.nodes.get(p);
+          const sel = m === this.m && p === this.current;
           const hasKids = !n.loaded || n.children.length;
-          return `<li role="treeitem" aria-expanded="${n.open}" aria-selected="${sel}"><div class="tnode${sel ? " sel" : ""}${this.roots.includes(p) ? " root" : ""}">
-        <button class="tog" type="button" data-tog="${esc(p)}" aria-label="${n.open ? "Collapse" : "Expand"} ${esc(n.name)}" aria-expanded="${n.open}" ${hasKids ? "" : "style=visibility:hidden tabindex=-1"}>${ICON.caret}</button>
-        <button class="nm" type="button" data-go="${esc(p)}" title="${esc(p)}">${esc(n.name)}</button></div>
-        ${n.open && n.children.length ? sub(n.children) : ""}</li>`;
+          const ro = m.roots.includes(p) && m.writable[p] === false;
+          return `<li role="treeitem" aria-expanded="${n.open}" aria-selected="${sel}"><div class="tnode${sel ? " sel" : ""}${m.roots.includes(p) ? " root" : ""}">
+        <button class="tog" type="button" data-tog="${esc(p)}" data-m="${m.id}" aria-label="${n.open ? "Collapse" : "Expand"} ${esc(n.name)}" aria-expanded="${n.open}" ${hasKids ? "" : "style=visibility:hidden tabindex=-1"}>${ICON.caret}</button>
+        <button class="nm" type="button" data-go="${esc(p)}" data-m="${m.id}" title="${esc(p)}">${esc(n.name)}</button>${ro && this.multi ? `<span class="tnote">read only</span>` : ""}</div>
+        ${n.open && n.children.length ? sub(n.children, m) : ""}</li>`;
         })
         .join("")}</ul>`;
-    $("#f-tree").innerHTML = `<div role="tree" aria-label="Folders">${sub(this.roots)}</div>`;
+    if (!this.multi) {
+      $("#f-tree").innerHTML = `<div role="tree" aria-label="Folders">${sub(this.roots, this.m)}</div>`;
+      return;
+    }
+    // several machines: each is a group, with its folders (or why there are none)
+    $("#f-tree").innerHTML = `<div role="tree" aria-label="Folders on every machine">${this.machines
+      .map(m => {
+        const why = this.why(m),
+          dot = m.state === "offline" ? "offline" : m.state === "warn" ? "warn" : "online";
+        const note = m.here
+          ? "this server"
+          : why
+            ? m.state === "offline"
+              ? "offline"
+              : "no files"
+            : m.write
+              ? ""
+              : "read only";
+        return `<div class="tmach${why ? " off" : ""}"><button type="button" class="tm-h" data-gom="${m.id}" title="${esc(why || `Files on ${m.name}`)}"><span class="sdot ${dot}"></span><b>${esc(m.name)}</b>${note ? `<small>${esc(note)}</small>` : ""}</button>${why ? "" : sub(m.roots, m)}</div>`;
+      })
+      .join("")}</div>`;
   },
-  async list(path) {
+  // the hash for a folder on a machine: #files:media/films here, #files:@<id>/media/films on another
+  hashFor(path, id = this.m.id) {
+    return "#files:" + (id ? `@${id}/` : "") + encodeURIComponent(path);
+  },
+  async list(path, id = this.m.id) {
+    if (id !== this.m.id) this.use(id);
     if (this.current !== path) this.sel.clear();
     this.current = path;
     this.search = null;
     $("#f-searchbar").hidden = true;
-    const want = "#files:" + encodeURIComponent(path);
+    const want = this.hashFor(path);
     if (location.hash !== want) history.replaceState(null, "", want);
     $("#f-filter").value = "";
     $("#f-list").innerHTML = `<div class="empty">Loading…</div>`;
     await this.reveal(path + "/"); // keep the tree in step with the open folder
     this.renderCrumbs();
     this.renderTree();
+    const m = this.m;
     try {
-      const d = await api(`/api/files?path=${encodeURIComponent(path)}`);
+      const d = await api(fapi(`/api/files?path=${encodeURIComponent(path)}`, m.id));
+      if (m !== this.m || path !== this.current) return; // moved on meanwhile
       this.entries = d.entries;
+      this.free = d.free;
       this.truncated = d.truncated;
       this.writable = !!d.writable;
       const live = new Set(d.entries.map(e => e.path));
@@ -136,19 +260,25 @@ const Files = {
         this.renderTree();
       }
       this.renderList();
+      $("#f-foot").innerHTML =
+        `<span>${this.multi ? `${esc(m.name)} · ` : ""}${d.free != null ? `${fmtBytes(d.free)} free` : ""}</span><span>${this.writable ? "read and change" : "read only"}</span>`;
     } catch (e) {
       $("#f-list").innerHTML = `<div class="empty">Can't open this folder: ${esc(e.message)}</div>`;
     }
+    if (Panes.on) Pane2.renderSel();
   },
   renderCrumbs() {
-    const parts = this.current.split("/");
+    const parts = this.current ? this.current.split("/") : [];
     let acc = "";
-    $("#f-crumbs").innerHTML = parts
-      .map((p, i) => {
-        acc = acc ? acc + "/" + p : p;
-        return `${i ? `<span class="sep">/</span>` : ""}<button type="button" data-go="${esc(acc)}">${esc(p)}</button>`;
-      })
-      .join("");
+    $("#f-crumbs").innerHTML =
+      machinePicker("f-msel", this.m.id) +
+      `<button type="button" class="home" data-go="" title="All folders${this.multi ? ` on ${esc(this.m.name)}` : ""}" aria-label="All folders">⌂</button>${parts.length ? `<span class="sep">/</span>` : ""}` +
+      parts
+        .map((p, i) => {
+          acc = acc ? acc + "/" + p : p;
+          return `${i ? `<span class="sep">/</span>` : ""}<button type="button" data-go="${esc(acc)}">${esc(p)}</button>`;
+        })
+        .join("");
   },
   rows() {
     if (this.search) return this.search.items;
@@ -169,43 +299,61 @@ const Files = {
       );
     const h = (k, label, cls = "") =>
       `<button type="button" data-sort="${k}" class="${cls}" ${key === k ? `aria-sort="${dir > 0 ? "ascending" : "descending"}"` : ""}>${label}${key === k ? (dir > 0 ? " ↑" : " ↓") : ""}</button>`;
-    const w = this.writable,
-      sc = w ? " selectable" : "";
+    const every = !!this.search?.every,
+      w = this.writable && !every,
+      pick = this.canPick && !every,
+      sc = pick ? " selectable" : "";
+    if (every) {
+      // results from every machine, a group for each, in the tree's order
+      const order = new Map(this.machines.map((m, i) => [m.id, i]));
+      rows.sort((a, b) => order.get(a.m) - order.get(b.m));
+    }
     const all = rows.length && rows.every(e => this.sel.has(e.path));
-    let html = `<div class="frow head${sc}">${w ? `<input type="checkbox" data-selall aria-label="Select all"${all ? " checked" : ""}>` : ""}${h("name", "Name")}<span class="r">${h("size", "Size")}</span><span class="r">${h("mtime", "Modified")}</span></div>`;
+    let html = `<div class="frow head${sc}">${pick ? `<input type="checkbox" data-selall aria-label="Select all"${all ? " checked" : ""}>` : ""}${h("name", "Name")}<span class="r">${h("size", "Size")}</span><span class="r">${h("mtime", "Modified")}</span></div>`;
     if (!rows.length)
-      html += `<div class="empty">${q ? "Nothing here matches your filter." : `This folder is empty.${w ? " Drop files here to upload them." : ""}`}</div>`;
+      html += `<div class="empty">${q ? "Nothing here matches your filter." : this.search ? "Nothing found." : `This folder is empty.${w ? " Drop files here to upload them." : ""}`}</div>`;
+    let group = null;
     html += rows
-      .map(
-        e => `<div class="frow${sc}${this.sel.has(e.path) ? " picked" : ""}" tabindex="0" role="button"${w ? ' draggable="true"' : ""} data-${e.dir ? "go" : "file"}="${esc(e.path)}">
-      ${w ? `<input type="checkbox" data-sel="${esc(e.path)}" aria-label="Select ${esc(e.name)}"${this.sel.has(e.path) ? " checked" : ""}>` : ""}
+      .map(e => {
+        let head = "";
+        if (every && e.m !== group) {
+          group = e.m;
+          head = `<div class="frow fgrp"><span>${esc(this.machine(e.m)?.name || "")} · ${rows.filter(x => x.m === e.m).length}</span></div>`;
+        }
+        return `${head}<div class="frow${sc}${this.sel.has(e.path) ? " picked" : ""}" tabindex="0" role="button"${pick ? ' draggable="true"' : ""}${every ? ` data-m="${e.m}"` : ""} data-${e.dir ? "go" : "file"}="${esc(e.path)}">
+      ${pick ? `<input type="checkbox" data-sel="${esc(e.path)}" aria-label="Select ${esc(e.name)}"${this.sel.has(e.path) ? " checked" : ""}>` : ""}
       <span class="fn">${e.dir ? ICON.dir : ICON.file}<span>${esc(e.name)}${e.link ? ` <span class="faint">(link)</span>` : ""}${this.search ? `<span class="fpath">${esc(e.path.split("/").slice(0, -1).join("/"))}</span>` : ""}</span></span>
       <span class="r">${e.dir ? "" : fmtBytes(e.size)}</span><span class="r">${fmtDate(e.mtime)}</span>
-      <span class="fmeta">${e.dir ? "Folder" : fmtBytes(e.size)} · ${fmtShortDate(e.mtime)}</span></div>`,
-      )
+      <span class="fmeta">${e.dir ? "Folder" : fmtBytes(e.size)} · ${fmtShortDate(e.mtime)}</span></div>`;
+      })
       .join("");
     if (this.truncated && !this.search) html += `<div class="empty">Showing the first 5,000 items.</div>`;
     $("#f-list").innerHTML = html;
     this.renderSel();
   },
   renderMode() {
+    const m = this.m,
+      on = m.here ? "" : ` on ${m.name}`,
+      compose = m.here ? "docker-compose.yml" : `${m.name}'s agent.compose.yml`;
     const ro = this.roots.length && !this.writable;
     $("#f-write").hidden = !this.writable;
-    $("#f-mode").textContent = !S.meta?.file_write
-      ? "Read-only (turn on changing files with LABKEEL_ALLOW_FILE_CHANGES=1)."
+    $("#f-mode").textContent = !m.write
+      ? `Read-only${on} (turn on changing files with LABKEEL_ALLOW_FILE_CHANGES=1 in ${compose}).`
       : this.writable
-        ? "You can change files here. Deleted things go to the Bin for 30 days."
-        : ro && (S.meta.file_writable || {})[this.current.split("/")[0]] === false
-          ? `${this.current.split("/")[0]} is mounted read-only (:ro in docker-compose.yml).`
+        ? `You can change files here${on}. Deleted things go to ${m.here ? "the" : `${m.name}'s`} Bin for 30 days.`
+        : ro && m.writable[this.current.split("/")[0]] === false
+          ? `${this.current.split("/")[0]}${on} is mounted read-only (:ro in ${compose}).`
           : "Read-only here.";
   },
   async loadUnfinished() {
     const bar = $("#f-unfinished");
     if (!bar) return;
     let items = [];
+    const m = this.m;
     try {
-      if (S.meta?.file_write) items = (await api("/api/files/upload/list")).items;
+      if (m.write) items = (await api(fapi("/api/files/upload/list", m.id))).items;
     } catch {}
+    if (m !== this.m) return;
     const here = items.filter(u => u.rel === this.current && !Uploads.running);
     bar.hidden = !here.length;
     bar.innerHTML = here
@@ -215,11 +363,31 @@ const Files = {
       )
       .join("<br>");
   },
+  // another machine that takes copies right now
+  get canCopyOut() {
+    return this.multi && this.machines.some(m => m !== this.m && !this.why(m) && m.write);
+  },
+  // things here can be picked: to change them, or to copy them to another machine (or the other pane)
+  get canPick() {
+    return this.writable || this.canCopyOut || (Panes.on && Pane2.writable);
+  },
   renderSel() {
-    const n = this.sel.size;
-    $("#f-selbar").hidden = !n || !this.writable;
+    const n = this.sel.size,
+      w = this.writable,
+      two = Panes.on && Pane2.path != null,
+      bar = $("#f-selbar");
+    bar.hidden = !n || !this.canPick;
     $("#f-selcount").textContent = `${n} selected`;
-    $("#f-selbar [data-fx=rename]").hidden = n !== 1;
+    bar.querySelector("[data-fx=rename]").hidden = n !== 1 || !w;
+    for (const k of ["move", "copy", "delete"]) bar.querySelector(`[data-fx=${k}]`).hidden = !w;
+    bar.querySelector("[data-fx=xcopy]").hidden = !this.canCopyOut || two;
+    const there = two ? Pane2.label() : "";
+    const c2 = bar.querySelector("[data-fx=to2copy]"),
+      m2 = bar.querySelector("[data-fx=to2move]");
+    c2.hidden = !two || !Pane2.writable;
+    m2.hidden = !two || !Pane2.writable || !w;
+    c2.textContent = `Copy to ${there} →`;
+    m2.textContent = `Move to ${there} →`;
   },
   async refresh(...also) {
     for (const p of [this.current, ...also]) {
@@ -255,8 +423,12 @@ const Files = {
       if (what === "uploaddir") return $("#f-upload-dir").click();
       if (what === "keys") return Keys.help();
       if (what === "paste") return Keys.paste();
-      if (what === "copy") {
-        if (picked.length) Mover.open(picked, "copy");
+      if (what === "copy" || what === "xcopy") {
+        if (picked.length) Mover.open(picked, "copy", what === "xcopy");
+        return;
+      }
+      if (what === "to2copy" || what === "to2move") {
+        if (picked.length) Panes.send(what === "to2move" ? "move" : "copy", this.m.id, picked, Pane2.mid, Pane2.path);
         return;
       }
       if (what === "clear") {
@@ -266,7 +438,7 @@ const Files = {
       if (what === "mkdir" || what === "newfile") {
         const name = await this.askName(what === "mkdir" ? "New folder" : "New file", "Create");
         if (!name) return;
-        await apiSend(`/api/files/${what}`, { path: cur, name });
+        await apiSend(fapi(`/api/files/${what}`), { path: cur, name });
         toast(`Made ${name}`, "good");
         await this.refresh();
         if (what === "newfile") this.preview(`${cur}/${name}`);
@@ -277,7 +449,7 @@ const Files = {
         if (!old) return;
         const name = await this.askName(`Rename ${old.split("/").pop()}`, "Rename", old.split("/").pop());
         if (!name || name === old.split("/").pop()) return;
-        await apiSend("/api/files/rename", { path: old, name });
+        await apiSend(fapi("/api/files/rename"), { path: old, name });
         this.sel.clear();
         toast(`Renamed to ${name}`, "good");
         await this.refresh();
@@ -286,13 +458,14 @@ const Files = {
       if (what === "delete") {
         if (!picked.length) return;
         const one = picked.length === 1 ? picked[0].split("/").pop() : null;
+        const m = this.m;
         Confirm.open({
           title: one ? `Delete ${one}?` : `Delete ${picked.length} items?`,
           ok: "Move to the Bin",
-          body: `<p>${one ? esc(one) : `${picked.length} items`} will go to the Bin. You can put ${one ? "it" : "them"} back from there for 30 days, after which ${one ? "it's" : "they're"} deleted for good.</p>`,
+          body: `<p>${one ? esc(one) : `${picked.length} items`} will go to ${m.here ? "the" : `${esc(m.name)}'s`} Bin. You can put ${one ? "it" : "them"} back from there for 30 days, after which ${one ? "it's" : "they're"} deleted for good.</p>`,
           onOk: async () => {
             try {
-              const r = await apiSend("/api/files/delete", { paths: picked });
+              const r = await apiSend(fapi("/api/files/delete", m.id), { paths: picked });
               this.sel.clear();
               toast(`Moved ${r.deleted} to the Bin`, "good");
             } catch (e) {
@@ -311,7 +484,7 @@ const Files = {
       if (!e.cancelled) alertBanner(e.message);
     }
   },
-  edit(path, p) {
+  edit(path, p, id = this.m.id) {
     const body = $("#drawer-body");
     if (!body) return;
     body.innerHTML = `<div style="padding:14px 16px"><textarea class="input fedit" id="fe-text" spellcheck="false" aria-label="File contents"></textarea>
@@ -343,7 +516,7 @@ const Files = {
       b.disabled = true;
       b.textContent = "Saving…";
       try {
-        const r = await apiSend("/api/files/text", { path, text: ta.value, mtime_ns: mtime }, "PUT");
+        const r = await apiSend(fapi("/api/files/text", id), { path, text: ta.value, mtime_ns: mtime }, "PUT");
         mtime = r.mtime_ns;
         saved = ta.value;
         $("#fe-state").textContent = "Saved";
@@ -370,7 +543,7 @@ const Files = {
         ))
       )
         return;
-      this.preview(path);
+      this.preview(path, id);
     });
   },
   // items: files from the picker or a drop, each with the path it should land at (folder uploads keep their folders)
@@ -379,7 +552,8 @@ const Files = {
       .map(x => (x instanceof File ? { file: x, rel: x.webkitRelativePath || x.name } : x))
       .filter(x => x.file);
     if (!items.length || !this.writable) return;
-    const dir = this.current,
+    const mid = this.m.id,
+      dir = this.current,
       have = new Map(this.entries.map(e => [e.name, e]));
     const tops = new Map();
     for (const x of items) {
@@ -416,7 +590,7 @@ const Files = {
     if (!todo.length) return;
     // ask for the password (if it's due) before sending anything, not after the first file has gone
     try {
-      await apiSend("/api/files/unlock", {});
+      await apiSend(fapi("/api/files/unlock", mid), {});
     } catch (e) {
       if (!e.cancelled) alertBanner(e.message);
       return;
@@ -436,7 +610,7 @@ const Files = {
         const parts = d.split("/");
         box.hidden = false;
         box.innerHTML = `<span>Making folder <b>${esc(d)}</b></span>`;
-        await apiSend("/api/files/mkdir", {
+        await apiSend(fapi("/api/files/mkdir", mid), {
           path: [dir, ...parts.slice(0, -1)].join("/"),
           name: parts.at(-1),
           exist_ok: true,
@@ -452,17 +626,22 @@ const Files = {
     Uploads.add(
       todo.map(({ file, rel }) => {
         const sub = rel.split("/").slice(0, -1).join("/");
-        return { file, rel, dir: sub ? `${dir}/${sub}` : dir, overwrite: replace && !sub };
+        return { file, rel, mid, dir: sub ? `${dir}/${sub}` : dir, overwrite: replace && !sub };
       }),
     );
   },
-  async preview(path) {
+  async preview(path, id = this.m.id, entry = null) {
     const name = path.split("/").pop(),
       ext = (name.split(".").pop() || "").toLowerCase();
-    const entry = this.entries.find(e => e.path === path) || this.search?.items.find(e => e.path === path) || {};
-    const raw = `/api/files/raw?path=${encodeURIComponent(path)}`;
+    entry =
+      entry ||
+      (id === this.m.id &&
+        (this.entries.find(e => e.path === path) || this.search?.items.find(e => e.path === path))) ||
+      {};
+    const raw = fapi(`/api/files/raw?path=${encodeURIComponent(path)}`, id);
     const actions = `<a class="btn" href="${raw}&download=true">Download</a><a class="btn" href="${raw}" target="_blank" rel="noopener">Open in new tab</a>`;
-    const sub = `${esc(path)}<br>${fmtBytes(entry.size)} · modified ${fmtDate(entry.mtime)}`;
+    const where = this.multi ? `${esc(this.machine(id)?.name || "")}: ` : "";
+    const sub = `${where}${esc(path)}<br>${fmtBytes(entry.size)} · modified ${fmtDate(entry.mtime)}`;
     if (MEDIA.img.includes(ext)) return Drawer.open(name, sub, actions, `<img src="${raw}" alt="${esc(name)}">`);
     if (MEDIA.video.includes(ext))
       return Drawer.open(name, sub, actions, `<video src="${raw}" controls preload="metadata"></video>`);
@@ -470,7 +649,7 @@ const Files = {
       return Drawer.open(name, sub, actions, `<audio src="${raw}" controls preload="metadata"></audio>`);
     Drawer.open(name, sub, actions, `<pre class="muted">Loading…</pre>`);
     try {
-      const p = await api(`/api/files/preview?path=${encodeURIComponent(path)}`);
+      const p = await api(fapi(`/api/files/preview?path=${encodeURIComponent(path)}`, id));
       const pre = $("#drawer-body pre");
       if (!pre) return;
       if (p.kind === "text") {
@@ -482,7 +661,7 @@ const Files = {
           b.className = "btn primary";
           b.type = "button";
           b.textContent = "Edit";
-          b.addEventListener("click", () => this.edit(path, p));
+          b.addEventListener("click", () => this.edit(path, p, id));
           $("#drawer-actions").prepend(b);
         }
       } else
@@ -553,7 +732,7 @@ const Uploads = {
     const dirs = new Set();
     while (this.queue.length && !this.cancel) {
       const job = this.queue.shift();
-      dirs.add(job.dir);
+      dirs.add(`${job.mid || ""}|${job.dir}`);
       try {
         await this.send(job);
         this.done++;
@@ -577,7 +756,7 @@ const Uploads = {
     const msg = `Uploaded ${this.done} file${this.done === 1 ? "" : "s"}${this.skipped ? `, skipped ${this.skipped} already there` : ""}${this.failed ? `, ${this.failed} didn't finish` : ""}${stopped ? " (stopped)" : ""}`;
     if (this.done || this.skipped || this.failed || stopped) Transfers.done(msg, this.failed ? "bad" : "good");
     if (currentView === "files") {
-      if (dirs.has(Files.current)) Files.refresh();
+      if (dirs.has(`${Files.m.id}|${Files.current}`)) Files.refresh();
       else Files.loadUnfinished();
     }
   },
@@ -604,7 +783,7 @@ const Uploads = {
   async send(job) {
     const { file } = job;
     const begin = async () => {
-      const st = await apiSend("/api/files/upload/start", {
+      const st = await apiSend(fapi("/api/files/upload/start", job.mid), {
         path: job.dir,
         name: file.name,
         size: file.size,
@@ -630,7 +809,7 @@ const Uploads = {
     };
     while (off < file.size) {
       if (this.cancel) {
-        await api("/api/files/upload/cancel", {
+        await api(fapi("/api/files/upload/cancel", job.mid), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id }),
@@ -640,8 +819,10 @@ const Uploads = {
         throw e;
       }
       const end = Math.min(off + size, file.size);
-      const r = await this.xhr(`/api/files/upload/chunk?id=${id}&offset=${off}`, file.slice(off, end), n =>
-        this.show(job, off + n),
+      const r = await this.xhr(
+        fapi(`/api/files/upload/chunk?id=${id}&offset=${off}`, job.mid),
+        file.slice(off, end),
+        n => this.show(job, off + n),
       );
       if (r.status === 200) {
         off = r.j.received;
@@ -668,7 +849,7 @@ const Uploads = {
       this.show(job, off);
       await new Promise(res => setTimeout(res, Math.min(30000, 1000 * 2 ** Math.min(fails, 5))));
       try {
-        off = (await api(`/api/files/upload/status?id=${id}`)).received;
+        off = (await api(fapi(`/api/files/upload/status?id=${id}`, job.mid))).received;
       } catch (e) {
         if (e.message === "Signed out") throw e;
       }
@@ -676,7 +857,7 @@ const Uploads = {
     }
     for (let tries = 0; ; tries++) {
       try {
-        return await apiSend("/api/files/upload/finish", { id });
+        return await apiSend(fapi("/api/files/upload/finish", job.mid), { id });
       } catch (e) {
         if (
           e.cancelled ||
@@ -711,18 +892,33 @@ function showTree(on) {
 }
 $("#f-tree-btn").addEventListener("click", () => showTree(!$(".files").classList.contains("show-tree")));
 $("#f-tree").addEventListener("click", e => {
-  if (e.target.closest("[data-go]") && narrow()) showTree(false);
+  if (e.target.closest("[data-go], [data-gom]") && narrow()) showTree(false);
 });
 $("#f-tree").addEventListener("click", e => {
   const t = e.target.closest("[data-tog]");
-  if (t) return Files.toggle(t.dataset.tog);
+  if (t) return Files.toggle(t.dataset.tog, t.dataset.m);
   const g = e.target.closest("[data-go]");
-  if (g) Files.list(g.dataset.go);
+  if (g) return Files.list(g.dataset.go, g.dataset.m ?? Files.m.id);
+  const h = e.target.closest("[data-gom]");
+  if (h) Files.open(h.dataset.gom ? `@${h.dataset.gom}/` : Files.machines[0].roots[0] || "");
 });
 $("#f-crumbs").addEventListener("click", e => {
   const g = e.target.closest("[data-go]");
   if (g) Files.list(g.dataset.go);
 });
+$("#f-crumbs").addEventListener("change", e => {
+  if (e.target.id === "f-msel") Files.open(e.target.value ? `@${e.target.value}/` : Files.machines[0].roots[0] || "");
+});
+// the machine at the start of the path (several machines only): a <select> of them
+function machinePicker(id, current, opts = {}) {
+  if (!Files.multi) return "";
+  return `<select class="msel" id="${id}" aria-label="Machine">${Files.machines
+    .map(m => {
+      const why = Files.why(m);
+      return `<option value="${m.id}"${m.id === current ? " selected" : ""}${why && !opts.all ? " disabled" : ""}>${esc(m.name)}${m.here ? " (this server)" : why ? " (unavailable)" : !m.write && opts.writable ? " (read only)" : ""}</option>`;
+    })
+    .join("")}</select><span class="sep">/</span>`;
+}
 $("#f-list").addEventListener("click", e => {
   const c = e.target.closest("[data-sel]");
   if (c) {
@@ -745,9 +941,9 @@ $("#f-list").addEventListener("click", e => {
     return Files.renderList();
   }
   const g = e.target.closest("[data-go]");
-  if (g) return Files.list(g.dataset.go);
+  if (g) return Files.list(g.dataset.go, g.dataset.m ?? Files.m.id);
   const f = e.target.closest("[data-file]");
-  if (f) Files.preview(f.dataset.file);
+  if (f) Files.preview(f.dataset.file, f.dataset.m ?? Files.m.id);
 });
 $("#f-list").addEventListener("keydown", e => {
   if (e.key === "Enter" && e.target.matches(".frow[role=button]")) e.target.click();
@@ -771,11 +967,13 @@ $("#f-upload-dir").addEventListener("change", e => {
 async function runSearch() {
   const q = $("#f-filter").value.trim();
   if (q.length < 2) return $("#f-filter").focus();
-  const bar = $("#f-searchbar");
+  const bar = $("#f-searchbar"),
+    every = Files.multi && $("#f-scope").value === "all";
   bar.hidden = false;
-  bar.innerHTML = `<span>Searching ${esc(Files.current)} for “${esc(q)}”…</span>`;
+  bar.innerHTML = `<span>Searching ${every ? "every machine" : esc(Files.current)} for “${esc(q)}”…</span>`;
+  if (every) return searchEvery(q, bar);
   try {
-    const d = await api(`/api/files/search?path=${encodeURIComponent(Files.current)}&q=${encodeURIComponent(q)}`);
+    const d = await api(fapi(`/api/files/search?path=${encodeURIComponent(Files.current)}&q=${encodeURIComponent(q)}`));
     Files.search = { q, items: d.items };
     Files.sel.clear();
     bar.innerHTML = `<span>${d.items.length}${d.stopped ? "+" : ""} result${d.items.length === 1 ? "" : "s"} for “${esc(q)}” in ${esc(Files.current)} and below${d.stopped === "time" ? " (stopped early: narrow it down for more)" : d.stopped ? " (the first 500)" : ""}</span><button class="btn small" type="button" id="f-search-clear">Back to the folder</button>`;
@@ -783,6 +981,25 @@ async function runSearch() {
   } catch (e) {
     bar.innerHTML = `<span>Search failed: ${esc(e.message)}</span><button class="btn small" type="button" id="f-search-clear">Back to the folder</button>`;
   }
+}
+// every machine at once, each from the top of its folders; results are grouped by machine
+async function searchEvery(q, bar) {
+  const ms = Files.machines.filter(m => !Files.why(m)),
+    skipped = Files.machines.filter(m => Files.why(m)).map(m => m.name);
+  const got = await Promise.all(
+    ms.map(m =>
+      api(fapi(`/api/files/search?path=&q=${encodeURIComponent(q)}`, m.id)).then(
+        d => ({ m, d }),
+        e => ({ m, e }),
+      ),
+    ),
+  );
+  const items = got.flatMap(({ m, d }) => (d ? d.items.map(x => ({ ...x, m: m.id })) : []));
+  const missed = [...skipped, ...got.filter(x => x.e).map(x => x.m.name)];
+  Files.search = { q, items, every: true };
+  Files.sel.clear();
+  bar.innerHTML = `<span>${items.length} result${items.length === 1 ? "" : "s"} for “${esc(q)}” on ${ms.length - got.filter(x => x.e).length} machine${ms.length === 1 ? "" : "s"}${got.some(x => x.d?.stopped) ? " (some stopped early: narrow it down for more)" : ""}</span>${missed.length ? `<span class="faint">${esc(missed.join(", "))} ${missed.length === 1 ? "wasn't" : "weren't"} searched</span>` : ""}<button class="btn small" type="button" id="f-search-clear">Back to the folder</button>`;
+  Files.renderList();
 }
 function clearSearch() {
   Files.search = null;
@@ -822,7 +1039,7 @@ $("#f-unfinished").addEventListener("click", async e => {
   )
     return;
   try {
-    await api("/api/files/upload/cancel", {
+    await api(fapi("/api/files/upload/cancel"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: b.dataset.updrop }),
@@ -896,102 +1113,148 @@ function confirmAsync(title, body, ok) {
   });
 }
 
-// Choosing where to move things: a small folder browser inside the dialog
+// Choosing where to move or copy things: a small folder browser inside the dialog, on this machine or (with
+// several machines) another, where it's a checked copy that runs in the background (crosscopy.py)
 const Mover = {
   paths: [],
   cur: null,
-  folders: [],
   mode: "move",
-  open(paths, mode = "move") {
+  from: "",
+  mid: "",
+  conflict: "keep",
+  open(paths, mode = "move", other = false) {
     this.paths = paths;
-    this.cur = Files.current;
     this.mode = mode;
+    this.from = Files.m.id;
+    this.conflict = "keep";
+    const elsewhere = Files.machines.find(m => m.id !== this.from && !Files.why(m) && m.write);
+    this.mid = other && elsewhere ? elsewhere.id : this.from;
+    this.cur = this.mid === this.from ? Files.current : null;
     const what = paths.length === 1 ? paths[0].split("/").pop() : `${paths.length} items`;
     Confirm.open({
       title: `${mode === "copy" ? "Copy" : "Move"} ${what}`,
       ok: mode === "copy" ? "Copy here" : "Move here",
       safe: true,
-      body: `<p class="muted" style="margin:0">${mode === "copy" ? "Choose any folder. Copies run in the background, with their progress at the top of the page; a copy into the same folder is called “name (copy)”." : "Choose any folder. On the same drive it's instant. To another drive it's copied in the background, then the original is deleted once the copy is complete. Its progress shows at the top of the page."}</p>
-        <div class="mv-here" id="mv-here"></div><div class="mv-list" id="mv-list"><div class="empty">Loading…</div></div>`,
+      body: `${Files.multi ? `<label class="field mv-m"><span>To</span><select class="input" id="mv-m">${Files.machines.map(m => `<option value="${m.id}"${m.id === this.mid ? " selected" : ""}${(Files.why(m) || !m.write) && m.id !== this.from ? " disabled" : ""}>${esc(m.name)}${m.here ? " (this server)" : Files.why(m) ? " (unavailable)" : m.write ? "" : " (read only)"}</option>`).join("")}</select></label>` : ""}
+        <p class="muted" id="mv-note" style="margin:0"></p>
+        <div class="mv-here" id="mv-here"></div><div class="mv-list" id="mv-list"><div class="empty">Loading…</div></div>
+        <div id="mv-x" hidden><p class="mv-lbl">If there's something with the same name there</p>${conflictSeg("mv-conflict")}<p class="muted" id="mv-room" style="margin:8px 0 0"></p></div>`,
       onOk: async () => {
-        const dest = this.cur;
-        await transfer(this.mode, this.paths, dest);
+        if (this.mid === this.from) await transfer(this.mode, this.paths, this.cur, this.from);
+        else await Xfers.start(this.mode, this.from, this.paths, this.mid, this.cur, this.conflict);
       },
     });
     this.load();
   },
   async load() {
-    $("#mv-here").textContent = this.cur || "All folders";
+    const m = Files.machine(this.mid),
+      cross = this.mid !== this.from,
+      mode = this.mode;
+    $("#mv-note").textContent = cross
+      ? `${mode === "copy" ? "Copied" : "Moved"} to ${m.name} in the background, with its progress at the top of the page. Every file is checked once it lands${mode === "move" ? `, and only then do the originals go to ${Files.machine(this.from).name}'s Bin` : ""}.`
+      : mode === "copy"
+        ? "Choose any folder. Copies run in the background, with their progress at the top of the page; a copy into the same folder is called “name (copy)”."
+        : "Choose any folder. On the same drive it's instant. To another drive it's copied in the background, then the original is deleted once the copy is complete. Its progress shows at the top of the page.";
+    $("#mv-here").textContent = (Files.multi ? `${m.name}: ` : "") + (this.cur || "All folders");
+    $("#mv-x").hidden = !cross;
     const ok = $("#cf-ok");
     ok.disabled =
       !this.cur ||
-      (this.mode === "move" && this.cur === Files.current) ||
-      this.paths.some(p => this.cur === p || this.cur.startsWith(p + "/"));
+      (!cross &&
+        ((mode === "move" && this.cur === Files.current) ||
+          this.paths.some(p => this.cur === p || this.cur.startsWith(p + "/"))));
     let html = "";
     if (!this.cur) {
-      const w = S.meta?.file_writable || {};
-      html = Files.roots
+      html = m.roots
         .map(
           r =>
-            `<button type="button" data-mv="${esc(r)}"${w[r] === false ? ' disabled title="Read-only"' : ""}>${ICON.dir}<span>${esc(r)}${w[r] === false ? ` <span class="faint">(read-only)</span>` : ""}</span></button>`,
+            `<button type="button" data-mv="${esc(r)}"${m.writable[r] === false ? ' disabled title="Read-only"' : ""}>${ICON.dir}<span>${esc(r)}${m.writable[r] === false ? ` <span class="faint">(read-only)</span>` : ""}</span></button>`,
         )
         .join("");
-      if ($("#mv-list")) $("#mv-list").innerHTML = html;
+      if ($("#mv-list")) $("#mv-list").innerHTML = html || `<div class="empty" style="padding:16px">No folders.</div>`;
       return;
     }
     html += `<button type="button" data-mv="${esc(this.cur.includes("/") ? this.cur.split("/").slice(0, -1).join("/") : "")}">${ICON.dir}<span>..  (up one)</span></button>`;
     try {
-      const d = await api(`/api/files?path=${encodeURIComponent(this.cur)}`);
-      const dirs = d.entries.filter(e => e.dir && !this.paths.includes(e.path));
-      if (this.mode === "copy" && this.cur === Files.current) ok.disabled = !d.writable;
+      const d = await api(fapi(`/api/files?path=${encodeURIComponent(this.cur)}`, this.mid));
+      const dirs = d.entries.filter(e => e.dir && (cross || !this.paths.includes(e.path)));
+      if (!cross && this.mode === "copy" && this.cur === Files.current) ok.disabled = !d.writable;
       html += dirs
         .map(e => `<button type="button" data-mv="${esc(e.path)}">${ICON.dir}<span>${esc(e.name)}</span></button>`)
         .join("");
       if (!d.writable) ok.disabled = true;
       if (!dirs.length) html += `<div class="empty" style="padding:16px">No folders inside.</div>`;
+      if (cross && $("#mv-room"))
+        $("#mv-room").textContent = d.writable
+          ? d.free != null
+            ? `${m.name} has ${fmtBytes(d.free)} free here.`
+            : ""
+          : `LabKeel can't change files here on ${m.name}.`;
     } catch (e) {
       html += `<div class="empty" style="padding:16px">${esc(e.message)}</div>`;
     }
     if ($("#mv-list")) $("#mv-list").innerHTML = html;
   },
 };
+// "if there's already one with that name": keep both, replace it, or skip it (copies between machines)
+function conflictSeg(id) {
+  return `<div class="seg" id="${id}" role="group">${[
+    ["keep", "Keep both"],
+    ["replace", "Replace it"],
+    ["skip", "Skip it"],
+  ]
+    .map(([k, t]) => `<button type="button" data-cf="${k}" aria-pressed="${k === "keep"}">${t}</button>`)
+    .join("")}</div>`;
+}
 $("#cf-body").addEventListener("click", e => {
   const b = e.target.closest("[data-mv]");
   if (b) {
     Mover.cur = b.dataset.mv;
     Mover.load();
   }
+  const c = e.target.closest("[data-cf]");
+  if (c) {
+    c.parentElement.querySelectorAll("[data-cf]").forEach(x => x.setAttribute("aria-pressed", String(x === c)));
+    Mover.conflict = c.dataset.cf;
+  }
+});
+$("#cf-body").addEventListener("change", e => {
+  if (e.target.id !== "mv-m") return;
+  Mover.mid = e.target.value;
+  Mover.cur = Mover.mid === Mover.from ? Files.current : null;
+  Mover.load();
 });
 
-// Copy or move. Copies are always background jobs (see Moves).
-async function transfer(kind, paths, dest) {
-  if (kind !== "copy") return moveItems(paths, dest);
+// Copy or move on one machine. Copies are always background jobs (see Moves).
+async function transfer(kind, paths, dest, id = Files.m.id) {
+  if (kind !== "copy") return moveItems(paths, dest, id);
   try {
-    const r = await apiSend("/api/files/copy", { paths, dest });
+    const r = await apiSend(fapi("/api/files/copy", id), { paths, dest });
     Files.sel.clear();
     toast(`Copying ${r.queued.length} to ${dest}: see Moves`, "good");
-    Moves.poll(true);
+    Moves.watch(id);
   } catch (e) {
     if (!e.cancelled) alertBanner(`Couldn't copy: ${e.message}`);
   }
   Files.renderList();
 }
-// Move things, wherever they're going. Same drive: done at once. Another drive: a background job.
-async function moveItems(paths, dest) {
+// Move things, wherever they're going on one machine. Same drive: done at once. Another drive: a background job.
+async function moveItems(paths, dest, id = Files.m.id) {
   try {
-    const r = await apiSend("/api/files/move", { paths, dest });
+    const r = await apiSend(fapi("/api/files/move", id), { paths, dest });
     Files.sel.clear();
     if (r.queued?.length) {
       toast(
         `${r.moved ? `Moved ${r.moved}. ` : ""}Copying ${r.queued.length} to ${dest} on another drive: see Moves`,
         "good",
       );
-      Moves.poll(true);
+      Moves.watch(id);
     } else toast(`Moved ${r.moved} to ${dest}`, "good");
   } catch (e) {
     if (!e.cancelled) alertBanner(`Couldn't move: ${e.message}`);
   }
   await Files.refresh(dest);
+  if (Panes.on) Pane2.refresh();
 }
 
 // Moves between drives, with progress. Polled while any are running.
@@ -1000,15 +1263,30 @@ async function moveItems(paths, dest) {
 const Moves = {
   items: [],
   timer: null,
+  mids: new Set([""]), // the machines with moves or copies to keep an eye on ("" is this one)
+  watch(id) {
+    this.mids.add(id || "");
+    this.poll();
+  },
   async poll() {
     clearTimeout(this.timer);
-    try {
-      const d = await api("/api/files/jobs");
-      this.items = d.items;
-      if (d.active === 0 && this.wasActive && currentView === "files") Files.refresh();
-      this.wasActive = d.active > 0;
-      Transfers.render();
-    } catch {}
+    const all = [];
+    let active = 0;
+    for (const id of [...this.mids]) {
+      try {
+        const d = await api(fapi("/api/files/jobs", id));
+        const on = id ? Files.machine(id)?.name || "" : "";
+        all.push(...d.items.map(j => ({ ...j, mid: id, on })));
+        active += d.active;
+        if (id && !d.active && !d.items.some(j => j.state === "failed")) this.mids.delete(id);
+      } catch {
+        if (id) this.mids.delete(id);
+      }
+    }
+    this.items = all;
+    if (active === 0 && this.wasActive && currentView === "files") Files.refresh();
+    this.wasActive = active > 0;
+    Transfers.render();
     const busy = this.items.some(j => ["queued", "copying", "removing"].includes(j.state));
     if (busy) this.timer = setTimeout(() => this.poll(), 1500);
   },
@@ -1028,7 +1306,9 @@ const Transfers = {
   render() {
     const el = $("#transfers"),
       live = Moves.live(),
-      failed = Moves.failed();
+      failed = Moves.failed(),
+      xl = Xfers.live(),
+      xf = Xfers.failed();
     let icon = "",
       text = "",
       right = "",
@@ -1040,8 +1320,23 @@ const Transfers = {
       text = `<b>Uploading</b> ${esc(u.name)}${u.all > 1 ? ` <span class="faint">· ${u.n} of ${u.all}</span>` : ""}${u.note && /dropped/.test(u.note) ? ` <span class="faint">· reconnecting…</span>` : ""}`;
       right = `<span>${u.pct}%${u.left ? ` · ${u.left}` : ""}</span><button class="xfer-x" type="button" id="up-cancel" aria-label="Stop uploading"${u.stopping ? " disabled" : ""}>${u.stopping ? "Stopping…" : "Stop"}</button>`;
       pct = u.pct;
-      if (live.length)
-        text += ` <span class="faint">· ${live.length} copy${live.length === 1 ? "" : "ies"} waiting</span>`;
+      if (live.length + xl.length)
+        text += ` <span class="faint">· ${live.length + xl.length} cop${live.length + xl.length === 1 ? "y" : "ies"} waiting</span>`;
+    } else if (xl.length) {
+      const j = xl.find(x => x.state !== "queued") || xl[0];
+      const p = j.total_bytes ? Math.min(100, Math.round((j.done_bytes / j.total_bytes) * 100)) : 0;
+      icon = j.kind === "move" ? "move" : "copy";
+      const verb =
+        j.state === "queued"
+          ? `Waiting to ${j.kind}`
+          : j.state === "removing"
+            ? "Finishing the move of"
+            : j.kind === "move"
+              ? "Moving"
+              : "Copying";
+      text = `<b>${verb} ${esc(Xfers.what(j))} to ${esc(j.to.name)}</b> <span class="faint">· ${esc(j.to.path)}${j.current ? ` · ${esc(j.current.split("/").pop())}` : ""}${xl.length > 1 ? ` · ${xl.length - 1} more after` : ""}</span>`;
+      right = `<span>${j.state === "copying" && j.total_bytes ? `${fmtBytes(j.done_bytes)} of ${fmtBytes(j.total_bytes)}${j.speed ? ` · ${fmtBytes(j.speed)}/s` : ""}${j.eta != null ? ` · ${fmtLeft(j.eta)}` : ""}` : ""}</span><button class="xfer-x" type="button" data-xj="cancel" data-id="${esc(j.id)}" aria-label="Stop">Stop</button>`;
+      pct = j.state === "copying" ? p : null;
     } else if (live.length) {
       const j = live.find(x => x.state !== "queued") || live[0];
       const p = j.total ? Math.min(100, Math.round((j.done / j.total) * 100)) : 0;
@@ -1054,15 +1349,21 @@ const Transfers = {
             : j.kind === "copy"
               ? "Copying"
               : "Moving";
-      text = `<b>${verb}</b> ${esc(j.name)} <span class="faint">to ${esc(j.to)}${live.length > 1 ? ` · ${live.length - 1} more after` : ""}</span>`;
-      right = `<span>${j.state === "copying" ? `${p}%` : ""}</span><button class="xfer-x" type="button" data-mj="cancel" data-id="${esc(j.id)}" aria-label="Stop">Stop</button>`;
+      text = `<b>${verb}</b> ${esc(j.name)} <span class="faint">to ${j.on ? `${esc(j.on)}: ` : ""}${esc(j.to)}${live.length > 1 ? ` · ${live.length - 1} more after` : ""}</span>`;
+      right = `<span>${j.state === "copying" ? `${p}%` : ""}</span><button class="xfer-x" type="button" data-mj="cancel" data-m="${esc(j.mid)}" data-id="${esc(j.id)}" aria-label="Stop">Stop</button>`;
       pct = j.state === "copying" ? p : null;
     } else if (failed.length) {
       const j = failed[0];
       lvl = "bad";
       icon = "warn";
-      text = `<b>${j.kind === "copy" ? "Copy" : "Move"} of ${esc(j.name)} didn't finish:</b> ${esc(j.error || "")} <span class="faint">The original is untouched.</span>`;
-      right = `<button class="xfer-x" type="button" data-mj="clear">Dismiss</button>`;
+      text = `<b>${j.kind === "copy" ? "Copy" : "Move"} of ${esc(j.name)}${j.on ? ` on ${esc(j.on)}` : ""} didn't finish:</b> ${esc(j.error || "")} <span class="faint">The original is untouched.</span>`;
+      right = `<button class="xfer-x" type="button" data-mj="clear" data-m="${esc(j.mid)}">Dismiss</button>`;
+    } else if (xf.length) {
+      const j = xf[0];
+      lvl = "bad";
+      icon = "warn";
+      text = `<b>${j.kind === "copy" ? "Copy" : "Move"} of ${esc(Xfers.what(j))} to ${esc(j.to.name)} didn't finish:</b> ${esc(j.error || "")} <span class="faint">${j.kind === "move" ? "Nothing was deleted." : "The originals are untouched."}</span>`;
+      right = `<button class="xfer-x" type="button" data-xj="clear">Dismiss</button>`;
     } else if (this.flash) {
       lvl = this.flash.lvl;
       icon = "done";
@@ -1075,7 +1376,7 @@ const Transfers = {
         (pct != null ? `<span class="xfer-bar" style="--p:${pct}%"></span>` : "")
       : "";
     const nf = $("#nav-files");
-    if (nf) nf.textContent = this.up ? `${this.up.pct}%` : live.length ? `${live.length}` : "";
+    if (nf) nf.textContent = this.up ? `${this.up.pct}%` : live.length + xl.length ? `${live.length + xl.length}` : "";
   },
   done(text, lvl) {
     this.flash = { text, lvl };
@@ -1092,30 +1393,147 @@ document.addEventListener("click", async e => {
   if (!b) return;
   try {
     if (b.dataset.mj === "cancel") {
-      await apiSend("/api/files/jobs/cancel", { id: b.dataset.id });
+      await apiSend(fapi("/api/files/jobs/cancel", b.dataset.m), { id: b.dataset.id });
       toast("Stopping: the original is kept", "good");
-    } else await apiSend("/api/files/jobs/clear", {});
+    } else await apiSend(fapi("/api/files/jobs/clear", b.dataset.m), {});
   } catch (err) {
     if (!err.cancelled) alertBanner(err.message);
   }
   Moves.poll();
 });
+document.addEventListener("click", async e => {
+  const b = e.target.closest("#transfers [data-xj]");
+  if (!b) return;
+  try {
+    if (b.dataset.xj === "cancel") {
+      await apiSend("/api/xfer/cancel", { id: b.dataset.id });
+      toast("Stopping. Nothing is deleted", "good");
+    } else await apiSend("/api/xfer/clear", {});
+  } catch (err) {
+    if (!err.cancelled) alertBanner(err.message);
+  }
+  Xfers.poll();
+});
+function fmtLeft(s) {
+  return s < 60
+    ? "under a minute"
+    : s < 3600
+      ? `about ${Math.ceil(s / 60)} min`
+      : `about ${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`;
+}
+
+// Copies and moves between machines (crosscopy.py on the server): one at a time, each file checked once it lands
+const XACTIVE = ["queued", "copying", "checking", "removing"];
+const Xfers = {
+  items: [],
+  timer: null,
+  seen: new Map(),
+  what(j) {
+    return j.from.paths.length === 1 ? j.from.paths[0].split("/").pop() : `${j.from.paths.length} items`;
+  },
+  live() {
+    return this.items.filter(j => XACTIVE.includes(j.state));
+  },
+  failed() {
+    return this.items.filter(j => j.state === "failed");
+  },
+  async poll() {
+    clearTimeout(this.timer);
+    try {
+      this.items = (await api("/api/xfer")).items;
+    } catch {
+      return;
+    }
+    for (const j of this.items) {
+      const was = this.seen.get(j.id);
+      if (was && XACTIVE.includes(was) && !XACTIVE.includes(j.state)) {
+        if (j.state === "done")
+          Transfers.done(
+            `${j.kind === "move" ? "Moved" : "Copied"} ${j.files_done} file${j.files_done === 1 ? "" : "s"} to ${j.to.name}, each one checked${j.skipped ? ` (${j.skipped} already there, skipped)` : ""}`,
+            "good",
+          );
+        if (currentView === "files") {
+          Files.refresh();
+          if (Panes.on) Pane2.refresh();
+        }
+      }
+    }
+    this.seen = new Map(this.items.map(j => [j.id, j.state]));
+    Transfers.render();
+    if (this.live().length) this.timer = setTimeout(() => this.poll(), 1000);
+  },
+  // the question before a copy between machines: what happens to names already there
+  ask(kind, from, paths, to, dest) {
+    const fm = Files.machine(from),
+      tm = Files.machine(to);
+    const what = paths.length === 1 ? paths[0].split("/").pop() : `${paths.length} items`;
+    return new Promise(res => {
+      let said = null;
+      Confirm.open({
+        title: `${kind === "move" ? "Move" : "Copy"} ${what} to ${tm.name}?`,
+        ok: `${kind === "move" ? "Move" : "Copy"} to ${tm.name}`,
+        safe: kind !== "move",
+        body: `<p>From <b>${esc(fm.name)}</b>: ${esc(paths[0].split("/").slice(0, -1).join("/") || "/")}<br>To <b>${esc(tm.name)}</b>: ${esc(dest)}</p>
+          <p class="mv-lbl">If ${esc(tm.name)} already has something with the same name</p>${conflictSeg("xf-conflict")}
+          <p class="muted">It runs in the background, with its progress at the top of the page. Every file is checked once it lands${kind === "move" ? `, and only then do the originals go to ${esc(fm.name)}'s Bin` : ""}.</p>`,
+        onOk: () => {
+          said = $("#xf-conflict [aria-pressed=true]")?.dataset.cf || "keep";
+          res(said);
+        },
+      });
+      $("#confirm-dlg").addEventListener(
+        "close",
+        () =>
+          setTimeout(() => {
+            if (!said) res(null);
+          }, 0),
+        { once: true },
+      );
+    });
+  },
+  async start(kind, from, paths, to, dest, conflict = "keep") {
+    try {
+      await apiSend("/api/xfer/start", {
+        from: { server: from, paths },
+        to: { server: to, path: dest },
+        move: kind === "move",
+        conflict,
+      });
+      Files.sel.clear();
+      Files.renderList();
+      if (Panes.on) {
+        Pane2.sel.clear();
+        Pane2.render();
+      }
+      toast(
+        `${kind === "move" ? "Moving" : "Copying"} to ${Files.machine(to)?.name}: its progress is at the top of the page`,
+        "good",
+      );
+    } catch (e) {
+      if (!e.cancelled) alertBanner(`Couldn't ${kind}: ${e.message}`);
+    }
+    this.poll();
+  },
+};
 
 // Drag files and folders onto a folder (in the list, the tree or the path at the top) to move them.
 // Always asks first, so a slip of the mouse can't move anything.
 const DRAG = "application/x-dash-paths";
 $("#f-list").addEventListener("dragstart", e => {
   const row = e.target.closest(".frow[data-go], .frow[data-file]");
-  if (!row || !Files.writable) return e.preventDefault();
+  if (!row || !Files.canPick || Files.search?.every) return e.preventDefault();
   const path = row.dataset.go || row.dataset.file;
   const paths = Files.sel.has(path) ? [...Files.sel] : [path];
-  e.dataTransfer.setData(DRAG, JSON.stringify(paths));
+  e.dataTransfer.setData(DRAG, JSON.stringify({ m: Files.m.id, paths }));
   e.dataTransfer.effectAllowed = "copyMove";
 });
 // the folder under the pointer while dragging files in the list (a row, the tree or the path at the top)
 function dropTarget(e) {
   if (![...(e.dataTransfer?.types || [])].includes(DRAG)) return null;
-  return e.target.closest("#f-list .frow[data-go], #f-tree [data-go], #f-crumbs [data-go]");
+  return (
+    e.target.closest("#f-list .frow[data-go], #f-tree [data-go], #f-crumbs [data-go]") ||
+    (Panes.on ? e.target.closest("#f-list") : null) // the other pane's things, into the folder on show here
+  );
 }
 for (const id of ["#f-list", "#f-tree", "#f-crumbs"]) {
   $(id).addEventListener("dragover", e => {
@@ -1136,14 +1554,18 @@ for (const id of ["#f-list", "#f-tree", "#f-crumbs"]) {
     e.preventDefault();
     e.stopPropagation();
     $$(".drop-on").forEach(x => x.classList.remove("drop-on"));
-    let paths;
+    let got, paths;
     try {
-      paths = JSON.parse(e.dataTransfer.getData(DRAG));
+      got = JSON.parse(e.dataTransfer.getData(DRAG));
     } catch {
       return;
     }
-    const dest = t.dataset.go,
-      copy = e.ctrlKey || e.altKey;
+    const from = Array.isArray(got) ? Files.m.id : got.m || "";
+    paths = Array.isArray(got) ? got : got.paths || [];
+    const dest = t.dataset.go ?? Files.current,
+      to = t.dataset.m ?? Files.m.id;
+    if (from !== to || t.id === "f-list") return Panes.send(e.shiftKey ? "move" : "copy", from, paths, to, dest);
+    const copy = e.ctrlKey || e.altKey;
     paths = paths.filter(
       p => p !== dest && !dest.startsWith(p + "/") && (copy || p.split("/").slice(0, -1).join("/") !== dest),
     );
@@ -1209,7 +1631,7 @@ const Keys = {
   setClip(mode) {
     const paths = this.targets();
     if (!paths.length) return;
-    this.clip = { mode, paths };
+    this.clip = { mode, paths, m: Files.m.id };
     toast(
       `${paths.length} item${paths.length === 1 ? "" : "s"} ${mode === "cut" ? "cut" : "copied"}: open a folder and press Ctrl+V`,
       "good",
@@ -1223,7 +1645,14 @@ const Keys = {
   },
   async paste() {
     if (!this.clip || !Files.writable) return;
-    const { mode, paths } = this.clip;
+    const { mode, paths, m } = this.clip;
+    if ((m || "") !== Files.m.id) {
+      if (mode === "cut") {
+        this.clip = null;
+        this.showPaste();
+      }
+      return Panes.send(mode === "cut" ? "move" : "copy", m || "", paths, Files.m.id, Files.current);
+    }
     if (mode === "cut") {
       this.clip = null;
       this.showPaste();
@@ -1276,7 +1705,7 @@ document.addEventListener("keydown", e => {
     if (Files.search) return clearSearch();
     const up = Files.current.split("/").slice(0, -1).join("/");
     if (up) Files.list(up);
-  } else if (k === " " && !mod && Files.writable) {
+  } else if (k === " " && !mod && Files.canPick) {
     const f = Keys.focused();
     if (!f) return;
     done();
@@ -1285,7 +1714,7 @@ document.addEventListener("keydown", e => {
     Keys.rows()
       .find(r => (r.dataset.go || r.dataset.file) === f)
       ?.focus();
-  } else if (mod && k.toLowerCase() === "a" && Files.writable) {
+  } else if (mod && k.toLowerCase() === "a" && Files.canPick) {
     done();
     Files.rows().forEach(x => Files.sel.add(x.path));
     Files.renderList();
@@ -1342,10 +1771,12 @@ document.addEventListener("keydown", e => {
 const Trash = {
   sel: new Set(),
   items: [],
+  mid: "",
   async open() {
     this.sel.clear();
+    this.mid = Files.m.id;
     Drawer.open(
-      "Bin",
+      Files.m.here ? "Bin" : `Bin on ${Files.m.name}`,
       "Deleted from the file browser. Kept for 30 days, then deleted for good.",
       `<button class="btn" type="button" data-tr="restore" disabled>Put back</button><button class="btn danger" type="button" data-tr="purge" disabled>Delete forever…</button>`,
       `<div id="tr-list"><div class="empty">Loading…</div></div>`,
@@ -1354,7 +1785,7 @@ const Trash = {
   },
   async load() {
     try {
-      const d = await api("/api/files/trash");
+      const d = await api(fapi("/api/files/trash", this.mid));
       this.items = d.items;
     } catch (e) {
       $("#tr-list").innerHTML = `<div class="empty">${esc(e.message)}</div>`;
@@ -1382,7 +1813,7 @@ const Trash = {
     if (!ids.length) return;
     if (what === "restore") {
       try {
-        const r = await apiSend("/api/files/trash/restore", { ids });
+        const r = await apiSend(fapi("/api/files/trash/restore", this.mid), { ids });
         toast(`Put back ${r.restored}`, "good");
         if (r.problems?.length) alertBanner(r.problems.join("; "));
       } catch (e) {
@@ -1398,7 +1829,7 @@ const Trash = {
         body: `<p>This can't be undone, unless a ZFS snapshot from before you deleted them still has a copy.</p>`,
         onOk: async () => {
           try {
-            const r = await apiSend("/api/files/trash/delete", { ids });
+            const r = await apiSend(fapi("/api/files/trash/delete", this.mid), { ids });
             toast(`Deleted ${r.deleted} for good`, "good");
           } catch (e) {
             if (!e.cancelled) alertBanner(e.message);
@@ -1426,7 +1857,7 @@ $("#f-size").addEventListener("click", async e => {
   b.disabled = true;
   b.textContent = "Measuring…";
   try {
-    const r = await api(`/api/files/dirsize?path=${encodeURIComponent(Files.current)}`);
+    const r = await api(fapi(`/api/files/dirsize?path=${encodeURIComponent(Files.current)}`));
     b.textContent = `${fmtBytes(r.bytes)}${r.partial ? "+" : ""}`;
     b.title = r.partial ? "Some items couldn't be read, so the real size is larger." : "";
   } catch (err) {

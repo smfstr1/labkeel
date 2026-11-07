@@ -72,7 +72,7 @@ def test_signed_out_can_reach_only_public_routes(method, path):
 
 
 WRITES = [(m, p) for m, p in ROUTES if m != "GET" and p not in security.VIEWER_POST
-          and p not in security.PUBLIC and p not in security.SETUP_PATHS]
+          and p not in security.PUBLIC and p not in security.SETUP_PATHS and not security.AGENT_PATHS.fullmatch(p)]
 
 
 @pytest.mark.parametrize("method,path", WRITES)
@@ -85,7 +85,9 @@ def test_viewer_cannot_change_anything(users, method, path):
 
 VIEWER_DENIED_READS = ["/api/files", "/api/files/raw?path=x", "/api/files/preview?path=x", "/api/files/search?q=a",
                        "/api/files/trash", "/api/containers/x/logs", "/api/processes", "/api/settings", "/api/events",
-                       "/api/users", "/api/zfs/free-drives", "/api/zfs/importable", "/api/drivecare/candidates"]
+                       "/api/users", "/api/zfs/free-drives", "/api/zfs/importable", "/api/drivecare/candidates",
+                       "/api/remote/machines", "/api/remote/abcdefabcdef/files?path=x", "/api/xfer", "/api/files/walk?path=x",
+                       "/api/files/hash?path=x"]
 
 
 @pytest.mark.parametrize("path", VIEWER_DENIED_READS)

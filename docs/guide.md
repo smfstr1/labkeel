@@ -9,6 +9,7 @@ LabKeel is one container that shows your server at a glance and lets you look af
 - **Containers**: every container grouped by Compose project, with status, health, uptime, CPU, memory, network and published ports (clickable). Select one to read, search or follow its logs, or to restart, stop, start, pause or remove it; tick several to act on them all at once. Restart and stop ask first and warn if players are connected. A container with a newer image out gets an **Update** badge, and one started by Docker Compose can be updated from the dashboard, with the old image put back if the new one doesn't start ([updates.md](updates.md)). Containers you stop here don't trigger crash or service-down alerts. The dashboard can restart itself but won't stop itself.
 - **Storage**: a one-line health summary, any drive problems with what to do about them, then each ZFS pool (usable space, layout, last scrub, scrub controls) with its drives inside it, then your other drives with what's on them. A drive ZFS can't see any more stays on the page as an outline, with its name, serial and slot, so you know which one to pull. Each drive tile shows its status, temperature, wear and age. Select one for full details: SMART self-check, spare, media errors, sector counts, data written and read, power-on hours and cycles, model, serial and firmware, plus renaming. Mounted filesystems are listed below. Each pool has its own page for datasets, snapshots (including automatic ones), scrubs, TRIM and changing its layout, and you can create and import pools (see [Pools](#pools)).
 - **Files**: a folder tree with previews for text, images, video and audio, downloads and folder sizes; in folders mounted read-write, uploads, new folders, renaming, moving, editing text and a 30-day Bin
+  With other machines joined, each is a group in the tree with its own folders, and **Two panes** puts any two folders side by side, on any machines, to copy and move between them ([servers.md](servers.md#files-on-your-other-machines)).
 - **Services**: links to everything you run, each with a live up/down check (HTTP, TCP, or a Minecraft Bedrock ping that shows players online), as logos, a list or detailed cards
 - **Apps** (admins): a catalogue of popular self-hosted apps, or your own compose file. LabKeel writes the compose file into the app's own folder, starts it, waits until it answers and adds it to Services. Off until `LABKEEL_ALLOW_APP_INSTALLS=1` ([apps.md](apps.md)).
 - **Servers**: your other machines (a NAS, a Raspberry Pi, a second server), each running LabKeel's small agent and reporting here over HTTPS, with their figures, containers, storage and drive health. The arrow beside the machine's name switches between them, and **Containers → All servers** lists every container on every machine. For now they're shown, not changed ([servers.md](servers.md)).
@@ -219,6 +220,9 @@ Every Python file starts with a description of what it does, and each function s
 | `app/composefile.py` | Bringing your `docker-compose.yml` up to date with a new version: new settings, new names. |
 | `app/apps.py` | The Apps page: the catalogue, writing an app's compose file, and adding and removing it. |
 | `app/servers.py` | The Servers page: join codes, the agents' reports, and alerts about other machines. |
+| `app/remote.py` | Files on other machines: requests handed to their agents, which answer them with `filesapp.py`. |
+| `app/filesapp.py` | LabKeel's own file routes, run from inside (by an agent, or for this machine's side of a copy). |
+| `app/crosscopy.py` | Copying and moving between machines, checked file by file. |
 | `app/agent.py`, `agent.compose.yml` | The agent that runs on another machine and reports to this one. |
 | `app/drivecare.py` | Following failing drives through to their replacement, scrubs, SMART self-tests. |
 | `app/zfsmgr.py` | Pools and datasets: creating, importing, changing the layout, snapshots, scheduled scrubs and TRIMs. |
@@ -233,6 +237,7 @@ Everything LabKeel remembers is in `./data`: `settings.json`, `state.json` (sche
 `labkeel.db` (the activity log and update checks), `overrides.json` (names you've given things),
 `drivecare.json`, `zfs.json`, `trash.json`, `moves.json`, `uploads.json`, `passkeys.json`, `revoked.json`,
 `apps.json` (apps added from the Apps page), `servers.json` (your other machines, with their tokens hashed),
+`xfers.json` (recent copies between machines),
 `session.key`, `history.db` (the charts), your home-screen icon and `tls/`.
 
 Only Python packages that the code imports are in `requirements.txt`, each with a note saying what it's

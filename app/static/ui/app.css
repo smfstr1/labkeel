@@ -570,15 +570,31 @@ section + section {
   background: var(--bad);
 }
 
+.cores-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+.cores-wrap[hidden] {
+  display: none;
+}
+.cores-lbl {
+  color: var(--faint);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
 .cores {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 6px;
-  margin-top: 12px;
 }
 .core {
   flex: 0 1 44px;
+  width: 44px; /* the strip sizes itself from this, so the threads sit in a row beside their label */
   min-width: 30px;
 }
 .core {
@@ -2705,6 +2721,116 @@ pre.raw {
   display: flex;
   flex-direction: column;
 }
+.pane .flist {
+  flex: 1;
+}
+/* several machines: a group for each in the tree, the machine at the start of the path */
+.tmach {
+  margin: 0 0 8px;
+}
+.tm-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px 5px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.tm-h:hover {
+  background: var(--panel-2);
+}
+.tm-h b {
+  font-weight: 650;
+}
+.tm-h small {
+  margin-left: auto;
+  color: var(--faint);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.tmach.off .tm-h {
+  opacity: 0.6;
+}
+.tmach > ul {
+  padding-left: 2px;
+}
+.tnote {
+  margin-left: auto;
+  padding-right: 8px;
+  color: var(--faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.msel {
+  max-width: 14em;
+  padding: 3px 26px 3px 10px;
+  border: 1px solid var(--rule-2);
+  border-radius: 999px;
+  background-color: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.pfoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--rule);
+  color: var(--faint);
+  font-size: 12.5px;
+}
+.pfoot:empty {
+  display: none;
+}
+.frow.fgrp {
+  display: block;
+  padding: 7px 14px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: default;
+}
+body:not(.f-multi) #f-scope {
+  display: none;
+}
+#f-scope {
+  width: auto;
+}
+/* two panes: the tree makes way for a second folder */
+.files.two {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.files.two > .tree {
+  display: none;
+}
+.files.two > .pane2 {
+  border-left: 1px solid var(--rule);
+}
+.pane2[hidden] {
+  display: none;
+}
+#p2-list.drop {
+  outline: 2px dashed var(--s1);
+  outline-offset: -4px;
+}
+.mv-lbl {
+  margin: 12px 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.mv-m {
+  margin-bottom: 10px;
+}
 .pane-head {
   display: flex;
   gap: 10px;
@@ -3927,6 +4053,8 @@ dialog.dlg::backdrop {
   }
   .cores {
     gap: 4px;
+  }
+  .cores-wrap {
     margin-top: 10px;
   }
   .core {
@@ -4026,6 +4154,16 @@ dialog.dlg::backdrop {
     border-bottom: 1px solid var(--rule);
   }
   .files.show-tree .tree {
+    display: block;
+  }
+  .f-layout,
+  .files.two > .pane2 {
+    display: none;
+  }
+  .files.two {
+    grid-template-columns: 1fr;
+  }
+  .files.two.show-tree > .tree {
     display: block;
   }
   #f-tree-btn {

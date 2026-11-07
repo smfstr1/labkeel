@@ -81,6 +81,7 @@ server** dialog fills them in for you. See [servers.md](servers.md).
 | `LABKEEL_HUB` | | Your main LabKeel's address, such as `https://homelab:8787`. Must be `https://`. |
 | `LABKEEL_JOIN_CODE` | | The one-time code from **Add a server** (the arrow beside the machine's name). Works once, for 15 minutes. Not needed once the machine has joined. |
 | `LABKEEL_HUB_KEY` | | Your main LabKeel's certificate key (`sha256:…`), shown beside the code. With it the agent knows it's talking to your LabKeel, even with a self-signed certificate. |
+| `LABKEEL_ALLOW_FILE_CHANGES` | `0` | On the agent (in `agent.local.yml`): 1 lets your main LabKeel's Files page change files in the folders mounted under `/browse` there. |
 
 ## Rarely needed
 

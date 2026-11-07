@@ -106,7 +106,7 @@
         </div>
       </div>
       <div hidden id="tiles-off"></div>
-      <div class="cores" id="ov-cores" aria-label="Per-core CPU usage"></div>
+      <div class="cores-wrap" id="ov-cores-wrap" hidden><span class="cores-lbl">CPU, each thread</span><div class="cores" id="ov-cores" aria-label="CPU use of each thread"></div></div>
 
       <section class="hist" aria-labelledby="hist-h">
         <div class="hist-head">
@@ -225,7 +225,8 @@
 
     <!-- FILES -->
     <div class="view hidden" id="view-files">
-      <div class="view-head"><h1>Files</h1><span class="muted" style="font-size:13.5px" id="f-mode">Folders are the ones mounted into the dashboard.</span></div>
+      <div class="view-head"><h1>Files</h1><span class="toolbar"><span class="muted" style="font-size:13.5px" id="f-mode">Folders are the ones mounted into the dashboard.</span>
+        <span class="seg f-layout" id="f-layout" role="group" aria-label="Layout"><button type="button" data-layout="tree" aria-pressed="true">Tree</button><button type="button" data-layout="two" aria-pressed="false" title="A second folder beside this one, on any machine, to copy and move between">Two panes</button></span></span></div>
       <div class="files">
         <nav class="tree" id="f-tree" aria-label="Folder tree"></nav>
         <div class="pane">
@@ -235,6 +236,7 @@
               <button class="btn" id="f-tree-btn" type="button" aria-expanded="false" aria-controls="f-tree">Folders</button>
               <input class="input" id="f-filter" type="search" placeholder="Filter, or search (Enter)" aria-label="Filter this folder, or press Enter to search it and its subfolders" style="width:230px">
               <button class="btn" id="f-search" type="button" title="Search this folder and everything inside it">Search</button>
+              <select class="input" id="f-scope" aria-label="Where to search"><option value="here">In this folder</option><option value="all">On every machine</option></select>
               <button class="btn fx-more" id="f-size" type="button">Folder size</button>
               <span class="toolbar" id="f-write" hidden>
                 <button class="btn fx-more" type="button" data-fx="mkdir">New folder</button>
@@ -255,12 +257,29 @@
             <button class="btn small" type="button" data-fx="rename">Rename…</button>
             <button class="btn small" type="button" data-fx="move">Move…</button>
             <button class="btn small" type="button" data-fx="copy">Copy…</button>
+            <button class="btn small" type="button" data-fx="xcopy" hidden>Copy to another server…</button>
+            <button class="btn small primary" type="button" data-fx="to2copy" hidden>Copy to the other side →</button>
+            <button class="btn small" type="button" data-fx="to2move" hidden>Move to the other side →</button>
             <button class="btn small danger" type="button" data-fx="delete">Delete…</button>
             <button class="btn small" type="button" data-fx="clear">Clear</button></div>
           <div class="fup" id="f-up" hidden></div>
           <div class="fsel" id="f-searchbar" hidden></div>
           <div class="fsel" id="f-unfinished" hidden></div>
           <div class="flist" id="f-list"></div>
+          <div class="pfoot" id="f-foot"></div>
+        </div>
+        <div class="pane pane2" id="f-pane2" hidden>
+          <div class="pane-head">
+            <div class="crumbs" id="p2-crumbs"></div>
+            <div class="toolbar"><input class="input" id="p2-filter" type="search" placeholder="Filter" aria-label="Filter this folder" style="width:170px">
+              <button class="btn" type="button" id="p2-swap" title="Swap the two sides">⇄ Swap</button></div>
+          </div>
+          <div class="fsel" id="p2-selbar" hidden><span id="p2-selcount"></span>
+            <button class="btn small primary" type="button" id="p2-copy">← Copy</button>
+            <button class="btn small" type="button" id="p2-move">← Move</button>
+            <button class="btn small" type="button" id="p2-clear">Clear</button></div>
+          <div class="flist" id="p2-list"></div>
+          <div class="pfoot" id="p2-foot"></div>
         </div>
       </div>
     </div>
@@ -646,6 +665,7 @@
 <script src="/ui/apps.js"></script>
 <script src="/ui/servers.js"></script>
 <script src="/ui/files.js"></script>
+<script src="/ui/panes.js"></script>
 <script src="/ui/dialogs.js"></script>
 <script src="/ui/settings.js"></script>
 <script src="/ui/main.js"></script>

@@ -22,6 +22,9 @@ selfupdate.py  LabKeel updating itself, from Settings.
 composefile.py bringing your docker-compose.yml up to date with a new version (new settings, new names).
 apps.py        the Apps page: adding popular apps (or your own compose file) in a couple of clicks.
 servers.py     other machines, each running LabKeel's agent (agent.py) and reporting in to this one.
+remote.py      their files, for the Files page: requests handed to their agents, which run filesapp.py.
+filesapp.py    LabKeel's own file routes, run from inside (by an agent, or for this machine's side of a copy).
+crosscopy.py   copying and moving files and folders between machines, checked file by file.
 drivecare.py   the pools' drives: failing drives, replacing them, scrubs and SMART self-tests.
 zfsmgr.py      pool and dataset management, snapshots, scheduled scrubs and TRIMs.
 fileops.py     changing files from the file browser: uploads, moves, copies, the Bin.
@@ -45,6 +48,7 @@ session.key, history.db (charts), app-icon.png and tls/ (certificates).
 """
 import asyncio
 import fnmatch
+import hashlib
 import json
 import mimetypes
 import os
@@ -917,7 +921,12 @@ def api_files(path: str = ""):
         os.close(fd)
     entries.sort(key=lambda x: (not x["dir"], x["name"].lower()))
     rel = "" if p == root else str(p.relative_to(root))
-    return {"path": rel, "entries": entries, "truncated": truncated, "writable": _writable(p, root)}
+    try:
+        vfs = os.statvfs(p)
+        free = vfs.f_bavail * vfs.f_frsize
+    except OSError:
+        free = None
+    return {"path": rel, "entries": entries, "truncated": truncated, "writable": _writable(p, root), "free": free}
 
 
 def _writable(p: Path, root: Path):
@@ -1048,6 +1057,27 @@ def api_file_raw(path: str, download: bool = False):
 
 
 _du_slots = threading.BoundedSemaphore(2)  # sizing a big folder reads every file: two at a time at most
+_hash_slots = threading.BoundedSemaphore(2)  # the same for checksums
+
+
+@app.get("/api/files/hash")
+def api_file_hash(path: str):
+    """A file's SHA-256: how a copy to or from another machine is checked once it has landed (crosscopy.py)."""
+    fd, p, st = open_checked(path)
+    if not _hash_slots.acquire(timeout=30):
+        os.close(fd)
+        raise HTTPException(429, "Already checking two files. Try again in a moment.")
+    try:
+        h = hashlib.sha256()
+        with os.fdopen(fd, "rb", buffering=0) as f:
+            while True:
+                chunk = f.read(4 * 1024 * 1024)
+                if not chunk:
+                    break
+                h.update(chunk)
+        return {"sha256": h.hexdigest(), "size": st.st_size}
+    finally:
+        _hash_slots.release()
 
 
 @app.get("/api/files/dirsize")
@@ -1706,3 +1736,8 @@ import apps  # noqa: E402  (the Apps page: adding popular apps in a couple of cl
 app.include_router(apps.router)
 import servers  # noqa: E402  (other machines, each reporting in through LabKeel's agent)
 app.include_router(servers.router)
+import remote  # noqa: E402  (their files, through their agents)
+app.include_router(remote.router)
+import crosscopy  # noqa: E402  (copying and moving between machines)
+app.include_router(crosscopy.router)
+crosscopy.load()

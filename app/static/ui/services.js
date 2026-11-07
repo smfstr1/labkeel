@@ -1,4 +1,4 @@
-// LabKeel dashboard — services.js (6 of 12; index.html loads them in order).
+// LabKeel dashboard — services.js (6 of 13; index.html loads them in order).
 // The Services page, and the rename dialog for containers, services and drives.
 "use strict";
 

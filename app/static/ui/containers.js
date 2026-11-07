@@ -1,4 +1,4 @@
-// LabKeel dashboard — containers.js (3 of 12; index.html loads them in order).
+// LabKeel dashboard — containers.js (3 of 13; index.html loads them in order).
 // The Containers page: the list and its filters, update badges, bulk actions, the side drawer, a
 // container's logs, start/stop/restart/remove, and toast messages.
 "use strict";
