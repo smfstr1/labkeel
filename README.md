@@ -22,7 +22,8 @@
 - **Files**: browse, upload, edit, move and delete files, with a Bin you can restore from
 - **Services**: links to everything you run, each with a live up/down check
 - **Apps**: add Jellyfin, Immich, Home Assistant and more in a couple of clicks, as ordinary Docker Compose
-- **Several servers**: your NAS, Raspberry Pi or second server on the same dashboard, through a small agent
+- **Several servers**: your NAS, Raspberry Pi or second server on the same dashboard, through a small agent,
+  with their files on the Files page too: copy and move between machines, side by side, every file checked
 - **Alerts**: to ntfy or Discord when something needs attention
 - **Accounts**: admins and view-only accounts, passwords or passkeys, over HTTPS by default
 

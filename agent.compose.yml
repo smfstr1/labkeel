@@ -1,11 +1,14 @@
 # LabKeel's agent, for another machine you want your main LabKeel to show (docs/servers.md).
-# Your LabKeel gives you the exact command (Servers → Add a server). It looks like:
+# Your LabKeel gives you the exact command (Add a server). It looks like:
 #
 #   [ -d labkeel-agent ] || git clone https://github.com/smfstr1/labkeel.git labkeel-agent
 #   cd labkeel-agent && LABKEEL_HUB=https://homelab:8787 LABKEEL_JOIN_CODE=K7Q-4MX-92P LABKEEL_HUB_KEY=sha256:... \
-#     docker compose -f agent.compose.yml up -d --build
+#     docker compose -f agent.compose.yml $([ -f agent.local.yml ] && echo -f agent.local.yml) up -d --build
 #
 # Once it has joined, the code isn't needed again: the agent keeps its own token in ./agent-data.
+#
+# Folders for the Files page go in agent.local.yml, not here: copy agent.local.example.yml. That way updating
+# the agent (git pull) never clashes with your changes.
 
 services:
   labkeel-agent:
@@ -23,7 +26,8 @@ services:
 
     # The same three as LabKeel itself, for the same readings: the machine's real network cards (host),
     # every process and the machine's own commands (pid), and drive health and ZFS (privileged).
-    # The agent only reads, and opens no port.
+    # The agent opens no port. It only reads, except files in the folders under /browse, and only if
+    # LABKEEL_ALLOW_FILE_CHANGES=1 (agent.local.yml).
     network_mode: host
     pid: host
     privileged: true

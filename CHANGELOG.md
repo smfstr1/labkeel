@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.2.2-alpha
+
+### Added
+- **Files on every machine.** With other machines joined (Servers), each one's shared folders are on the
+  Files page as a group of their own, next to this machine's: browse, preview, download and search them, and
+  where that machine allows it (`LABKEEL_ALLOW_FILE_CHANGES=1` in its `agent.local.yml`), upload, rename,
+  delete and use its Bin, just as here. The machine is at the start of the path, and in the address
+  (`#files:@<id>/media/films`), so links and Back work.
+- **Two panes.** A switch at the top of Files puts a second folder beside the first, each on whichever machine
+  you choose, with Swap. Copy or move between them with the buttons or by dragging across.
+- **Copying and moving between machines**: Copy to another server…, the two panes, dragging onto another
+  machine's folder, or copy and paste. It runs in the background with its progress at the top of every page,
+  checks the target allows changes and has room, asks what to do about names already there (keep both,
+  replace, skip), keeps each file's date, and **checks every file's SHA-256 once it lands**. A move deletes
+  the originals (to their Bin) only after that. See `docs/servers.md`.
+- **Search every machine** at once, with the results grouped by machine.
+- A machine's page lists the folders it shares with Files, and whether LabKeel can change them.
+- File changes made on another machine are in its activity log and in this one's, as "On nas: …".
+- Uploads keep each file's own date (its "modified" time on your computer), instead of the time it arrived.
+- Each Files pane shows its free space, and whether it can be changed.
+- **Your docker-compose.yml keeps up with updates.** `git pull` leaves it alone (it's your own copy of the
+  example), so new settings never reached it. Now, after LabKeel updates itself, it adds any settings the new
+  version lists, switched off, and gives old `DASH_` names their `LABKEEL_` ones. Your values, comments and
+  layout stay as they are. Docker Compose checks the new file first, and the old one is kept as
+  `docker-compose.yml.bak`. **Settings → LabKeel** shows when the file is behind and can do the same after an
+  update by hand. See `docs/updates.md`.
+- **Apps.** A catalogue of 18 popular self-hosted apps (Jellyfin, Plex, Immich, Home Assistant, the *arr apps,
+  qBittorrent, Nextcloud, Vaultwarden, Pi-hole, Minecraft Bedrock and more), or your own compose file. Fill in a
+  folder or two and LabKeel writes the compose file into the app's own folder (`/srv/labkeel/apps/<app>`),
+  pulls and starts it, waits until it answers, and adds it to Services. Everything it makes is ordinary Docker
+  Compose. Removing an app stops it and keeps its folder and data; adding it again picks them up. Off until
+  `LABKEEL_ALLOW_APP_INSTALLS=1`; admins only, password again, every step logged. See `docs/apps.md`.
+- **Several servers.** Add your other machines (a NAS, a Raspberry Pi, a second server): each runs LabKeel's
+  small agent (`agent.compose.yml`), which joins with a one-time code and reports over HTTPS. The Servers page
+  shows them all with totals, each has its own page (figures, containers, storage, drive health), a switcher
+  sits beside the machine's name, **Containers → All servers** lists every container, and alerts cover them
+  too. The agent checks it's talking to your LabKeel before sending anything and opens no port; the
+  machine's containers and settings are shown, not changed. See `docs/servers.md`.
+
+### Security
+- **Files on other machines** are reached only through a fixed list of file requests, checked on both ends,
+  and run by the agent with LabKeel's own file code and path checks. The password is asked on this machine and
+  never sent on. What comes back is sandboxed, and anything but a file is served as JSON, so another machine
+  can't serve a page that runs here. Admins only, as Files here.
+- An agent's shared folders go in `agent.local.yml`, which git leaves alone (`agent.local.example.yml` shows how).
+- **An agent is trusted less than this machine.** Only a short list of its reply headers are passed on, a reply
+  can't be longer than it says it is, the list of files it sends for a copy is checked before anything is
+  written (so it can't steer a copy outside the folder you picked), what it relays to the activity log is
+  cleaned and limited to 300 lines an hour, and it can't hold open more than 16 waiting requests.
+
+### Fixed
+- A side panel (the Bin, a drive's details) stayed open over the next page after going back or switching
+  page; it now closes when you leave the page it belongs to.
+- The Overview's strip of per-thread CPU boxes is labelled "CPU, each thread", sits in a row beside its label
+  instead of a stack, and is hidden on a machine with a single thread.
+- The activity log and Files messages say "Bin" throughout (some said "trash"), and small sizes are given in KB
+  or MB instead of "0.00 GB".
+
 ## 0.1.2-alpha
 
 ### Security
@@ -23,24 +81,6 @@
   how to turn HTTPS on. Behind a reverse proxy, set `LABKEEL_TRUSTED_PROXY` so its HTTPS is recognised.
 
 ### Added
-- **Your docker-compose.yml keeps up with updates.** `git pull` leaves it alone (it's your own copy of the
-  example), so new settings never reached it. Now, after LabKeel updates itself, it adds any settings the new
-  version lists, switched off, and gives old `DASH_` names their `LABKEEL_` ones. Your values, comments and
-  layout stay as they are. Docker Compose checks the new file first, and the old one is kept as
-  `docker-compose.yml.bak`. **Settings → LabKeel** shows when the file is behind and can do the same after an
-  update by hand. See `docs/updates.md`.
-- **Apps.** A catalogue of 18 popular self-hosted apps (Jellyfin, Plex, Immich, Home Assistant, the *arr apps,
-  qBittorrent, Nextcloud, Vaultwarden, Pi-hole, Minecraft Bedrock and more), or your own compose file. Fill in a
-  folder or two and LabKeel writes the compose file into the app's own folder (`/srv/labkeel/apps/<app>`),
-  pulls and starts it, waits until it answers, and adds it to Services. Everything it makes is ordinary Docker
-  Compose. Removing an app stops it and keeps its folder and data; adding it again picks them up. Off until
-  `LABKEEL_ALLOW_APP_INSTALLS=1`; admins only, password again, every step logged. See `docs/apps.md`.
-- **Several servers.** Add your other machines (a NAS, a Raspberry Pi, a second server): each runs LabKeel's
-  small agent (`agent.compose.yml`), which joins with a one-time code and reports over HTTPS. The Servers page
-  shows them all with totals, each has its own page (figures, containers, storage, drive health), a switcher
-  sits beside the machine's name, **Containers → All servers** lists every container, and alerts cover them
-  too. The agent checks it's talking to your LabKeel before sending anything, opens no port, and only reads.
-  See `docs/servers.md`.
 - **Update a container from its panel.** "Update now" pulls the newer image and re-creates the container with
   Docker Compose, checks the new one starts (and passes its health check), and puts the old image back if it
   doesn't. Admins only, password again, logged.
@@ -119,8 +159,6 @@
   could leave the tab bar floating mid-screen. The top bar now stays put at its own height, sticky toolbars sit
   below it, and nothing hides under the notch, the home bar or the browser's toolbars.
 - Phones: there was no way to sign out from the top bar.
-- A side panel (the Bin, a drive's details) stayed open over the next page after going back or switching
-  page; it now closes when you leave the page it belongs to.
 - The status bar and browser toolbar on phones now match the page in the light theme too.
 - Settings on a phone: the chosen page's tab scrolls into view; card buttons go under the heading instead of
   squeezing it.

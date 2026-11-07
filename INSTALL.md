@@ -383,7 +383,8 @@ Hello or a phone instead of typing a password.
 
 Got a NAS, a Raspberry Pi or a second server? Choose the arrow beside your machine's name (top left), then
 **Add a server**, and LabKeel gives you one command to run on the other machine. It installs LabKeel's small
-agent, which reports back here over HTTPS, and the machine joins your fleet within seconds. [docs/servers.md](docs/servers.md) has the details.
+agent, which reports back here over HTTPS, and the machine joins your fleet within seconds. To see its files
+on the Files page too, list its folders in `agent.local.yml` there (copy `agent.local.example.yml`). [docs/servers.md](docs/servers.md) has the details.
 
 ---
 
