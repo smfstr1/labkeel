@@ -73,6 +73,9 @@
   repeated it back), and an agent joining on JSON nested deeper still. The error for a request of the wrong shape no longer
   repeats what was sent.
 - An agent's connection to the hub never reconnects by itself: every new connection is checked first.
+- **Nothing private is committed.** A test checks every file git would publish for private keys, tokens, password
+  hashes, email addresses, home folders, real Tailscale names, and hidden details in images (camera, place,
+  author), and CI runs gitleaks over every commit in the history. The tests and examples use neutral names.
 
 ### Changed
 - Pydantic 2.14.3 (faster checking of requests).
@@ -91,6 +94,7 @@
   tree) stayed on the other machine.
 - Machines without ZFS: the list of pools you could import failed instead of saying ZFS isn't installed.
 - Testing alerts with no alert address set now says to add one, rather than reporting a failed delivery.
+- Run Docker clean-up, when Docker can't be reached, says so (503) instead of reporting a fault in LabKeel.
 - The message about passkeys needing a name gave a particular machine's name as the example.
 
 ## 0.1.2-alpha

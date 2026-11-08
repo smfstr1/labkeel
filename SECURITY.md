@@ -72,4 +72,6 @@ bandit -q -r app -ll            # risky code; reviewed exceptions are marked "no
 pip-audit -r requirements.txt   # known vulnerabilities in the dependencies
 ```
 
-CI runs all of these on every change.
+CI runs all of these on every change, and gitleaks over every commit in the history. `tests/test_release.py` checks
+that nothing private is committed: no keys, tokens, password hashes, email addresses, home folders or real
+Tailscale names, and no hidden details in the images.
