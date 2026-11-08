@@ -1,7 +1,7 @@
 # Your own additions to agent.compose.yml: the folders this machine shares with LabKeel's Files page, and
 # whether LabKeel may change files in them. Copy this file to agent.local.yml (git leaves that one alone, so
-# updating the agent never touches it), change the folders, then run the command from your LabKeel again,
-# or: docker compose -f agent.compose.yml -f agent.local.yml up -d
+# updating the agent never touches it), change the folders, then run the command from your LabKeel again, or:
+#   docker compose -f agent.compose.yml -f agent.local.yml up -d
 #
 # Each folder mounted under /browse appears in Files, under this machine's name. Add :ro to keep one read only.
 # See docs/servers.md.

@@ -1,10 +1,12 @@
-# Copy this file to docker-compose.yml, change what's marked, then run:  docker compose up -d --build
-# Open https://<this machine's address>:8787 and follow the set-up page. It asks for a one-time code
-# from the log:  docker logs labkeel
+# LabKeel. Copy this file to docker-compose.yml, change what's marked, then:
+#   docker compose up -d --build
+# Open https://<this machine's address>:8787 and follow the set-up page. It asks for a one-time code from
+#   docker logs labkeel
+# Every setting is described in docs/settings.md.
 
 services:
   labkeel:
-    build: .                                  # builds from this folder (docker compose up -d --build)
+    build: .                                  # builds from this folder
     # image: ghcr.io/smfstr1/labkeel:latest   # once releases are published: use this line instead of build
     container_name: labkeel
     restart: unless-stopped
@@ -29,7 +31,7 @@ services:
 
     environment:
       # ---- What LabKeel may change on this machine. All start off: turn on only what you need. ----
-      - LABKEEL_ALLOW_FILE_CHANGES=0   # 1 = upload, edit, move and delete files in the file browser
+      - LABKEEL_ALLOW_FILE_CHANGES=0   # 1 = upload, edit, move and delete files on the Files page
       - LABKEEL_ALLOW_ZFS_CHANGES=0    # 1 = create, change and destroy ZFS pools, datasets and snapshots
       - LABKEEL_ALLOW_RESTART=0        # 1 = restart and shut down the machine
       - LABKEEL_ALLOW_APP_INSTALLS=0   # 1 = add and remove apps on the Apps page (docs/apps.md)
@@ -43,19 +45,19 @@ services:
       # - LABKEEL_ADMIN_PASSWORD_HASH=$$argon2id$$v=19$$...
 
       # ---- Optional ----
-      # - LABKEEL_PORT=8787            # the port to open in your browser
-      # - LABKEEL_HTTPS=auto           # auto | tailscale | self-signed | off
-      #                                #   off = plain HTTP behind your own HTTPS proxy, which then needs
-      #                                #   LABKEEL_TRUSTED_PROXY below (LabKeel only signs people in over HTTPS)
-      # - LABKEEL_HSTS=1               # tell browsers to always use https:// for this name. Only if nothing else
-      #                                #   on the same name uses plain http:// (it covers every port)
-      # - LABKEEL_UPLOAD_LIMIT_GB=10   # largest single upload (leave out for no limit)
-      # - LABKEEL_BIN_DAYS=30          # days deleted files stay in the Bin
-      # - TZ=Europe/London             # only if the machine has no /etc/timezone (used for scheduled restarts)
+      # - LABKEEL_PORT=8787                  # the port to open in your browser
+      # - LABKEEL_HTTPS=auto                 # auto | tailscale | self-signed | off (off: see the reverse proxy part)
+      # - LABKEEL_HSTS=1                     # browsers always use https:// for this name, on every port: only if
+      #                                      #   nothing else on the same name uses plain http://
+      # - LABKEEL_UPLOAD_LIMIT_GB=10         # largest single upload (leave out for no limit)
+      # - LABKEEL_BIN_DAYS=30                # days deleted files stay in the Bin
+      # - LABKEEL_APPS_DIR=/srv/labkeel/apps # where apps added from the Apps page get their folders, on the machine
+      # - TZ=Europe/London                   # only if the machine has no /etc/timezone (for scheduled restarts)
 
       # ---- Behind a reverse proxy (Caddy, nginx, Traefik) ----
-      # Only requests from these addresses may say who the visitor is (X-Forwarded-For) or that they came
-      # over HTTPS (X-Forwarded-Proto):
+      # With LABKEEL_HTTPS=off, LabKeel serves plain HTTP for the proxy to put HTTPS in front of. Only requests
+      # from these addresses may say who the visitor is (X-Forwarded-For) or that they came over HTTPS
+      # (X-Forwarded-Proto), and LabKeel only signs people in over HTTPS:
       # - LABKEEL_TRUSTED_PROXY=127.0.0.1
       # Let the proxy sign people in (Authelia, Authentik, oauth2-proxy). It must set this header itself and
       # remove any copy the visitor sends. Names with a LabKeel account get that account's role; others need
@@ -64,14 +66,14 @@ services:
       # - LABKEEL_PROXY_ADMINS=alice
       # - LABKEEL_PROXY_VIEWERS=*
       #
-      # Every setting is described in docs/settings.md. Names from before 0.1.2 (DASH_...) still work.
+      # Names from before 0.1.2 (DASH_...) still work; updating from Settings renames them for you.
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock   # list, start, stop and restart containers
       - ./data:/data                                # accounts, settings, sign-in keys, history
       - ./config:/config                            # config.json (copy config.example.json there)
       - ./certs:/certs                              # HTTPS certificates
-      # Folders to show in the file browser: one line each, under /browse.
-      # Add :ro to the end of a line to make that folder read-only.
+      # Folders for the Files page: one line each, under /browse. Add :ro to a line to keep that folder
+      # read only.
       - /srv/media:/browse/media
       # - /home/you/documents:/browse/documents:ro

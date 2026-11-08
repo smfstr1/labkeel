@@ -39,6 +39,19 @@
   too. The agent checks it's talking to your LabKeel before sending anything and opens no port; the
   machine's containers and settings are shown, not changed. See `docs/servers.md`.
 
+### Faster and lighter
+- **LabKeel uses about half the CPU it did** (idle, 0.5% of a core instead of 1.1%; with the Overview open,
+  1.2% instead of 2.3%) and about 20 MB less memory. Most of it went on re-reading the machine's whole
+  certificate store for every service check; now one TLS setting is made once and shared.
+- **The agent uses a seventh of the CPU** (0.2% of a core instead of 1.4%) and about 25 MB less memory: it makes
+  its TLS settings once, checks a hub with a self-signed certificate with one handshake instead of two, and keeps
+  its connections to the hub open between requests, so a file request's answer goes back on the connection it
+  came in on. Opening a folder on another machine takes about 11 ms instead of about 60.
+- **The page loads a quarter of the bytes the first time** (and after each update): its scripts and styles are
+  sent gzipped, 138 KB instead of 487 KB, compressed once and kept rather than on every visit.
+- Docker's health check doesn't read the certificate store every 30 seconds; calls to Docker no longer look for
+  proxy settings and `~/.netrc` each time; CI skips the slow arm64 build on pull requests.
+
 ### Security
 - **Files on other machines** are reached only through a fixed list of file requests, checked on both ends,
   and run by the agent with LabKeel's own file code and path checks. The password is asked on this machine and
@@ -49,6 +62,23 @@
   can't be longer than it says it is, the list of files it sends for a copy is checked before anything is
   written (so it can't steer a copy outside the folder you picked), what it relays to the activity log is
   cleaned and limited to 300 lines an hour, and it can't hold open more than 16 waiting requests.
+- **Every field of an agent's report has a set type and length** (the machine's name and OS are text, its
+  CPU and disks numbers, and so on). Anything else is dropped, so a broken or hostile agent can't put markup on
+  the hub's pages or stop the Servers page and alerts working.
+- **TLS 1.2 or 1.3 only, with forward secrecy and AES-GCM or ChaCha20**, set by LabKeel itself rather than left
+  to the machine's OpenSSL. The older CBC ciphers that some systems still allowed are refused.
+- **No request can crash a route.** The tests now send every route badly shaped input (the wrong types, broken
+  JSON, JSON nested thousands deep), and each answers with a clear error. Before, six failed with a 500 on a
+  field of the wrong type, two on a machine without ZFS, most on JSON nested a few thousand deep (the error
+  repeated it back), and an agent joining on JSON nested deeper still. The error for a request of the wrong shape no longer
+  repeats what was sent.
+- An agent's connection to the hub never reconnects by itself: every new connection is checked first.
+
+### Changed
+- Pydantic 2.14.3 (faster checking of requests).
+- The example `docker-compose.yml`, `agent.compose.yml` and `agent.local.example.yml` are tidied, and every
+  command for updating an agent keeps your `agent.local.yml` (without it, the agent would start again without
+  its shared folders).
 
 ### Fixed
 - A side panel (the Bin, a drive's details) stayed open over the next page after going back or switching
@@ -57,6 +87,11 @@
   instead of a stack, and is hidden on a machine with a single thread.
 - The activity log and Files messages say "Bin" throughout (some said "trash"), and small sizes are given in KB
   or MB instead of "0.00 GB".
+- Going from a folder on another machine to one on this machine (a link, Back, or this machine's name in the
+  tree) stayed on the other machine.
+- Machines without ZFS: the list of pools you could import failed instead of saying ZFS isn't installed.
+- Testing alerts with no alert address set now says to add one, rather than reporting a failed delivery.
+- The message about passkeys needing a name gave a particular machine's name as the example.
 
 ## 0.1.2-alpha
 

@@ -8,7 +8,9 @@
 # Once it has joined, the code isn't needed again: the agent keeps its own token in ./agent-data.
 #
 # Folders for the Files page go in agent.local.yml, not here: copy agent.local.example.yml. That way updating
-# the agent (git pull) never clashes with your changes.
+# the agent never clashes with your changes. To update it, in this folder:
+#   git pull
+#   docker compose -f agent.compose.yml $([ -f agent.local.yml ] && echo -f agent.local.yml) up -d --build
 
 services:
   labkeel-agent:

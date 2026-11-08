@@ -371,11 +371,11 @@ Enter the set-up code, pick a user name and a password of **at least 12 characte
 Click your name at the bottom of the sidebar to open **Account**. From there you can add people as:
 
 - **Admin**: can do everything. Treat it like the keys to the server.
-- **Viewer**: sees the Overview, Containers, Storage and Services, but can't change anything, open
+- **Viewer**: sees the Overview, Containers, Storage, Services and Servers, but can't change anything, open
   files or peek at settings. Perfect for the family member who just wants to know if Plex is down.
 
-Admins can also add a **passkey** in **Settings → Passkeys**, to sign in with Face ID, Touch ID, Windows
-Hello or a phone instead of typing a password.
+Admins can also add a **passkey** in **Settings → Security and sign-in**, to sign in with Face ID, Touch ID,
+Windows Hello or a phone instead of typing a password.
 
 ---
 
@@ -383,8 +383,12 @@ Hello or a phone instead of typing a password.
 
 Got a NAS, a Raspberry Pi or a second server? Choose the arrow beside your machine's name (top left), then
 **Add a server**, and LabKeel gives you one command to run on the other machine. It installs LabKeel's small
-agent, which reports back here over HTTPS, and the machine joins your fleet within seconds. To see its files
-on the Files page too, list its folders in `agent.local.yml` there (copy `agent.local.example.yml`). [docs/servers.md](docs/servers.md) has the details.
+agent, which reports back here over HTTPS, and the machine joins your fleet within seconds.
+
+To see its files on the Files page too, copy `agent.local.example.yml` to `agent.local.yml` in the
+`labkeel-agent` folder there and list its folders in it. They're read only unless you also set
+`LABKEEL_ALLOW_FILE_CHANGES=1` in that file. Then you can copy and move between machines, two panes side by
+side. [docs/servers.md](docs/servers.md) has the details.
 
 ---
 
@@ -408,6 +412,15 @@ Your accounts, settings and history stay put. Your `docker-compose.yml` is yours
 alone. After the button's update, LabKeel adds any new settings to it (switched off) and gives old names their
 new ones, keeping your values and a copy of the old file. After an update by hand, **Settings → LabKeel** offers
 the same. See [docs/updates.md](docs/updates.md).
+
+**Other machines' agents** update on their own machine, in its `labkeel-agent` folder:
+
+```sh
+git pull
+docker compose -f agent.compose.yml $([ -f agent.local.yml ] && echo -f agent.local.yml) up -d --build
+```
+
+Agents older than 0.2.2 still report in, but their files don't show on the Files page.
 
 Docker and git update with the rest of your system (`sudo apt upgrade`, or `sudo dnf upgrade` on Fedora).
 Since Docker now comes from Docker's own repository, that keeps you on the latest version too.
@@ -447,6 +460,8 @@ Two things can be left elsewhere, but only if you switched them on:
   Check for those if you want them gone too.
 - **ZFS changes and automatic snapshots on:** its `auto-…` snapshots stay on your pool until you
   delete them with `zfs destroy`.
+- **Other machines added:** on each one, `cd labkeel-agent && docker compose -f agent.compose.yml down`, then
+  delete the `labkeel-agent` folder.
 
 ---
 
