@@ -46,13 +46,33 @@ control of the server. See [SECURITY.md](SECURITY.md) for how it's protected.
 
 >
 
-![A container's logs, with how to update it](images/container-logs.png)
-**Logs**: live, searchable, with the update command
+![A container's logs, with a newer image ready to install](images/container-logs.png)
+**Logs**: live and searchable, with one-click updates
 
 >
 
 ![The file browser in a Movies folder](images/files.png)
 **Files**: browse, upload, move, delete
+
+>
+
+![The Files page with this server's folders and a NAS's folders in one tree](images/files-machines.png)
+**Files on every machine**: your NAS's folders beside this server's
+
+>
+
+![Two panes side by side, this server's films on the left and the NAS's on the right](images/files-two-panes.png)
+**Two panes**: copy and move between machines, every file checked
+
+>
+
+![The Servers page with this server and a NAS, and totals across both](images/servers.png)
+**Servers**: every machine at a glance
+
+>
+
+![The Apps catalogue: Jellyfin, Plex, Immich, Home Assistant and more](images/apps.png)
+**Apps**: add one in a couple of clicks
 
 >
 
