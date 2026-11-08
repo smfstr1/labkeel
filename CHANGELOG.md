@@ -95,6 +95,11 @@
 - Machines without ZFS: the list of pools you could import failed instead of saying ZFS isn't installed.
 - Testing alerts with no alert address set now says to add one, rather than reporting a failed delivery.
 - Run Docker clean-up, when Docker can't be reached, says so (503) instead of reporting a fault in LabKeel.
+- **A machine whose files can't be reached now says why**, instead of "(unavailable)": offline, its agent needs
+  updating, not connected, or it shares no folders (the full reason shows on hover). Its agent's log says which
+  folders it shares and whether changes are allowed, and why file requests can't get through (a hub that's
+  older than 0.2.2 is named as the reason). The server page explains an agent too old to share folders, and every
+  hint points at `agent.local.yml`.
 - The message about passkeys needing a name gave a particular machine's name as the example.
 
 ## 0.1.2-alpha
