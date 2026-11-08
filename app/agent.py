@@ -189,7 +189,9 @@ def post(state, path, body, token=None, timeout=TIMEOUT, link=None):
     if r.status in (401, 403):
         raise Refused(out.get("error") or f"refused ({r.status})")
     if r.status >= 400:
-        raise RuntimeError(out.get("error") or f"HTTP {r.status}")
+        err = RuntimeError(out.get("error") or f"HTTP {r.status}")
+        err.status = r.status
+        raise err
     if key != state.get("hub_key"):
         state["hub_key"] = key  # a trusted certificate with a new key (renewed): recognise that from now on
         save(state)
@@ -306,10 +308,40 @@ def _start_readings():
 WORKERS = 6       # requests the hub can have this machine working on at once
 WAIT_FOR = 45     # seconds to wait for the hub's answer to a wait (it answers within 25)
 _workers = []
+_link_state = {"up": None, "fails": 0}  # the file connection, as last said in the log
+_link_lock = threading.Lock()
+
+
+def sharing():
+    """What this machine shares with the hub's Files page, in a sentence for the log."""
+    f = files_info()
+    if not f["roots"]:
+        return ("Sharing no folders with the hub's Files page: mount some under /browse in agent.local.yml "
+                "(copy agent.local.example.yml), then start the agent with it.")
+    names = ", ".join(r["name"] for r in f["roots"][:8]) + (" and more" if len(f["roots"]) > 8 else "")
+    how = "changes allowed" if f["write"] else "read only; LABKEEL_ALLOW_FILE_CHANGES=1 in agent.local.yml allows changes"
+    return f"Sharing {len(f['roots'])} folder{'s' if len(f['roots']) != 1 else ''} with the hub's Files page: {names} ({how})."
+
+
+def _link_went(up, why=""):
+    """Say when the file connection comes up, and why it can't (the first time, then now and then)."""
+    with _link_lock:
+        st = _link_state
+        if up:
+            if st["up"] is not True:
+                say("Taking file requests from the hub.")
+            st.update(up=True, fails=0)
+            return
+        st["fails"] += 1
+        if st["up"] is not False or st["fails"] % 100 == 0:
+            say(f"Can't take file requests from the hub: {why}. Trying again.")
+        st["up"] = False
 
 
 def _channel(state):
     """Keep WORKERS threads waiting for file requests from the hub (remote.py)."""
+    if not _workers:
+        say(sharing())
     alive = [t for t in _workers if t.is_alive()]
     _workers[:] = alive
     for _ in range(WORKERS - len(alive)):
@@ -325,12 +357,15 @@ def _work(state):
         try:
             req = post(state, "/api/agent/wait", {}, token=state["token"], timeout=WAIT_FOR, link=link)
             pause = 1
+            _link_went(True)
         except Refused:
             return  # removed on the hub: the report loop says so, and starts these again once joined
         except Untrusted:
             time.sleep(300)
             continue
-        except Exception:
+        except Exception as e:
+            _link_went(False, "the hub doesn't take them yet (update LabKeel there to 0.2.2 or later)"
+                       if getattr(e, "status", None) == 404 else f"{type(e).__name__}: {e}")
             time.sleep(pause)
             pause = min(60, pause * 2)
             continue

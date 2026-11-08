@@ -322,6 +322,43 @@ def test_the_agent_reports_its_folders_and_new_activity(browse, monkeypatch):
     assert agent.new_events(state) == [{"id": 8, "text": "Deleted y", "user": None}]
 
 
+def test_the_agent_says_what_it_shares_and_why_files_cant_get_through(browse, monkeypatch):
+    import fileops
+    said = []
+    monkeypatch.setattr(agent, "say", said.append)
+    assert agent.sharing() == "Sharing 1 folder with the hub's Files page: media (changes allowed)."
+    monkeypatch.setattr(fileops, "WRITE", False)
+    assert "read only; LABKEEL_ALLOW_FILE_CHANGES=1 in agent.local.yml" in agent.sharing()
+    monkeypatch.setattr(agent, "files_info", lambda: {"write": False, "roots": []})
+    assert agent.sharing().startswith("Sharing no folders") and "agent.local.yml" in agent.sharing()
+    # the file connection: said once when it fails, once when it's up, not on every one of six workers' tries
+    monkeypatch.setattr(agent, "_link_state", {"up": None, "fails": 0})
+    for _ in range(12):
+        agent._link_went(False, "the hub doesn't take them yet (update LabKeel there to 0.2.2 or later)")
+    for _ in range(12):
+        agent._link_went(True)
+    assert said == ["Can't take file requests from the hub: the hub doesn't take them yet (update LabKeel there to 0.2.2 or "
+                    "later). Trying again.", "Taking file requests from the hub."]
+
+
+def test_an_old_hub_is_named_as_the_reason(monkeypatch):
+    """A hub without the file routes answers 404 to a wait: the agent says to update it, rather than nothing."""
+    said = []
+    monkeypatch.setattr(agent, "say", said.append)
+    monkeypatch.setattr(agent, "_link_state", {"up": None, "fails": 0})
+
+    def old_hub(*a, **k):
+        e = RuntimeError("Not found")
+        e.status = 404
+        raise e
+    state = {"hub": "https://hub.example:8787", "token": "t"}
+    monkeypatch.setattr(agent, "post", old_hub)
+    monkeypatch.setattr(agent.time, "sleep", lambda s: state.pop("token", None))  # one try, then stop
+    agent._work(state)
+    assert said == ["Can't take file requests from the hub: the hub doesn't take them yet (update LabKeel there to "
+                    "0.2.2 or later). Trying again."]
+
+
 # --------------------------------------------------------------------------- the agent's connections: few, and always checked
 def _self_signed(tmp_path):
     from cryptography import x509

@@ -105,9 +105,21 @@ const Files = {
   why(m) {
     if (m.here) return m.roots.length ? "" : "No folders are mounted under /browse here yet.";
     if (m.state === "offline") return `${m.name} is offline.`;
-    if (!m.files) return `${m.name}'s agent is older than 0.2.2: update it to see its files here.`;
-    if (!m.connected) return `${m.name}'s agent isn't connected for files yet. Give it a moment.`;
-    if (!m.roots.length) return `${m.name} shares no folders. Mount some under /browse in its agent.compose.yml.`;
+    if (!m.files)
+      return `${m.name}'s agent${m.agent_version ? ` (${m.agent_version})` : ""} is older than 0.2.2: update it to see its files here.`;
+    if (!m.connected)
+      return `${m.name}'s agent isn't connected for files yet. If that lasts, its log says why: docker logs labkeel-agent on ${m.name}.`;
+    if (!m.roots.length)
+      return `${m.name} shares no folders. Mount some under /browse in its agent.local.yml, then start its agent with it.`;
+    return "";
+  },
+  // the same, in a word or two (beside a machine's name in a list)
+  whyShort(m) {
+    if (m.here) return m.roots.length ? "" : "no folders";
+    if (m.state === "offline") return "offline";
+    if (!m.files) return "agent needs updating";
+    if (!m.connected) return "not connected";
+    if (!m.roots.length) return "shares no folders";
     return "";
   },
   // show another machine's files (or this one's): same folder if there's one open, else its first folder
@@ -337,7 +349,7 @@ const Files = {
   renderMode() {
     const m = this.m,
       on = m.here ? "" : ` on ${m.name}`,
-      compose = m.here ? "docker-compose.yml" : `${m.name}'s agent.compose.yml`;
+      compose = m.here ? "docker-compose.yml" : `${m.name}'s agent.local.yml`;
     const ro = this.roots.length && !this.writable;
     $("#f-write").hidden = !this.writable;
     $("#f-mode").textContent = !m.write
@@ -918,7 +930,7 @@ function machinePicker(id, current, opts = {}) {
   return `<select class="msel" id="${id}" aria-label="Machine">${Files.machines
     .map(m => {
       const why = Files.why(m);
-      return `<option value="${m.id}"${m.id === current ? " selected" : ""}${why && !opts.all ? " disabled" : ""}>${esc(m.name)}${m.here ? " (this server)" : why ? " (unavailable)" : !m.write && opts.writable ? " (read only)" : ""}</option>`;
+      return `<option value="${m.id}"${m.id === current ? " selected" : ""}${why && !opts.all ? " disabled" : ""}${why ? ` title="${esc(why)}"` : ""}>${esc(m.name)}${m.here ? " (this server)" : why ? ` (${Files.whyShort(m)})` : !m.write && opts.writable ? " (read only)" : ""}</option>`;
     })
     .join("")}</select><span class="sep">/</span>`;
 }
@@ -1138,7 +1150,7 @@ const Mover = {
       title: `${mode === "copy" ? "Copy" : "Move"} ${what}`,
       ok: mode === "copy" ? "Copy here" : "Move here",
       safe: true,
-      body: `${Files.multi ? `<label class="field mv-m"><span>To</span><select class="input" id="mv-m">${Files.machines.map(m => `<option value="${m.id}"${m.id === this.mid ? " selected" : ""}${(Files.why(m) || !m.write) && m.id !== this.from ? " disabled" : ""}>${esc(m.name)}${m.here ? " (this server)" : Files.why(m) ? " (unavailable)" : m.write ? "" : " (read only)"}</option>`).join("")}</select></label>` : ""}
+      body: `${Files.multi ? `<label class="field mv-m"><span>To</span><select class="input" id="mv-m">${Files.machines.map(m => `<option value="${m.id}"${m.id === this.mid ? " selected" : ""}${(Files.why(m) || !m.write) && m.id !== this.from ? " disabled" : ""}>${esc(m.name)}${m.here ? " (this server)" : Files.why(m) ? ` (${Files.whyShort(m)})` : m.write ? "" : " (read only)"}</option>`).join("")}</select></label>` : ""}
         <p class="muted" id="mv-note" style="margin:0"></p>
         <div class="mv-here" id="mv-here"></div><div class="mv-list" id="mv-list"><div class="empty">Loading…</div></div>
         <div id="mv-x" hidden><p class="mv-lbl">If there's something with the same name there</p>${conflictSeg("mv-conflict")}<p class="muted" id="mv-room" style="margin:8px 0 0"></p></div>`,

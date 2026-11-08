@@ -233,7 +233,7 @@ const ServerV = {
           ),
         ].join("") || `<div class="li muted">Nothing reported.</div>`
       }</div></section>
-      ${r.files ? filesSection(d, r) : ""}
+      ${filesSection(d, r)}
       ${(r.drives || []).length ? `<section class="sv-section"><h2 class="sub-h">Drive health</h2><div class="list">${r.drives.map(dr => `<div class="li"><span class="dot ${dr.status === "ok" ? "good" : dr.status === "bad" ? "bad" : dr.status === "warn" ? "warn" : ""}"></span><span class="grow"><b>${esc(dr.name)}</b> <span class="faint">${esc(dr.model || "")}</span></span><span class="end">${dr.temp != null ? `${dr.temp}°C · ` : ""}${esc(dr.issues?.[0] || (dr.status === "ok" ? "Healthy" : dr.status || ""))}</span></div>`).join("")}</div></section>` : ""}
       <p class="faint" style="font-size:13px;margin-top:14px">Joined ${d.joined ? new Date(d.joined * 1000).toLocaleDateString() : ""}. Its containers and settings are shown here, not changed; its files can be, if it allows it.</p>`;
     renderSrvMenu();
@@ -241,18 +241,20 @@ const ServerV = {
 };
 // what the machine shares with Files (admins only: the server leaves it out for viewers)
 function filesSection(d, r) {
+  if (!r.files)
+    return `<section class="sv-section"><h2 class="sub-h">Folders it shares with Files</h2><p class="muted">Its agent${d.agent_version ? ` (${esc(d.agent_version)})` : ""} is older than 0.2.2, so it can't share folders yet. Update it: in its <span class="mono">labkeel-agent</span> folder, <span class="mono">git pull</span>, then run the command from <b>Add a server</b> again (docs/servers.md has the details).</p></section>`;
   const f = r.files,
     roots = f.roots || [];
   const state = !r.files_connected
     ? `Its agent isn't connected for files${d.state === "offline" ? " (it's offline)" : " yet"}.`
     : f.write
       ? "LabKeel can change files in these (LABKEEL_ALLOW_FILE_CHANGES=1 there). Deleting puts things in its own Bin, and every change is logged here and there."
-      : "Read only: to change files from here, set LABKEEL_ALLOW_FILE_CHANGES=1 in its agent.compose.yml.";
+      : "Read only: to change files from here, set LABKEEL_ALLOW_FILE_CHANGES=1 in its agent.local.yml.";
   return `<section class="sv-section"><h2 class="sub-h">Folders it shares with Files${roots.length ? ` · ${roots.length}` : ""}${roots.length && r.files_connected ? ` <a class="btn small" style="margin-left:8px" href="#files:@${esc(d.id)}/${encodeURIComponent(roots[0].name)}">Open in Files</a>` : ""}</h2>
     ${
       roots.length
         ? `<div class="list">${roots.map(x => `<div class="li"><span class="grow">${ICON.dir} <b>${esc(x.name)}</b></span><span class="end">${x.writable ? "read and change" : "read only"}</span></div>`).join("")}</div>`
-        : `<p class="muted">None yet. Mount folders under /browse in its agent.compose.yml, for example <span class="mono">/mnt/tank/media:/browse/media</span>.</p>`
+        : `<p class="muted">None yet. Mount folders under /browse in its agent.local.yml (copy agent.local.example.yml there), for example <span class="mono">/mnt/tank/media:/browse/media</span>, then start its agent with it.</p>`
     }<p class="faint" style="font-size:13px;margin:8px 0 0">${state}</p></section>`;
 }
 function ctrRow(c, server) {
