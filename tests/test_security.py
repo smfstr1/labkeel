@@ -207,14 +207,14 @@ def test_setup_needs_the_code_from_the_log(no_accounts, monkeypatch):
     c = https()
     code = accounts.setup_code()
     assert re.fullmatch(r"[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}", code)
-    body = {"username": "sam", "password": STRONG}
+    body = {"username": "alice", "password": STRONG}
     assert c.post("/api/setup", json=body).status_code == 403
     assert c.post("/api/setup", json={**body, "code": "AAAA-AAAA-AAAA"}).status_code == 403
     assert code not in c.get("/setup").text and code not in c.get("/api/setup-info").text
     r = c.post("/api/setup", json={**body, "code": code.lower().replace("-", "-")})
     assert r.status_code == 200, r.text
     assert c.get("/api/system").status_code == 200  # signed in as the new admin
-    assert accounts.by_name("sam")["role"] == "admin"
+    assert accounts.by_name("alice")["role"] == "admin"
     assert accounts.setup_code() is None
     # done once: neither the page nor the API works again
     assert c.post("/api/setup", json={**body, "code": code}).status_code == 409
@@ -225,21 +225,21 @@ def test_setup_code_guessing_is_paused(no_accounts, monkeypatch):
     monkeypatch.setattr(security, "ALLOW_NO_AUTH", False)
     c = https()
     for _ in range(security.MAX_FAILS):
-        assert c.post("/api/setup", json={"code": "WRONG", "username": "sam", "password": STRONG}).status_code == 403
-    r = c.post("/api/setup", json={"code": accounts.setup_code(), "username": "sam", "password": STRONG})
+        assert c.post("/api/setup", json={"code": "WRONG", "username": "alice", "password": STRONG}).status_code == 403
+    r = c.post("/api/setup", json={"code": accounts.setup_code(), "username": "alice", "password": STRONG})
     assert r.status_code == 429  # even the right code waits
 
 
 def test_setup_weak_password_keeps_the_code(no_accounts, monkeypatch):
     monkeypatch.setattr(security, "ALLOW_NO_AUTH", False)
     c, code = https(), accounts.setup_code()
-    assert c.post("/api/setup", json={"code": code, "username": "sam", "password": "short"}).status_code == 400
-    assert c.post("/api/setup", json={"code": code, "username": "sam", "password": STRONG}).status_code == 200
+    assert c.post("/api/setup", json={"code": code, "username": "alice", "password": "short"}).status_code == 400
+    assert c.post("/api/setup", json={"code": code, "username": "alice", "password": STRONG}).status_code == 200
 
 
 def test_setup_from_another_website_blocked(no_accounts, monkeypatch):
     monkeypatch.setattr(security, "ALLOW_NO_AUTH", False)
-    r = https().post("/api/setup", json={"code": accounts.setup_code(), "username": "sam", "password": STRONG},
+    r = https().post("/api/setup", json={"code": accounts.setup_code(), "username": "alice", "password": STRONG},
                      headers={"origin": "https://evil.example"})
     assert r.status_code == 403 and not accounts.exist()
 
@@ -526,7 +526,7 @@ def test_health_check_still_works_over_plain_http():
 
 def test_setup_refused_over_plain_http(no_accounts, monkeypatch):
     monkeypatch.setattr(security, "ALLOW_NO_AUTH", False)
-    r = plain().post("/api/setup", json={"code": accounts.setup_code(), "username": "sam", "password": STRONG})
+    r = plain().post("/api/setup", json={"code": accounts.setup_code(), "username": "alice", "password": STRONG})
     assert r.status_code == 403 and not accounts.exist()
 
 

@@ -25,8 +25,8 @@ def R(out="", code=0, err=""):
 
 
 LABELS = {"com.docker.compose.project": "labkeel", "com.docker.compose.service": "labkeel",
-          "com.docker.compose.project.working_dir": "/home/sam/labkeel",
-          "com.docker.compose.project.config_files": "/home/sam/labkeel/docker-compose.yml"}
+          "com.docker.compose.project.working_dir": "/home/alice/labkeel",
+          "com.docker.compose.project.config_files": "/home/alice/labkeel/docker-compose.yml"}
 
 
 class FakeHost:
@@ -34,12 +34,12 @@ class FakeHost:
 
     def __init__(self, build=True):
         self.calls = []
-        svc = {"build": {"context": "/home/sam/labkeel"}, "image": "labkeel-labkeel"} if build else {"image": "ghcr.io/smfstr1/labkeel:latest"}
+        svc = {"build": {"context": "/home/alice/labkeel"}, "image": "labkeel-labkeel"} if build else {"image": "ghcr.io/smfstr1/labkeel:latest"}
         self.answers = [
             (["systemd-run", "--version"], R("systemd 255")),
             (["config", "--format", "json"], R(json.dumps({"services": {"labkeel": svc}}))),
-            (["stat", "-c", "%U"], R("sam")),
-            (["rev-parse", "--show-toplevel"], R("/home/sam/labkeel")),
+            (["stat", "-c", "%U"], R("alice")),
+            (["rev-parse", "--show-toplevel"], R("/home/alice/labkeel")),
             (["--symbolic-full-name", "@{u}"], R("origin/main")),
             (["fetch"], R()),
             (["rev-parse", "HEAD"], R("aaaaaaaaaaaaaaaa")),
@@ -66,10 +66,10 @@ class FakeHost:
 
 @pytest.fixture
 def machine(monkeypatch, tmp_path):
-    """A LabKeel started by Docker Compose from a git checkout in /home/sam/labkeel, owned by sam."""
+    """A LabKeel started by Docker Compose from a git checkout in /home/alice/labkeel, owned by alice."""
     h = FakeHost()
     me = SimpleNamespace(attrs={"Config": {"Labels": dict(LABELS), "Image": "labkeel-labkeel"}, "Image": "sha256:" + "1" * 64,
-                                "Mounts": [{"Destination": str(main.DATA_DIR), "Source": "/home/sam/labkeel/data"}]})
+                                "Mounts": [{"Destination": str(main.DATA_DIR), "Source": "/home/alice/labkeel/data"}]})
     monkeypatch.setattr(selfupdate, "host", h)
     monkeypatch.setattr(selfupdate, "_self_container", lambda: me)
     monkeypatch.setattr(main, "HOST_NS", True)
@@ -88,10 +88,10 @@ def machine(monkeypatch, tmp_path):
 # --------------------------------------------------------------------------- what kind of install
 def test_source_install_found(machine):
     info = selfupdate.detect()
-    assert info["mode"] == "source" and info["repo"] == "/home/sam/labkeel" and info["upstream"] == "origin/main"
-    assert info["owner"] == "sam" and info["data_host"] == "/home/sam/labkeel/data"
+    assert info["mode"] == "source" and info["repo"] == "/home/alice/labkeel" and info["upstream"] == "origin/main"
+    assert info["owner"] == "alice" and info["data_host"] == "/home/alice/labkeel/data"
     git_calls = [c for c in machine.host.calls if "git" in c]
-    assert git_calls and all(c[:4] == ["runuser", "-u", "sam", "--"] for c in git_calls)  # git as the folder's owner
+    assert git_calls and all(c[:4] == ["runuser", "-u", "alice", "--"] for c in git_calls)  # git as the folder's owner
 
 
 def test_image_install_found(machine):
@@ -161,7 +161,7 @@ def _fake_bin(tmp_path, fail_git=False):
         p.write_text(f'#!/bin/sh\necho "{name} $*" >> {rec}\nexit {code}\n')
         p.chmod(p.stat().st_mode | stat.S_IEXEC)
     p = b / "runuser"
-    p.write_text('#!/bin/sh\nshift 3\nexec "$@"\n')   # runuser -u sam -- cmd... → cmd...
+    p.write_text('#!/bin/sh\nshift 3\nexec "$@"\n')   # runuser -u alice -- cmd... → cmd...
     p.chmod(p.stat().st_mode | stat.S_IEXEC)
     return b, rec
 
@@ -172,7 +172,7 @@ def _info(tmp_path, mode="source"):
     data = tmp_path / "data"
     data.mkdir(exist_ok=True)
     return {"mode": mode, "project": "labkeel", "service": "labkeel", "workdir": str(work), "repo": str(work),
-            "files": [str(work / "docker-compose.yml")], "data_host": str(data), "owner": "sam"}
+            "files": [str(work / "docker-compose.yml")], "data_host": str(data), "owner": "alice"}
 
 
 def _run(tmp_path, monkeypatch, info, fail_git=False):
@@ -224,7 +224,7 @@ def test_install_runs_the_update_on_the_host(machine, client):
     r = client.post("/api/labkeel/update/install", json={"confirm": "update", "password": PASSWORD})
     assert r.status_code == 200, r.text
     run = next(c for c in machine.host.calls if "--unit" in c)
-    assert run[run.index("--unit") + 1] == r.json()["unit"] and run[-1] == "/home/sam/labkeel/data/update.sh"
+    assert run[run.index("--unit") + 1] == r.json()["unit"] and run[-1] == "/home/alice/labkeel/data/update.sh"
     assert "pull --ff-only" in (main.DATA_DIR / "update.sh").read_text()
     st = client.get("/api/labkeel/update").json()
     assert st["running"]["by"] == USER and st["possible"] and st["install"]["mode"] == "source"
@@ -265,7 +265,7 @@ def test_viewers_cant_see_or_start_updates(users, machine):
 
 
 # --------------------------------------------------------------------------- how it went
-def _pending(by="sam-admin", age=5):
+def _pending(by="alice", age=5):
     (main.DATA_DIR / "update.json").write_text(json.dumps({"pending": {"t": time.time() - age, "by": by, "from_version": "0.0.9"}}))
 
 
@@ -275,13 +275,13 @@ def test_success_reported_after_the_restart(machine, client):
     last = selfupdate.finish_if_done()
     assert last["ok"] and last["from_version"] == "0.0.9"
     e = client.get("/api/events", params={"q": "LabKeel updated"}).json()[0]
-    assert e["user"] == "sam-admin"                                  # the person who asked, not whoever's here now
+    assert e["user"] == "alice"                                  # the person who asked, not whoever's here now
     assert selfupdate.finish_if_done() is None                       # reported once
     for _ in range(100):
         if machine.tidied:
             break
         time.sleep(0.01)
-    assert machine.tidied == ["sam-admin"]                            # then docker-compose.yml is brought up to date
+    assert machine.tidied == ["alice"]                            # then docker-compose.yml is brought up to date
     assert client.get("/api/labkeel/update").json()["last"]["ok"]
 
 

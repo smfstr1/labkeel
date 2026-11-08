@@ -5,7 +5,7 @@ Where accounts come from
 - data/users.json: made on the first-run set-up page, then managed on the Account page, or from the
   command line inside the container (see the bottom of this file):
       docker exec -it labkeel python accounts.py add alice --role viewer
-      docker exec -it labkeel python accounts.py passwd sam        (a forgotten password)
+      docker exec -it labkeel python accounts.py passwd alice        (a forgotten password)
 - Optionally one admin from the environment: LABKEEL_ADMIN_USER with LABKEEL_ADMIN_PASSWORD_HASH, an Argon2id hash from
   `python accounts.py hash`. It can't be changed or removed from the dashboard: change it in
   docker-compose.yml. Changing it signs that account out everywhere. Passwords are only ever stored as

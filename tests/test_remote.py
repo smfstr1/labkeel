@@ -228,10 +228,10 @@ def test_reports_bring_folders_and_activity(client, users):
     a = TestClient(main.app, base_url="https://localhost")
     rep = {"version": "0.2.2-alpha", "files": {"write": True, "roots": [{"name": "media", "writable": True},
                                                                         {"name": "a/b", "writable": True}, {"x": 1}]},
-           "events": [{"id": 5, "text": "Made folder media/x\nfake line", "user": "sam"}, {"id": "bad"}]}
+           "events": [{"id": 5, "text": "Made folder media/x\nfake line", "user": "alice"}, {"id": "bad"}]}
     assert a.post("/api/agent/report", json=rep, headers=AUTH).status_code == 200
     ev = client.get("/api/events", params={"q": "On nas"}).json()
-    assert ev[0]["text"] == "On nas: Made folder media/x fake line" and ev[0]["user"] == "sam"
+    assert ev[0]["text"] == "On nas: Made folder media/x fake line" and ev[0]["user"] == "alice"
     m = client.get("/api/remote/machines").json()["items"][0]
     assert m["roots"] == [{"name": "media", "writable": True}] and m["write"] is True
     assert client.get(f"/api/servers/{SID}").json()["report"]["files"]["roots"][0]["name"] == "media"

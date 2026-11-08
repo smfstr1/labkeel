@@ -6,7 +6,7 @@ from conftest import PASSWORD
 
 
 def test_real_token_saved_and_kept_private(client):
-    r = client.put("/api/settings", json={"plex": {"token": "xYz-123_abcDEF4567"}, "password": PASSWORD})
+    r = client.put("/api/settings", json={"plex": {"token": "example-plex-token"}, "password": PASSWORD})
     assert r.status_code == 200, r.text
     s = r.json()["settings"]
     assert s["plex"]["token_set"] and "token" not in s["plex"]          # never sent back to the page

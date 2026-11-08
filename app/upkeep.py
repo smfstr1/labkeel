@@ -988,9 +988,9 @@ def api_cleanup():
     """Run the Docker clean-up now."""
     try:
         return run_cleanup("run by hand")
-    except Exception as e:
+    except Exception as e:  # Docker isn't reachable, or refused: its problem, not a fault here
         log("error", f"Docker clean-up failed: {e}")
-        raise HTTPException(500, str(e))
+        raise HTTPException(503, f"Docker didn't do the clean-up: {e}")
 
 
 @router.get("/api/events")

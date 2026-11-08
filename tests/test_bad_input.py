@@ -1,14 +1,22 @@
 """Every route, given badly shaped input by a signed-in admin, answers with a clear error and never crashes (500;
 a 502 or 503 is a deliberate "the other end didn't answer").
+
+The sweep calls every route, so it runs with the machine out of reach: no Docker, no commands, nothing from the
+network. Without that, a route like Run Docker clean-up would really prune the images of whoever runs the tests.
 The bodies are the wrong type altogether, the right shape with each field the wrong type, broken JSON, and JSON
 nested deeper than Python can read."""
 import json
 import re
+import subprocess
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+import apps
+import containers
 import main
+import updates
 from conftest import PASSWORD, USER
 from test_security import _flat
 
@@ -45,11 +53,38 @@ def _fill(path):
     return re.sub(r"\{[^}]+\}", "x", path)
 
 
+RAN = []  # anything the sweep tried to run on the machine
+
+
+def _no_docker():
+    raise RuntimeError("Docker isn't reachable")
+
+
+def _no_command(cmd, timeout=15, input=None):
+    RAN.append(cmd)
+    return subprocess.CompletedProcess(cmd, 127, "", f"{cmd[0]}: not run during the sweep")
+
+
+def _no_download(p):
+    raise RuntimeError("no network during the sweep")
+
+
 @pytest.fixture(scope="module")
 def admin():
-    c = TestClient(main.app, base_url="https://localhost", raise_server_exceptions=False)
-    assert c.post("/api/login", json={"username": USER, "password": PASSWORD}).status_code == 200
-    return c
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(containers, "dclient", _no_docker)
+        mp.setattr(main, "run_bounded", _no_command)
+        mp.setattr(updates, "_transport", lambda: httpx.MockTransport(lambda req: httpx.Response(503)))
+        mp.setattr(apps, "_fetch_upstream", _no_download)
+        c = TestClient(main.app, base_url="https://localhost", raise_server_exceptions=False)
+        assert c.post("/api/login", json={"username": USER, "password": PASSWORD}).status_code == 200
+        yield c
+
+
+def test_the_sweep_cannot_reach_the_machine(admin):
+    """Run Docker clean-up, through the sweep's client: nothing reaches Docker or the machine."""
+    assert admin.post("/api/cleanup", json={"password": PASSWORD}).status_code != 200
+    assert containers.dclient is _no_docker and main.run_bounded is _no_command
 
 
 def _bodies(keys):

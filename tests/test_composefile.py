@@ -131,10 +131,10 @@ class R:
 
 @pytest.fixture
 def machine(monkeypatch):
-    """docker-compose.yml in /home/sam/labkeel, with the host's files and Docker Compose stood in for."""
-    path = "/home/sam/labkeel/docker-compose.yml"
+    """docker-compose.yml in /home/alice/labkeel, with the host's files and Docker Compose stood in for."""
+    path = "/home/alice/labkeel/docker-compose.yml"
     files, cmds = {path: OLD}, []
-    info = {"project": "labkeel", "workdir": "/home/sam/labkeel", "service": "labkeel", "files": [path]}
+    info = {"project": "labkeel", "workdir": "/home/alice/labkeel", "service": "labkeel", "files": [path]}
 
     def host(args, timeout=30, input=None):
         cmds.append(args)
@@ -170,7 +170,7 @@ def test_bringing_it_up_to_date(machine):
     write = next(c for c in cmds if c[:2] == ["sh", "-c"] and "chown" in c[2])
     assert "--reference" in write[2] and write[5] == path            # keeps your ownership and permissions
     assert composefile.apply()["changed"] is False                     # nothing more to do
-    assert "Brought /home/sam/labkeel/docker-compose.yml up to date: added LABKEEL_ALLOW_ZFS_CHANGES=0" in \
+    assert "Brought /home/alice/labkeel/docker-compose.yml up to date: added LABKEEL_ALLOW_ZFS_CHANGES=0" in \
         composefile.describe(res)
 
 
@@ -226,10 +226,10 @@ def test_after_an_update(machine, client):
     files, cmds, path = machine
     (main.DATA_DIR / "update.json").write_text(json.dumps({"last": {"t": time.time(), "ok": True}}))
     try:
-        selfupdate._tidy_after("sam-admin")
+        selfupdate._tidy_after("alice")
         last = client.get("/api/labkeel/update").json()["last"]
         assert last["compose"]["ok"] and last["compose"]["changed"] and last["compose"]["backup"] == path + ".bak"
         e = client.get("/api/events", params={"q": "up to date"}).json()[0]
-        assert e["user"] == "sam-admin" and e["kind"] == "update"
+        assert e["user"] == "alice" and e["kind"] == "update"
     finally:
         (main.DATA_DIR / "update.json").unlink(missing_ok=True)

@@ -197,7 +197,7 @@ EXTRA_HOSTS = {h.lower() for h in env.names("LABKEEL_HOSTNAMES")}
 
 def host_name(request: Request):
     """The name or address the browser used to reach the dashboard (the Host header without its port),
-    in lower case: "server.tailnet.ts.net", "192.168.1.162", "::1"."""
+    in lower case: "server.tailnet.ts.net", "192.168.1.20", "::1"."""
     h = (request.headers.get("host") or "").strip().lower()
     return h[1:].split("]")[0] if h.startswith("[") else h.rsplit(":", 1)[0] if h.count(":") == 1 else h
 

@@ -62,10 +62,10 @@ def test_failed_migration_leaves_nothing_half_done(fresh, monkeypatch):
 
 def test_events_filter_search_and_page(fresh):
     for i in range(30):
-        db.add_event("zfs" if i % 2 else "files", f"thing {i}", user="sam" if i == 7 else None)
+        db.add_event("zfs" if i % 2 else "files", f"thing {i}", user="alice" if i == 7 else None)
     assert len(db.events(limit=10)) == 10
     assert all(e["kind"] == "zfs" for e in db.events(kind="zfs"))
-    assert [e["text"] for e in db.events(q="sam")] == ["thing 7"]  # finds who did it too
+    assert [e["text"] for e in db.events(q="alice")] == ["thing 7"]  # finds who did it too
     first = db.events(limit=10)
     older = db.events(limit=10, before=first[-1]["id"])
     assert older[0]["id"] < first[-1]["id"] and not {e["id"] for e in first} & {e["id"] for e in older}

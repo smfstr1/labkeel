@@ -138,7 +138,7 @@ const Files = {
       this.renderTree();
       this.renderCrumbs();
       $("#f-list").innerHTML =
-        `<div class="empty">${esc(why || "Nothing is shared here.")}${m.here && !m.roots.length ? ` Add volumes under /browse in docker-compose.yml, for example <span class="mono">/mnt/Plex:/browse/Plex:ro</span>.` : ""}</div>`;
+        `<div class="empty">${esc(why || "Nothing is shared here.")}${m.here && !m.roots.length ? ` Add volumes under /browse in docker-compose.yml, for example <span class="mono">/srv/media:/browse/media:ro</span>.` : ""}</div>`;
       $("#f-write").hidden = true;
       return;
     }

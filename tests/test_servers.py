@@ -294,7 +294,7 @@ def hub2(tmp_path):
 
 def test_the_agent_answers_file_requests(hub2, browse):
     st, got = hub2["state"], hub2["got"]
-    fw = {"user": "sam", "via": "LabKeel on homelab", "session": "s" * 32}
+    fw = {"user": "alice", "via": "LabKeel on homelab", "session": "s" * 32}
     agent._serve(st, {"id": "a" * 32, "method": "GET", "path": "/api/files/raw", "query": "path=media/notes.txt",
                       "headers": {}, "forwarded": fw})
     r = got["replies"]["/api/agent/reply/" + "a" * 32]
@@ -314,7 +314,7 @@ def test_the_agent_reports_its_folders_and_new_activity(browse, monkeypatch):
     info = agent.files_info()
     assert info["write"] is True and info["roots"] == [{"name": "media", "writable": True}]
     import db
-    rows = [{"id": 7, "t": 1, "kind": "files", "text": "Made folder x", "user": "sam", "ip": None}]
+    rows = [{"id": 7, "t": 1, "kind": "files", "text": "Made folder x", "user": "alice", "ip": None}]
     monkeypatch.setattr(db, "events", lambda **kw: list(rows))
     state = {}
     assert agent.new_events(state) == [] and state["events_sent"] == 7   # the first time: only what happens next
