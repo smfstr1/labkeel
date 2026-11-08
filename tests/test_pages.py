@@ -56,3 +56,16 @@ def test_uploaded_scripts_never_served_as_scripts(client, browse):
         r = client.get(f"/api/files/raw?path=media/evil.js{q}")
         assert r.status_code == 200 and "javascript" not in r.headers["content-type"]
         assert r.headers["x-content-type-options"] == "nosniff"
+
+
+def test_scripts_and_styles_go_out_gzipped_once_compressed(client):
+    import gzip
+    import main
+    raw = (main.STATIC / "ui" / "files.js").read_bytes()
+    r = client.get("/ui/files.js", headers={"Accept-Encoding": "gzip"})
+    assert r.status_code == 200 and r.headers["content-encoding"] == "gzip" and r.content == raw  # decoded by the client
+    assert int(r.headers["content-length"]) < len(raw) / 2 and "Accept-Encoding" in r.headers["vary"]
+    assert r.headers["cache-control"] == "private, max-age=31536000, immutable"
+    assert gzip.decompress(main._ui_gz["files.js"][1]) == raw   # kept, so the next visit costs nothing to compress
+    plain = client.get("/ui/files.js", headers={"Accept-Encoding": "identity"})
+    assert "content-encoding" not in plain.headers and plain.content == raw

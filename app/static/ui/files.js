@@ -120,15 +120,18 @@ const Files = {
     $("#f-trash-btn").hidden = !m.write;
     return m;
   },
+  // #files:<path> is a folder on this machine, #files:@<id>/<path> one on another, and #files alone is where you were
   async open(path) {
     await this.init();
-    let id = this.m.id;
+    let id = path == null ? this.m.id : "";
     const at = /^@([0-9a-f]{12})(?:\/(.*))?$/.exec(path || "");
     if (at) {
       id = at[1];
       path = at[2] || "";
     }
-    const m = this.use(id) || this.machines[0];
+    if (!this.machine(id)) id = this.machines[0].id;
+    const same = this.machine(id) === this.m; // staying on the same machine keeps its open folder
+    const m = this.use(id);
     const why = this.why(m);
     if (why || !m.roots.length) {
       this.current = "";
@@ -139,7 +142,7 @@ const Files = {
       $("#f-write").hidden = true;
       return;
     }
-    await this.list(path || (this.current && m === this.m ? this.current : "") || m.roots[0], m.id);
+    await this.list(path || (same ? this.current : "") || m.roots[0], m.id);
   },
   async loadChildren(path, m = this.m) {
     const n = m.nodes.get(path);

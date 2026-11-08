@@ -18,6 +18,7 @@ last heard from, and its latest report (so an offline machine still shows what i
 """
 import hashlib
 import hmac
+import math
 import re
 import secrets
 import sys
@@ -148,7 +149,7 @@ def own_report():
             "pools": stg.get("pools") or []}
 
 
-def _state(srv, t):
+def _state(t):
     if not t:
         return "waiting"
     return "online" if time.time() - t < OFFLINE_AFTER else "offline"
@@ -162,7 +163,7 @@ def listing(with_containers=False):
         r = _reports.get(sid) or ({"t": s.get("last_seen"), "data": s.get("last")} if s.get("last") else None)
         t = (r or {}).get("t") or s.get("last_seen")
         out.append({"id": sid, "name": s.get("name"), "joined": s.get("joined"), "last_seen": t,
-                    "state": _state(s, t), "agent_version": s.get("agent_version"), "ip": s.get("ip"),
+                    "state": _state(t), "agent_version": s.get("agent_version"), "ip": s.get("ip"),
                     "problems": len(conditions_for(sid, s, r, now)), **summarise((r or {}).get("data"))})
         if with_containers:
             out[-1]["container_list"] = [{k: c.get(k) for k in ("name", "image", "state", "health", "exit_code", "uptime", "cpu", "mem")}
@@ -241,7 +242,7 @@ def api_server(sid: str, request: Request):
         rep.pop("files", None)
     else:
         rep["files_connected"] = sys.modules["remote"].connected(sid) if "remote" in sys.modules else False
-    return {"id": sid, "name": s.get("name"), "joined": s.get("joined"), "last_seen": t, "state": _state(s, t),
+    return {"id": sid, "name": s.get("name"), "joined": s.get("joined"), "last_seen": t, "state": _state(t),
             "agent_version": s.get("agent_version"), "ip": s.get("ip"), "report": rep,
             "problems": [{"level": v[0], "title": v[1], "detail": v[2]} for v in conditions_for(sid, s, r, time.time()).values()]}
 
@@ -413,21 +414,50 @@ def _clean_events(ev):
     return out
 
 
+# What a report may hold, field by field: a number is text up to that long, "n" a number, "i" a whole number,
+# [x] a list of x, and {...} an object with just those fields. Anything else an agent sends is dropped, and a
+# field of the wrong type becomes null, so the hub's pages and alerts only ever see what they expect.
+_TEXT = 300
+REPORT = {
+    "host": {"hostname": 253, "os": 200, "kernel": 200, "cpu_model": 200, "cores_physical": "i", "cores_logical": "i"},
+    "system": {"cpu": {"percent": "n", "temp": "n", "load": ["n"]},
+               "memory": {k: "n" for k in ("total", "used", "available", "cached", "percent", "swap_total", "swap_used")},
+               "uptime": "n", "network": {"rx_rate": "n", "tx_rate": "n"}},
+    "power": {"total": "n"},
+    "containers": (500, {"name": 255, "image": _TEXT, "state": 40, "health": 40, "exit_code": "i", "uptime": "n",
+                         "restarts": "i", "project": 255, "cpu": "n", "mem": "n", "ports": [20]}),
+    "filesystems": (200, {"source": _TEXT, "type": 60, "mount": _TEXT, "size": "n", "used": "n", "free": "n", "percent": "n"}),
+    "pools": (50, {"name": 255, "health": 40, "percent": "n", "used": "n", "usable": "n", "errors": _TEXT, "scan": _TEXT}),
+    "drives": (100, {"name": 255, "model": 200, "status": 20, "temp": "n", "issues": [_TEXT]}),
+    "gpus": (16, {"name": 200, "util": "n", "temp": "n", "mem_used": "n", "mem_total": "n", "power": "n"}),
+    "version": 64, "error": _TEXT,
+}
+
+
+def _shape(v, spec, depth=0):
+    """`v` cut to `spec` (see REPORT), or None if it's the wrong type."""
+    if isinstance(spec, int):
+        return v[:spec] if isinstance(v, str) else None
+    if spec in ("n", "i"):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or abs(v) > 1e18:
+            return None
+        return int(v) if spec == "i" else v
+    if isinstance(spec, tuple):  # (most items, each item's spec)
+        n, spec = spec
+        return [x for x in (_shape(y, spec, depth + 1) for y in v[:n]) if x is not None] if isinstance(v, list) else None
+    if isinstance(spec, list):
+        return [x for x in (_shape(y, spec[0], depth + 1) for y in v[:64]) if x is not None] if isinstance(v, list) else None
+    if not isinstance(v, dict) or depth > 4:
+        return None
+    return {k: _shape(v[k], sub, depth + 1) for k, sub in spec.items() if k in v}
+
+
 def _clean_report(body):
-    """Keeps a report to what's expected, so a broken or hostile agent can't fill the hub with anything else."""
+    """Keeps a report to what's expected, field by field (REPORT), so a broken or hostile agent can't fill the hub
+    with anything else, or anything that would trip up its pages or alerts."""
     if not isinstance(body, dict):
         raise HTTPException(400, "A report is a JSON object.")
-    keep = {}
-    for k in ("host", "system", "power"):
-        if isinstance(body.get(k), dict):
-            keep[k] = body[k]
-    for k, n in (("containers", 500), ("filesystems", 200), ("pools", 50), ("drives", 100), ("gpus", 16)):
-        v = body.get(k)
-        if isinstance(v, list):
-            keep[k] = [x for x in v[:n] if isinstance(x, dict)]
-    for k in ("version", "error"):
-        if isinstance(body.get(k), str):
-            keep[k] = body[k][:300]
+    keep = {k: v for k, v in _shape(body, REPORT).items() if v is not None}
     files = _clean_files(body.get("files"))
     if files is not None:
         keep["files"] = files

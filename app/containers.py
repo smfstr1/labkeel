@@ -65,6 +65,8 @@ def dclient():
             if docker is None:
                 raise RuntimeError("docker python package missing")
             _dc = docker.from_env(timeout=10)
+            # a local socket: no proxy settings or ~/.netrc to look up again on every call to Docker
+            _dc.api.trust_env = False
         return _dc
 
 
@@ -371,7 +373,7 @@ def act(c, action, force=False):
 
 
 def _check_action(action, request, body):
-    if action not in ACTIONS:
+    if not isinstance(action, str) or action not in ACTIONS:
         raise HTTPException(400, "The action must be one of: " + ", ".join(ACTIONS))
     if ACTIONS[action][2]:
         sys.modules["security"].confirm_password(request, body.get("password"))

@@ -150,4 +150,12 @@ The agent's log says what's happening: `docker logs labkeel-agent`.
   the command again.
 - **It joined, then went offline**: the machine can't reach the hub's address. Try `curl -k <address>` from it.
 
-Updating the agent: in the `labkeel-agent` folder, `git pull`, then `docker compose -f agent.compose.yml up -d --build`.
+Updating the agent, in the `labkeel-agent` folder on that machine:
+
+```sh
+git pull
+docker compose -f agent.compose.yml $([ -f agent.local.yml ] && echo -f agent.local.yml) up -d --build
+```
+
+(The middle part keeps your `agent.local.yml`: without it, the agent would start again without its shared
+folders.) Agents older than 0.2.2 keep reporting, but their files don't appear on the Files page.

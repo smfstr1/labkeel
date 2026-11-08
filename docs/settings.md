@@ -25,7 +25,7 @@ All off by default. Each one is a real power over the machine, so turn on only w
 
 | Setting | Default | What it allows |
 | --- | --- | --- |
-| `LABKEEL_ALLOW_FILE_CHANGES` | `0` | Uploading, editing, renaming, moving and deleting files in the file browser. Folders mounted `:ro` stay read-only either way. |
+| `LABKEEL_ALLOW_FILE_CHANGES` | `0` | Uploading, editing, renaming, moving and deleting files on the Files page. Folders mounted `:ro` stay read-only either way. |
 | `LABKEEL_ALLOW_ZFS_CHANGES` | `0` | Creating, changing and destroying ZFS pools, datasets and snapshots, and replacing drives. |
 | `LABKEEL_ALLOW_RESTART` | `0` | Restarting and shutting down the machine, by hand or on a schedule. |
 | `LABKEEL_ALLOW_APP_INSTALLS` | `0` | Adding and removing apps on the Apps page. An app's containers get whatever its compose file asks for, and a few (Home Assistant, Plex) need the machine's network or full control of it. See [apps.md](apps.md). |
@@ -92,7 +92,7 @@ The example `docker-compose.yml` already matches these, so leave them alone unle
 | `LABKEEL_DATA_DIR` | `/data` | Where LabKeel keeps accounts, settings, history and the activity log, inside the container. |
 | `LABKEEL_CONFIG_FILE` | `/config/config.json` | The services file ([services.md](services.md)). |
 | `LABKEEL_CERTS_DIR` | `/certs` | HTTPS certificates: LabKeel's own, or yours (see `LABKEEL_HTTPS`). |
-| `LABKEEL_FILES_DIR` | `/browse` | The folder whose sub-folders appear in the file browser. |
+| `LABKEEL_FILES_DIR` | `/browse` | The folder whose sub-folders appear on the Files page. |
 | `LABKEEL_HOST_COMMANDS` | `1` | Run disk, ZFS and Docker Compose commands on the machine itself (needs `pid: host` and `privileged: true`). `0` keeps LabKeel inside its container: it can still watch, but not update containers or itself. |
 | `LABKEEL_LOG_LEVEL` | `warning` | How much the web server writes to the log: `error`, `warning`, `info` or `debug`. |
 | `LABKEEL_DRIVE_CHECK_SECONDS` | `600` | Seconds between drive health (SMART) readings. |

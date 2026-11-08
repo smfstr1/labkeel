@@ -1033,7 +1033,8 @@ def api_job_cancel(request: Request, body: dict = Body(...)):
     """Stop a move or copy. The original is never touched; the partial copy is removed."""
     _guard(request, body)
     with _jobs_lock:
-        j = _jobs.get(body.get("id"))
+        jid = body.get("id")
+        j = _jobs.get(jid) if isinstance(jid, str) else None
         if not j or j["state"] not in ACTIVE:
             raise HTTPException(404, "That move isn't running")
         if j["state"] == "removing":

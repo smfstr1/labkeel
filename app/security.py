@@ -772,7 +772,7 @@ async def _read_json(request, cap=16384):
         body = json.loads(raw)
         if not isinstance(body, dict):
             raise ValueError
-    except ValueError:
+    except (ValueError, RecursionError):  # not JSON, or nested deeper than Python reads
         return None, JSONResponse({"error": "Bad request"}, status_code=400)
     return body, None
 

@@ -320,3 +320,151 @@ def test_the_agent_reports_its_folders_and_new_activity(browse, monkeypatch):
     assert agent.new_events(state) == [] and state["events_sent"] == 7   # the first time: only what happens next
     rows.insert(0, {"id": 8, "t": 2, "kind": "files", "text": "Deleted y", "user": None, "ip": None})
     assert agent.new_events(state) == [{"id": 8, "text": "Deleted y", "user": None}]
+
+
+# --------------------------------------------------------------------------- the agent's connections: few, and always checked
+def _self_signed(tmp_path):
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+    k = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "hub")])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(k.public_key())
+            .serial_number(2).not_valid_before(now).not_valid_after(now + datetime.timedelta(days=1)).sign(k, hashes.SHA256()))
+    (tmp_path / "c.pem").write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    (tmp_path / "k.pem").write_bytes(k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                                     serialization.NoEncryption()))
+    return cert
+
+
+@pytest.fixture
+def keepalive_hub(tmp_path):
+    """A stand-in hub that keeps connections open (HTTP/1.1), counting the connections and requests it gets."""
+    import http.server
+    cert = _self_signed(tmp_path)
+    seen = {"connections": 0, "requests": 0, "close_next": False}
+
+    class H(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def setup(self):
+            seen["connections"] += 1
+            super().setup()
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            seen["requests"] += 1
+            body = b'{"ok": true, "interval": 10}'
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            if seen["close_next"]:
+                seen["close_next"] = False
+                self.send_header("Connection", "close")
+                self.close_connection = True
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(tmp_path / "c.pem", tmp_path / "k.pem")
+    srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield {"state": {"hub": f"https://127.0.0.1:{srv.server_port}", "hub_key": servers.key_of(cert), "id": "abcdefabcdef"},
+           "seen": seen, "server": srv}
+    srv.shutdown()
+
+
+def test_the_agent_keeps_one_connection_for_back_to_back_requests(keepalive_hub, monkeypatch):
+    st, seen = keepalive_hub["state"], keepalive_hub["seen"]
+    link = agent.Link(st)
+    for _ in range(5):
+        assert agent.post(st, "/api/agent/wait", {}, token="t", link=link)["ok"] is True
+    assert seen["requests"] == 5 and seen["connections"] == 1
+    # one the hub closes is never used again, and nothing reconnects by itself (that would skip the key check)
+    assert link.conn.auto_open == 0
+    seen["close_next"] = True
+    agent.post(st, "/api/agent/wait", {}, token="t", link=link)
+    assert link.conn is None
+    agent.post(st, "/api/agent/wait", {}, token="t", link=link)
+    assert seen["connections"] == 2
+    # nor one that's been idle long enough for the hub to close it
+    monkeypatch.setattr(agent, "KEEP_OPEN", 0)
+    agent.post(st, "/api/agent/wait", {}, token="t", link=link)
+    assert seen["connections"] == 3
+
+
+def test_a_kept_connection_the_hub_has_dropped_is_tried_once_more_on_a_new_one(keepalive_hub):
+    st, seen = keepalive_hub["state"], keepalive_hub["seen"]
+    link = agent.Link(st)
+    agent.post(st, "/api/agent/wait", {}, token="t", link=link)
+    link.conn.sock.close()  # the hub went away between requests
+    link.conn.sock = None
+    assert agent.post(st, "/api/agent/wait", {}, token="t", link=link)["ok"] is True
+    assert seen["connections"] == 2 and seen["requests"] == 2
+
+
+def test_the_agent_checks_a_self_signed_hub_with_one_handshake_after_the_first(keepalive_hub, monkeypatch):
+    import http.client
+    st, seen = keepalive_hub["state"], keepalive_hub["seen"]
+    handshakes = []
+    real = http.client.HTTPSConnection.connect
+    monkeypatch.setattr(http.client.HTTPSConnection, "connect", lambda self: handshakes.append(1) or real(self))
+    monkeypatch.setitem(agent._trust, "pinned", False)
+    agent.post(st, "/api/agent/report", {}, token="t")           # tries the usual way first, then the key
+    assert len(handshakes) == 2 and agent._trust["pinned"] is True
+    agent.post(st, "/api/agent/report", {}, token="t")           # now straight to the key
+    assert len(handshakes) == 3
+    # the rule is the same as ever: a different key is refused, and nothing is sent
+    n = seen["requests"]
+    with pytest.raises(agent.Untrusted):
+        agent.post({**st, "hub_key": "sha256:" + "B" * 43}, "/api/agent/report", {}, token="t")
+    assert seen["requests"] == n
+
+
+def test_service_checks_and_the_agent_make_their_tls_settings_once(monkeypatch):
+    import ssl as ssl_mod
+    calls = []
+    real = ssl_mod.create_default_context
+    monkeypatch.setattr(ssl_mod, "create_default_context", lambda *a, **k: calls.append(1) or real(*a, **k))
+    for _ in range(3):
+        try:
+            main._http_probe("https://127.0.0.1:9/", 0.5)
+        except Exception:
+            pass
+    assert calls == []
+    monkeypatch.setattr(agent, "_tls", {})
+    for _ in range(3):
+        agent._context(True), agent._context(False)
+    assert len(calls) == 1
+
+
+def test_a_report_is_cut_to_the_fields_and_types_the_hub_expects():
+    hostile = {
+        "host": {"hostname": "nas", "os": "<b>Debian</b>", "extra": "x" * 10_000, "cores_logical": "8"},
+        "system": {"cpu": {"percent": "<img src=x onerror=alert(1)>", "load": [0.5, "x", None, float("inf")]},
+                   "memory": {"percent": 40, "evil": {"deep": 1}}, "uptime": True},
+        "containers": [{"name": "web", "cpu": 1.5, "mem": "lots", "ports": ["8080", 8081], "state": "running"}, "junk", 7],
+        "filesystems": [{"mount": "/", "size": "1e12", "used": 5e11, "percent": float("nan")}],
+        "drives": [{"name": "sda", "temp": "<script>", "issues": ["hot", {"x": 1}], "status": "warn"}],
+        "pools": [{"name": "tank", "health": "ONLINE", "errors": 3}],
+        "power": {"total": 1e300},
+        "version": "0.2.2-alpha", "error": ["not", "text"], "anything": "else",
+    }
+    r = servers._clean_report(hostile)
+    assert set(r) <= set(servers.REPORT) | {"files"} and "anything" not in r and "error" not in r
+    assert r["host"] == {"hostname": "nas", "os": "<b>Debian</b>", "cores_logical": None}  # text stays text: pages escape it
+    assert r["system"]["cpu"] == {"percent": None, "load": [0.5]} and r["system"]["memory"] == {"percent": 40}
+    assert r["system"]["uptime"] is None and r["power"] == {"total": None}
+    assert r["containers"] == [{"name": "web", "cpu": 1.5, "mem": None, "ports": ["8080"], "state": "running"}]
+    assert r["filesystems"] == [{"mount": "/", "size": None, "used": 5e11, "percent": None}]
+    assert r["drives"] == [{"name": "sda", "temp": None, "issues": ["hot"], "status": "warn"}]
+    assert r["pools"] == [{"name": "tank", "health": "ONLINE", "errors": None}]
+    # and what's left can't trip up the Servers page or the alerts
+    servers.summarise(r)
+    servers.conditions_for("abcdefabcdef", {"name": "nas"}, {"t": time.time(), "data": r}, time.time(),
+                           {"disk_threshold": 90, "pool_threshold": 90})

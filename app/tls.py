@@ -12,6 +12,7 @@ import ipaddress
 import json
 import os
 import socket
+import ssl
 import sys
 import threading
 import time
@@ -217,6 +218,18 @@ def obtain():
 def _pick(i):
     """The certificate details that go into `state`."""
     return {"expires": i["expires"], "issuer": i["issuer"], "fingerprint": i["fingerprint"]}
+
+
+# TLS 1.3, or TLS 1.2 with forward secrecy and an AEAD cipher (AES-GCM or ChaCha20): what browsers have offered
+# for years, and nothing older. Said here rather than left to the machine's OpenSSL, whose defaults vary.
+CIPHERS = "ECDHE+AESGCM:ECDHE+CHACHA20:!aNULL:!eNULL:!MD5:!DSS"
+
+
+def harden(ctx):
+    """The running server's TLS settings, tightened as above."""
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    ctx.set_ciphers(CIPHERS)
+    return ctx
 
 
 def set_context_getter(fn):

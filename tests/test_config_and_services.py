@@ -58,7 +58,7 @@ def test_turned_on_template_shows_with_links_for_this_browser(config):
         {"name": "Jellyfin", "enabled": True, "url": "http://{host}:8096"},
         {"name": "Plex", "enabled": False, "url": "http://{host}:32400/web"},
         {"name": "Router", "url": "http://{gateway}"}]}))
-    for host, want in (("sam-server.tail1234.ts.net", "http://sam-server.tail1234.ts.net:8096"),
+    for host, want in (("homelab.tail1234.ts.net", "http://homelab.tail1234.ts.net:8096"),
                        ("192.168.1.10:8787", "http://192.168.1.10:8096"),
                        ("[::1]:8787", "http://[::1]:8096")):
         c = TestClient(main.app, base_url="https://localhost")

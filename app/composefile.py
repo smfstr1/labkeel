@@ -34,7 +34,7 @@ router = APIRouter()
 # Settings every docker-compose.yml should list, so they're there to find and change: (name, default, note).
 # The same lines as docker-compose.example.yml (a test checks).
 LISTED = [
-    ("LABKEEL_ALLOW_FILE_CHANGES", "0", "1 = upload, edit, move and delete files in the file browser"),
+    ("LABKEEL_ALLOW_FILE_CHANGES", "0", "1 = upload, edit, move and delete files on the Files page"),
     ("LABKEEL_ALLOW_ZFS_CHANGES", "0", "1 = create, change and destroy ZFS pools, datasets and snapshots"),
     ("LABKEEL_ALLOW_RESTART", "0", "1 = restart and shut down the machine"),
     ("LABKEEL_ALLOW_APP_INSTALLS", "0", "1 = add and remove apps on the Apps page (docs/apps.md)"),

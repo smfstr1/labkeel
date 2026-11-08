@@ -172,7 +172,7 @@ async def _token(http, challenge, ref):
         body = await _read_capped(r)
     try:
         data = json.loads(body)
-    except ValueError:
+    except (ValueError, RecursionError):
         return None
     tok = (data.get("token") or data.get("access_token")) if isinstance(data, dict) else None
     return tok if isinstance(tok, str) and 0 < len(tok) < 16384 else None

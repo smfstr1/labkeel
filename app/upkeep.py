@@ -975,6 +975,8 @@ def api_shutdown(request: Request, body: dict = Body(...)):
 @router.post("/api/alerts/test")
 def api_alert_test():
     """Send a test alert to the address in Settings."""
+    if not load_settings()["alerts"]["url"]:
+        raise HTTPException(409, "Add an alert address first (Settings → Alerts)")
     ok, err = notify("Test alert", f"Alerts from the {M().HOST_INFO.get('hostname')} dashboard are working.", "white_check_mark", force=True)
     if not ok:
         raise HTTPException(502, err)

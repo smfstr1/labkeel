@@ -731,7 +731,7 @@ def api_create(request: Request, body: dict = Body(...)):
                                  "Names starting with mirror, raidz, draid, spare, log or cache are reserved.")
     if name in pool_list():
         raise HTTPException(409, f"There's already a pool called {name}")
-    if layout not in LAYOUTS:
+    if not isinstance(layout, str) or layout not in LAYOUTS:
         raise HTTPException(400, "Choose a layout")
     serials = body.get("drives") or []
     n = len(serials) if isinstance(serials, list) else 0

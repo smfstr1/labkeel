@@ -48,6 +48,7 @@ session.key, history.db (charts), app-icon.png and tls/ (certificates).
 """
 import asyncio
 import fnmatch
+import gzip
 import hashlib
 import json
 import mimetypes
@@ -71,7 +72,8 @@ from pathlib import Path
 
 import psutil
 from fastapi import Body, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import env
@@ -154,9 +156,13 @@ def host_cmd(args, timeout=15, input=None):
 
 
 def run_bounded(cmd, timeout=15, input=None):
-    """subprocess.run(capture_output, text, timeout) that can't hang on a child that won't die."""
-    p = subprocess.Popen(cmd, stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    """subprocess.run(capture_output, text, timeout) that can't hang on a child that won't die. A program that
+    isn't installed comes back as exit code 127, as from the machine's own shell (or nsenter), not as an error."""
+    try:
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except FileNotFoundError:
+        return subprocess.CompletedProcess(cmd, 127, "", f"{cmd[0]}: command not found")
     try:
         out, err = p.communicate(input, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -841,6 +847,8 @@ def safe_path(rel: str) -> Path:
     """A path from the page (relative to the browsable folders), checked and resolved: inside BROWSE_ROOT,
     nothing hidden or private on the way there, and it exists. Raises 400, 403 or 404 otherwise."""
     root = BROWSE_ROOT.resolve()
+    if rel is not None and not isinstance(rel, str):
+        raise HTTPException(400, "Bad path")
     rel = (rel or "").strip().lstrip("/")
     if len(rel) > 4096 or "\x00" in rel:
         raise HTTPException(400, "Bad path")
@@ -1145,18 +1153,24 @@ def find_container(ref):
     return None
 
 
+# A service check asks "is it up?", not "is it who it says it is": many home apps answer with a self-signed
+# certificate. One TLS setting for every check, made once: making one per check read the machine's whole
+# certificate store each time, which was most of LabKeel's CPU use while a page was open.
+_PROBE_TLS = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+_PROBE_TLS.check_hostname = False
+_PROBE_TLS.verify_mode = ssl.CERT_NONE  # an up/down check: it sends nothing but a GET  # nosec B501
+_probe = urllib.request.build_opener(urllib.request.HTTPSHandler(context=_PROBE_TLS))
+
+
 def _http_probe(url, timeout):
     """Up if anything below HTTP 500 answers. If the page itself misbehaves but the port is open
     (some router admin pages do), count it as up rather than down."""
     if urllib.parse.urlsplit(url or "").scheme not in ("http", "https"):
         raise ValueError("only http:// and https:// addresses can be checked")
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
     req = urllib.request.Request(url, headers={"User-Agent": f"Mozilla/5.0 ({USER_AGENT})"})
     try:
         try:
-            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:  # http(s) only, checked above  # nosec B310
+            with _probe.open(req, timeout=timeout) as r:  # http(s) only, checked above  # nosec B310
                 code = r.status
         except urllib.error.HTTPError as e:
             code = e.code
@@ -1679,14 +1693,27 @@ FONT_RE = re.compile(r"^[a-z0-9-]+\.(woff2|txt)$")
 UI_RE = re.compile(r"^[a-z0-9-]+\.(js|css)$")
 
 
+_ui_gz = {}  # name -> ((mtime, size), the file gzipped): each one is compressed once, not on every visit
+
+
 @app.get("/ui/{name}")
-def ui_file(name: str):
+def ui_file(name: str, request: Request):
     """The dashboard's own scripts and styles (static/ui). Pages link them as /ui/<name>?v=<content hash>,
-    so a browser can keep each one for good and still gets the new one the moment it changes."""
-    if not UI_RE.fullmatch(name) or not (STATIC / "ui" / name).is_file():
+    so a browser can keep each one for good and still gets the new one the moment it changes. Sent gzipped
+    (about a quarter of the size) to browsers that take it."""
+    p = STATIC / "ui" / name
+    if not UI_RE.fullmatch(name) or not p.is_file():
         raise HTTPException(404, "Not found")
     kind = "text/javascript; charset=utf-8" if name.endswith(".js") else "text/css; charset=utf-8"
-    return FileResponse(STATIC / "ui" / name, media_type=kind, headers={"Cache-Control": "private, max-age=31536000, immutable"})
+    headers = {"Cache-Control": "private, max-age=31536000, immutable", "Vary": "Accept-Encoding"}
+    if "gzip" not in (request.headers.get("accept-encoding") or "").lower():
+        return FileResponse(p, media_type=kind, headers=headers)
+    st = p.stat()
+    sig = (st.st_mtime_ns, st.st_size)
+    hit = _ui_gz.get(name)
+    if not hit or hit[0] != sig:
+        hit = _ui_gz[name] = (sig, gzip.compress(p.read_bytes(), 9, mtime=0))
+    return Response(hit[1], media_type=kind, headers={**headers, "Content-Encoding": "gzip"})
 
 
 @app.get("/assets/{name}")
@@ -1705,6 +1732,16 @@ async def http_exc(request: Request, exc: StarletteHTTPException):
     if exc.status_code == 404 and request.method == "GET" and not path.startswith(("/api/", "/assets/", "/ui/")):
         return RedirectResponse("/", status_code=303)
     return JSONResponse({"error": exc.detail}, status_code=exc.status_code, headers=getattr(exc, "headers", None))
+
+
+@app.exception_handler(RequestValidationError)
+async def bad_request(request: Request, exc: RequestValidationError):
+    """A request that isn't the shape a route expects: {"error": "..."} like every other error, naming the first
+    problem. What was sent isn't repeated back (FastAPI's own answer did, and choked on JSON nested very deep)."""
+    first = (exc.errors() or [{}])[0]
+    where = ".".join(str(x) for x in first.get("loc", ()) if x not in ("body", "query", "path"))
+    msg = str(first.get("msg") or "not what was expected")[:200]
+    return JSONResponse({"error": f"Bad request ({where}: {msg})" if where else f"Bad request ({msg})"}, status_code=422)
 
 
 # --------------------------------------------------------------------------- the other modules

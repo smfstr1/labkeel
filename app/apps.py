@@ -379,7 +379,7 @@ def _tz():
 def plan(app_id, values, adding=True):
     """Checks your choices for an app and works out everything about adding it. Raises Invalid with a message
     for the page. Returns {slug, dir, files: {name: text}, web: {port, path, scheme} or None, services}."""
-    a = BY_ID.get(app_id)
+    a = BY_ID.get(app_id) if isinstance(app_id, str) else None
     if not a:
         raise Invalid("There's no app with that name in the catalogue.")
     values = values if isinstance(values, dict) else {}

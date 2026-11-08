@@ -12,7 +12,7 @@ LabKeel is one container that shows your server at a glance and lets you look af
   With other machines joined, each is a group in the tree with its own folders, and **Two panes** puts any two folders side by side, on any machines, to copy and move between them ([servers.md](servers.md#files-on-your-other-machines)).
 - **Services**: links to everything you run, each with a live up/down check (HTTP, TCP, or a Minecraft Bedrock ping that shows players online), as logos, a list or detailed cards
 - **Apps** (admins): a catalogue of popular self-hosted apps, or your own compose file. LabKeel writes the compose file into the app's own folder, starts it, waits until it answers and adds it to Services. Off until `LABKEEL_ALLOW_APP_INSTALLS=1` ([apps.md](apps.md)).
-- **Servers**: your other machines (a NAS, a Raspberry Pi, a second server), each running LabKeel's small agent and reporting here over HTTPS, with their figures, containers, storage and drive health. The arrow beside the machine's name switches between them, and **Containers → All servers** lists every container on every machine. For now they're shown, not changed ([servers.md](servers.md)).
+- **Servers**: your other machines (a NAS, a Raspberry Pi, a second server), each running LabKeel's small agent and reporting here over HTTPS, with their figures, containers, storage and drive health. The arrow beside the machine's name switches between them, and **Containers → All servers** lists every container on every machine. Their shared folders are on the **Files** page; their containers and settings are shown, not changed ([servers.md](servers.md)).
 - **Settings**: alerts, restart schedules, update checks, drive care, accounts and LabKeel's own updates, each on its own page
 
 
@@ -30,7 +30,7 @@ LabKeel is one container that shows your server at a glance and lets you look af
 
    **Display names:** rename any container (open it, then Rename) or service (pencil on its card) from the dashboard. Names are saved in `./data/overrides.json` and survive rebuilds. They only change what the dashboard shows.
 2. **`config/config.json` → `drive_labels`** (optional): map a drive's serial (shown on its card on the Storage page) to a friendly name. Config changes apply without a restart.
-3. **`docker-compose.yml` → volumes under `/browse`**: these are the folders that appear in the file browser. To browse a ZFS pool, add its mountpoint (`zfs get mountpoint <pool>`).
+3. **`docker-compose.yml` → volumes under `/browse`**: these are the folders that appear on the Files page. To browse a ZFS pool, add its mountpoint (`zfs get mountpoint <pool>`).
 
 ## GPUs, power and history
 

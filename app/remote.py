@@ -223,7 +223,7 @@ async def api_agent_reply(cid: str, request: Request):
         hdrs = json.loads(request.headers.get("x-labkeel-headers") or "{}")
         if not 100 <= status <= 599 or not isinstance(hdrs, dict):
             raise ValueError
-    except ValueError:
+    except (ValueError, RecursionError):
         raise HTTPException(400, "Bad answer")
     hdrs = {k.lower(): str(v)[:1000] for k, v in hdrs.items()
             if isinstance(k, str) and k.lower() in filesapp.OUT_HEADERS and "\n" not in str(v) and "\r" not in str(v)}
@@ -287,7 +287,7 @@ async def api_remote(sid: str, rest: str, request: Request):
         if path in filesapp.PASSWORD_ROUTES:
             try:
                 data = json.loads(body or b"{}")
-            except ValueError:
+            except (ValueError, RecursionError):
                 raise HTTPException(400, "Bad request")
             if not isinstance(data, dict):
                 raise HTTPException(400, "Bad request")

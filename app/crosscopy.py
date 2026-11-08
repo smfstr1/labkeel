@@ -101,7 +101,9 @@ async def _json(j, server, method, path, query=None, body=None, cap=64 * 1024 * 
         raise CopyError(str(e))
     try:
         out = json.loads(raw or b"{}")
-    except ValueError:
+    except (ValueError, RecursionError):
+        out = {}
+    if not isinstance(out, dict):
         out = {}
     if status >= 400:
         raise CopyError(out.get("error") or out.get("detail") or f"{path} answered {status}")
@@ -158,7 +160,9 @@ async def _put(j, dst, uid, off, piece):
         raise CopyError(str(e))
     try:
         out = json.loads(raw or b"{}")
-    except ValueError:
+    except (ValueError, RecursionError):
+        out = {}
+    if not isinstance(out, dict):
         out = {}
     if status >= 400 or out.get("received") != off + len(piece):
         raise CopyError(out.get("error") or f"A piece didn't arrive ({status})")
@@ -282,8 +286,8 @@ async def _run(j):
         raise CopyError(f"LabKeel can't change files in {to} on {j['to']['name']}. It needs LABKEEL_ALLOW_FILE_CHANGES=1 there, "
                         "and the folder mounted without :ro.")
     if t.get("free") is not None and j["total_bytes"] > t["free"] - 64 * 1024 * 1024:
-        raise CopyError(f"There isn't room on {j['to']['name']}: this needs {j['total_bytes'] / 1e9:.1f} GB and "
-                        f"{to} has {t['free'] / 1e9:.1f} GB free.")
+        raise CopyError(f"There isn't room on {j['to']['name']}: this needs {fileops.amount(j['total_bytes'])} and "
+                        f"{to} has {fileops.amount(t['free'])} free.")
     if j["kind"] == "move":
         for parent in sorted({_split(p)[0] for p in j["from"]["paths"]}):
             if not (await _json(j, src, "GET", "/api/files", {"path": parent})).get("writable"):
@@ -332,6 +336,11 @@ def _what(j):
     return _split(ps[0])[1] if len(ps) == 1 else f"{len(ps)} items"
 
 
+def _where(j):
+    """Where a copy goes, for the activity log: "homelab: media/films to nas: archive"."""
+    return f"{j['from']['name']}: {_split(j['from']['paths'][0])[0] or '/'} to {j['to']['name']}: {j['to']['path']}"
+
+
 def _log(j, text):
     actor = sys.modules["security"].ACTOR
     token = actor.set({"user": j["by"], "ip": j.get("ip")})
@@ -349,7 +358,7 @@ async def _loop():
                 j = next((x for x in sorted(_jobs.values(), key=lambda x: x["created"]) if x["state"] == "queued"), None)
             if not j:
                 return
-            where = f"{j['from']['name']} to {j['to']['name']}: {j['to']['path']}"
+            where = _where(j)
             verb = "Moving" if j["kind"] == "move" else "Copying"
             try:
                 await _run(j)
@@ -393,6 +402,8 @@ async def api_start(request: Request, body: dict = Body(...)):
     """Copy or move files and folders to another machine. Needs the password again."""
     names = _names()
     f, t = body.get("from") or {}, body.get("to") or {}
+    if not isinstance(f, dict) or not isinstance(t, dict):
+        raise HTTPException(400, "from and to each need a server, and paths or a path")
     src, dst = f.get("server") or "", t.get("server") or ""
     paths, to = f.get("paths"), t.get("path")
     if src not in names or dst not in names:
@@ -429,8 +440,7 @@ async def api_start(request: Request, body: dict = Body(...)):
         _jobs[jid] = j
         for old in sorted((x for x in _jobs.values() if x["state"] not in ACTIVE), key=lambda x: -x["created"])[KEEP:]:
             _jobs.pop(old["id"], None)
-    _log(j, f"{'Moving' if kind == 'move' else 'Copying'} {_what(j)} from {names[src]}: {_split(j['from']['paths'][0])[0] or '/'} "
-            f"to {names[dst]}: {j['to']['path']}")
+    _log(j, f"{'Moving' if kind == 'move' else 'Copying'} {_what(j)} from {_where(j)}")
     _save(True)
     _kick()
     return {"id": jid}

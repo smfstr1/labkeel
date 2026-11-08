@@ -2,7 +2,7 @@
 security key instead of typing the password. The password keeps working as well.
 
 A passkey belongs to the web address it was made on. Browsers only allow them on HTTPS addresses with
-a name (sam-server.<tailnet>.ts.net, say), not on a bare IP address, so add one while using the
+a name (homelab.<tailnet>.ts.net, say), not on a bare IP address, so add one while using the
 address you normally use. Passkeys are kept in data/passkeys.json: only public keys, nothing secret.
 
 How it goes: the page asks for "options" (a random challenge, remembered here as a ticket for 5 minutes),
@@ -76,11 +76,11 @@ def where(request: Request):
         raise HTTPException(400, "No host name")
     scheme = "https" if S().is_https(request) else "http"
     if scheme != "https" and name != "localhost":
-        raise HTTPException(409, "Passkeys only work over HTTPS. Open the dashboard at its https:// address (the Tailscale one) and try again.")
+        raise HTTPException(409, "Passkeys only work over HTTPS. Open LabKeel at its https:// address and try again.")
     try:
         ipaddress.ip_address(name)
-        raise HTTPException(409, "Passkeys need a name, not an IP address. Open the dashboard at its usual https:// name "
-                                 "(sam-server.<tailnet>.ts.net) and try again.")
+        raise HTTPException(409, "Passkeys need a name, not an IP address. Open LabKeel at its usual https:// name "
+                                 "(homelab.<tailnet>.ts.net, say) and try again.")
     except ValueError:
         pass
     return name, f"{scheme}://{host}"

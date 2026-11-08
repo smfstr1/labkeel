@@ -66,31 +66,86 @@ def key_of_der(der):
     return "sha256:" + base64.urlsafe_b64encode(hashlib.sha256(spki).digest()).decode().rstrip("=")
 
 
+_tls = {}                    # the two ways of checking the hub, each made once (making one reads every trusted certificate)
+_trust = {"pinned": False}   # how the hub was trusted last time: by its key (a self-signed certificate) or the usual way
+
+
+def _context(usual):
+    ctx = _tls.get(usual)
+    if ctx is None:
+        if usual:
+            ctx = ssl.create_default_context()
+        else:
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE  # its key is checked by hand in _connect, before anything is sent  # nosec B501
+        _tls[usual] = ctx
+    return ctx
+
+
 def _connect(hub, pinned, timeout=TIMEOUT):
     """An HTTPS connection to the hub that's been checked: either its certificate is trusted the usual way
     (a Tailscale or Let's Encrypt one, say), or its key is the one this agent was given. Returns
-    (connection, the hub's key now). Nothing is sent before the check."""
+    (connection, the hub's key now). Nothing is sent before the check, and the connection never reconnects by
+    itself (that would skip the check): a new one always comes from here.
+
+    Whichever way worked last time is tried first, so a hub with a self-signed certificate costs one handshake."""
     u = urlsplit(hub)
     if u.scheme != "https" or not u.hostname:
         raise Untrusted(f"LABKEEL_HUB must be an https:// address, not {hub!r}.")
     port = u.port or 443
-    try:
-        conn = http.client.HTTPSConnection(u.hostname, port, timeout=timeout, context=ssl.create_default_context())
-        conn.connect()
-        return conn, key_of_der(conn.sock.getpeercert(binary_form=True))
-    except ssl.SSLCertVerificationError:
-        pass
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE  # checked by hand just below, before anything is sent  # nosec B501
-    conn = http.client.HTTPSConnection(u.hostname, port, timeout=timeout, context=ctx)
-    conn.connect()
-    key = key_of_der(conn.sock.getpeercert(binary_form=True))
-    if not pinned or key != pinned:
+    other = None
+    for usual in ((False, True) if _trust["pinned"] and pinned else (True, False)):
+        conn = http.client.HTTPSConnection(u.hostname, port, timeout=timeout, context=_context(usual))
+        conn.auto_open = 0
+        try:
+            conn.connect()
+        except ssl.SSLCertVerificationError:
+            conn.close()
+            continue
+        key = key_of_der(conn.sock.getpeercert(binary_form=True))
+        if usual or (pinned and key == pinned):
+            _trust["pinned"] = not usual
+            return conn, key
         conn.close()
-        raise Untrusted("The hub's certificate isn't trusted and its key isn't the one this agent was given "
-                        f"(it has {key}). If the hub really did change it, join again with a new code from it.")
-    return conn, key
+        other = key
+    raise Untrusted("The hub's certificate isn't trusted and its key isn't the one this agent was given "
+                    f"(it has {other}). If the hub really did change it, join again with a new code from it.")
+
+
+KEEP_OPEN = 3  # seconds a connection with nothing to do is kept for the next request (the hub closes them after 5)
+_STALE = (http.client.RemoteDisconnected, http.client.NotConnected, ConnectionResetError, BrokenPipeError, ssl.SSLEOFError)
+
+
+class Link:
+    """One connection to the hub, used again for the next request while the hub keeps it open: a file request's
+    answer goes back on the connection the request came in on, without a new handshake."""
+
+    def __init__(self, state):
+        self.state, self.conn, self.key, self.since = state, None, None, 0.0
+
+    def get(self, timeout):
+        """(connection, the hub's key, whether it was used before)."""
+        c, self.conn = self.conn, None
+        if c is not None and c.sock is not None and time.monotonic() - self.since < KEEP_OPEN:
+            c.sock.settimeout(timeout)
+            return c, self.key, True
+        if c is not None:
+            c.close()
+        c, self.key = _connect(self.state["hub"], self.state.get("hub_key"), timeout)
+        return c, self.key, False
+
+    def put(self, conn, response):
+        """Keep the connection for next time if its answer was read to the end and the hub didn't close it."""
+        if response.isclosed() and not response.will_close and conn.sock is not None:
+            self.conn, self.since = conn, time.monotonic()
+        else:
+            conn.close()
+
+    def close(self):
+        if self.conn is not None:
+            self.conn.close()
+            self.conn = None
 
 
 def _headers(state, token=None):
@@ -100,18 +155,36 @@ def _headers(state, token=None):
     return h
 
 
-def post(state, path, body, token=None, timeout=TIMEOUT):
-    conn, key = _connect(state["hub"], state.get("hub_key"), timeout)
-    try:
-        headers = {"Content-Type": "application/json", **_headers(state, token)}
-        conn.request("POST", path, body=json.dumps(body, default=str), headers=headers)
-        r = conn.getresponse()
-        data = r.read(1_000_000)
-    finally:
-        conn.close()
+def post(state, path, body, token=None, timeout=TIMEOUT, link=None):
+    payload = json.dumps(body, default=str)
+    headers = {"Content-Type": "application/json", **_headers(state, token)}
+    for again in (False, True):
+        if link:
+            conn, key, used = link.get(timeout)
+        else:
+            (conn, key), used = _connect(state["hub"], state.get("hub_key"), timeout), False
+        try:
+            conn.request("POST", path, body=payload, headers=headers)
+            r = conn.getresponse()
+            data = r.read(1_000_000)
+        except _STALE:
+            conn.close()
+            if used and not again:
+                continue  # the hub had just closed the connection kept from before: once more, on a new one
+            raise
+        except BaseException:
+            conn.close()
+            raise
+        if link:
+            link.put(conn, r)
+        else:
+            conn.close()
+        break
     try:
         out = json.loads(data or b"{}")
-    except ValueError:
+    except (ValueError, RecursionError):
+        out = {}
+    if not isinstance(out, dict):
         out = {}
     if r.status in (401, 403):
         raise Refused(out.get("error") or f"refused ({r.status})")
@@ -247,9 +320,10 @@ def _channel(state):
 
 def _work(state):
     pause = 1
+    link = Link(state)
     while state.get("token"):
         try:
-            req = post(state, "/api/agent/wait", {}, token=state["token"], timeout=WAIT_FOR)
+            req = post(state, "/api/agent/wait", {}, token=state["token"], timeout=WAIT_FOR, link=link)
             pause = 1
         except Refused:
             return  # removed on the hub: the report loop says so, and starts these again once joined
@@ -262,22 +336,24 @@ def _work(state):
             continue
         if req.get("id"):
             try:
-                _serve(state, req)
+                _serve(state, req, link)
             except Exception as e:
                 say(f"A file request ({req.get('method')} {req.get('path')}) failed: {type(e).__name__}: {e}")
 
 
-def _fetch_body(state, cid, size):
-    conn, _ = _connect(state["hub"], state.get("hub_key"), 120)
+def _fetch_body(state, cid, size, link):
+    conn, _, _ = link.get(120)
     try:
         conn.request("GET", f"/api/agent/body/{cid}", headers=_headers(state, state["token"]))
         r = conn.getresponse()
         data = r.read(size + 1)
-        if r.status != 200 or len(data) != size:
-            raise RuntimeError(f"couldn't fetch the request's body ({r.status})")
-        return data
-    finally:
+    except BaseException:
         conn.close()
+        raise
+    link.put(conn, r)
+    if r.status != 200 or len(data) != size:
+        raise RuntimeError(f"couldn't fetch the request's body ({r.status})")
+    return data
 
 
 def _working(state, cid, started):
@@ -289,8 +365,9 @@ def _working(state, cid, started):
         pass
 
 
-def _serve(state, req):
+def _serve(state, req, link=None):
     """Run one request with LabKeel's own file code (filesapp.py) and send the answer back as it comes."""
+    link = link or Link(state)
     cid = str(req["id"])
     body = None
     if isinstance(req.get("body"), str):
@@ -298,18 +375,18 @@ def _serve(state, req):
     elif isinstance(req.get("stream"), int):
         if not 0 <= req["stream"] <= 64 * 1024 * 1024:  # one upload piece at most (fileops.CHUNK_MAX)
             raise ValueError("request body too big")
-        body = _fetch_body(state, cid, req["stream"])
+        body = _fetch_body(state, cid, req["stream"], link)
     started = threading.Event()
     timer = threading.Timer(5, _working, args=(state, cid, started))  # a slow one: tell the hub it's on its way
     timer.daemon = True
     timer.start()
     try:
-        asyncio.run(_answer(state, req, cid, body, started))
+        asyncio.run(_answer(state, req, cid, body, started, link))
     finally:
         timer.cancel()
 
 
-async def _answer(state, req, cid, body, started):
+async def _answer(state, req, cid, body, started, link):
     import filesapp
     fw = req.get("forwarded") if isinstance(req.get("forwarded"), dict) else {}
     fw = {"user": fw.get("user"), "via": str(fw.get("via") or "the hub")[:64], "session": str(fw.get("session") or "")[:64]}
@@ -317,9 +394,9 @@ async def _answer(state, req, cid, body, started):
                                                req.get("headers") if isinstance(req.get("headers"), dict) else {}, body,
                                                forwarded=fw)
     started.set()
-    conn = None
+    conn = r = None
     try:
-        conn = await asyncio.to_thread(_reply_open, state, cid, status, hdrs)
+        conn = await asyncio.to_thread(_reply_open, state, cid, status, hdrs, link)
         async for c in chunks:
             await asyncio.to_thread(conn.send, b"%x\r\n" % len(c) + c + b"\r\n")
         await asyncio.to_thread(conn.send, b"0\r\n\r\n")
@@ -327,12 +404,14 @@ async def _answer(state, req, cid, body, started):
         r.read(10000)
     finally:
         await chunks.aclose()
-        if conn:
+        if conn and r is not None:
+            link.put(conn, r)
+        elif conn:
             conn.close()
 
 
-def _reply_open(state, cid, status, hdrs):
-    conn, _ = _connect(state["hub"], state.get("hub_key"), 130)  # checked before anything is sent, as ever
+def _reply_open(state, cid, status, hdrs, link):
+    conn, _, _ = link.get(130)  # a new connection is checked before anything is sent, as ever
     conn.putrequest("POST", f"/api/agent/reply/{cid}", skip_accept_encoding=True)
     for k, v in {**_headers(state, state["token"]), "Content-Type": "application/octet-stream",
                  "Transfer-Encoding": "chunked", "X-LabKeel-Status": str(int(status)),

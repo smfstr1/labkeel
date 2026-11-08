@@ -234,8 +234,10 @@ async def run():
     inner = _inner_socket()
     inner_port = inner.getsockname()[1]
 
-    config = uvicorn.Config(main.app, ssl_certfile=str(crt), ssl_keyfile=str(key),
+    config = uvicorn.Config(main.app, ssl_certfile=str(crt), ssl_keyfile=str(key), ssl_ciphers=tls.CIPHERS,
                             log_level=LOG_LEVEL, access_log=False, proxy_headers=False, server_header=False)
+    config.load()
+    tls.harden(config.ssl)  # TLS 1.2 at least, whatever the machine's OpenSSL would allow
     server = uvicorn.Server(config)
     tls.set_context_getter(lambda: config.ssl)
     tls.start_renewal()
