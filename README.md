@@ -33,8 +33,11 @@ Simple, lightweight, and open-source, LabKeel is a hardware and docker dashboard
 
 LabKeel can restart your server, change ZFS pools and edit files. It needs privileged access
 to the machine to do that, so those features start switched off; turn on only the ones you need.
-Keep it off the open internet, and only make admin accounts for people you'd trust with full
-control of the server. See [SECURITY.md](SECURITY.md) for how it's protected.
+
+Keep your information off the open internet, use a VPN!
+
+Only make admin accounts for people you'd trust with full
+control of the server. See [SECURITY.md](SECURITY.md) to take a deeper look on how it's protected.
 
 ## Screenshots
 ![The Overview page with live CPU, memory, GPU and network stats](images/main.png)
@@ -136,4 +139,4 @@ commands switched off.
 See [LICENSE](LICENSE). The bundled fonts, Hanken Grotesk and JetBrains Mono, are under the
 SIL Open Font License; their licences are in `app/static/fonts`.
 
-'**Lab**' is what it's supporting, '**Keel**' like the Keel of a ship! (Google it.)
+'**Lab**' is what it's supporting, and '**Keel**' is like the Keel of a ship! (Google it.)
