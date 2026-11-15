@@ -52,9 +52,9 @@ def test_old_names_renamed_and_new_settings_added():
     p = composefile.plan(OLD, "labkeel", resolved(OLD))
     assert p["changed"]
     assert [r["old"] for r in p["renamed"]] == ["DASH_FILES_WRITE", "DASH_PORT", "DASH_PASS_HASH"]
-    # LABKEEL_ALLOW_FILE_CHANGES is already given (by its old name), so only the other three are added
+    # LABKEEL_ALLOW_FILE_CHANGES is already given (by its old name), so only the other four are added
     assert [a["name"] for a in p["added"]] == ["LABKEEL_ALLOW_ZFS_CHANGES", "LABKEEL_ALLOW_RESTART",
-                                               "LABKEEL_ALLOW_APP_INSTALLS"]
+                                               "LABKEEL_ALLOW_APP_INSTALLS", "LABKEEL_ALLOW_CLUSTER_CHANGES"]
     new = p["text"]
     assert "      - LABKEEL_ALLOW_FILE_CHANGES=1        # I want uploads\n" in new          # value and note kept
     assert '      - "LABKEEL_ADMIN_PASSWORD_HASH=$$argon2id$$v=19$$abc"\n' in new
@@ -67,7 +67,8 @@ def test_old_names_renamed_and_new_settings_added():
     env = resolved(new)
     assert env == {"LABKEEL_ALLOW_FILE_CHANGES": "1", "LABKEEL_PORT": "8787",
                    "LABKEEL_ADMIN_PASSWORD_HASH": "$argon2id$v=19$abc", "TZ": "Europe/London",
-                   "LABKEEL_ALLOW_ZFS_CHANGES": "0", "LABKEEL_ALLOW_RESTART": "0", "LABKEEL_ALLOW_APP_INSTALLS": "0"}
+                   "LABKEEL_ALLOW_ZFS_CHANGES": "0", "LABKEEL_ALLOW_RESTART": "0", "LABKEEL_ALLOW_APP_INSTALLS": "0",
+                   "LABKEEL_ALLOW_CLUSTER_CHANGES": "0"}
     # everything else is exactly as it was: take the additions out and undo the renames, and it's the old file
     undone = "".join(ln for ln in new.splitlines(keepends=True)
                      if not (ln.startswith("      # Added by LabKeel") or any(f"- {a['name']}=" in ln for a in p["added"])))
@@ -211,7 +212,7 @@ def test_left_alone_if_you_were_editing_it(machine, monkeypatch):
 def test_from_settings(machine, client, users):
     files, cmds, path = machine
     st = client.get("/api/labkeel/compose").json()
-    assert st["possible"] and st["changed"] and len(st["added"]) == 3 and files[path] == OLD   # only looked
+    assert st["possible"] and st["changed"] and len(st["added"]) == 4 and files[path] == OLD   # only looked
     assert client.post("/api/labkeel/compose/tidy", json={}).status_code == 428           # password again
     r = client.post("/api/labkeel/compose/tidy", json={"password": PASSWORD})
     assert r.status_code == 200 and r.json()["changed"]

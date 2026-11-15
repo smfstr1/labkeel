@@ -98,7 +98,7 @@ def test_viewer_cannot_read_private_things(users, path):
 
 
 @pytest.mark.parametrize("path", ["/api/system", "/api/meta", "/api/containers", "/api/storage", "/api/services",
-                                  "/api/attention", "/api/account", "/api/security"])
+                                  "/api/attention", "/api/account", "/api/security", "/api/clusters"])
 def test_viewer_can_see_status(users, path):
     _add("vera")
     c = sign_in("vera", STRONG)
