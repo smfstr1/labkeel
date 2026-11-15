@@ -535,6 +535,7 @@ async function loadSystem() {
   const cut = lastT() - SPARK_WINDOW;
   while (S.hist.length && S.hist[0].t < cut) S.hist.shift();
   renderSystem();
+  if (currentView === "storage") renderCache();
 }
 // back on this tab (or back from another site): catch up straight away rather than at the next tick
 function catchUp() {

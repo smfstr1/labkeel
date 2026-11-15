@@ -84,7 +84,12 @@ function renderSystem() {
   $("#ov-mem").innerHTML = `${mv}<small>${mu}</small>`;
   $("#ov-mem-pct").textContent = `${Math.round(m.percent)}%`;
   $("#ov-mem-sub").textContent =
-    `of ${fmtBytes(m.total, false, 0)}` + (m.swap_total ? ` · swap ${fmtBytes(m.swap_used, false)}` : "");
+    `of ${fmtBytes(m.total, false, 0)}` +
+    (m.zfs_cache ? ` · ${fmtBytes(m.zfs_cache, false, 0)} ZFS cache` : "") +
+    (m.swap_total ? ` · swap ${fmtBytes(m.swap_used, false)}` : "");
+  $("#ov-mem-sub").title = m.zfs_cache
+    ? "The ZFS cache holds recently read files and is given back when something needs the memory, so it isn't counted as used."
+    : "";
   const [rv, ru] = splitUnit(fmtBits(d.network.rx_rate)),
     [tv, tu] = splitUnit(fmtBits(d.network.tx_rate));
   $("#ov-rx").textContent = rv;

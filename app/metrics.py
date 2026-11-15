@@ -445,7 +445,7 @@ def on_stall(start, end, ct0, ct1):
         cores = psutil.cpu_count() or 1
         vm, sw = psutil.virtual_memory(), psutil.swap_memory()
         facts = [f"CPU {busy:.0f}%"] + ([f"waiting on disks {iowait:.0f}%"] if iowait >= 5 else []) + \
-                [f"load {os.getloadavg()[0]:.1f} on {cores} threads", f"memory {vm.percent:.0f}%"] + \
+                [f"load {os.getloadavg()[0]:.1f} on {cores} threads", f"memory {sys.modules['zfscache'].memory(vm)[2]:.0f}%"] + \
                 ([f"swap {_gb(sw.used)}"] if sw.used > 1e8 else [])
         top = busiest_since()
         names = [f"{t['container']} ({t['name']}) {t['pct']:.0f}%" if t["container"] else f"{t['name']} {t['pct']:.0f}%" for t in top]

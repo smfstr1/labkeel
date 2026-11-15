@@ -6945,3 +6945,18 @@ body.viewer #svc-add-app {
     justify-self: end;
   }
 }
+
+/* ---------- Storage: the ZFS memory cache ---------- */
+.usage .nm small {
+  margin-left: 8px;
+  font-size: 13.5px;
+  font-weight: 400;
+  color: var(--muted);
+}
+#s-cache .usage {
+  border-bottom: 0;
+}
+.s-cache-note {
+  max-width: 86ch;
+  margin: 10px 0 0;
+}

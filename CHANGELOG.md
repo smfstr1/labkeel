@@ -19,6 +19,14 @@
   and the page returns by itself once LabKeel is back. LabKeel is still skipped when several containers are
   acted on at once, and still can't pause or remove itself.
 
+- **The ZFS memory cache, shown for what it is.** ZFS keeps recently read files in memory and gives it back
+  when something else needs it, but Linux counts it as used, so a server that streams films all day looked a
+  quarter full. The cache is no longer counted as used memory: the Overview's memory card shows it separately,
+  and Storage has a Memory cache section with how full it is. The memory graph steps down from this version on.
+- **Set the cache's limit.** Storage → Memory cache → Change limit sets how big the cache may grow, or hands the
+  choice back to ZFS. It applies straight away and is kept after a restart, in whichever file under
+  `/etc/modprobe.d` already sets it. Admins only, with `LABKEEL_ALLOW_ZFS_CHANGES=1`; it asks for your password
+  and is written to the activity log.
 - **Remove a drive from the dashboard.** A drive that isn't mounted and isn't in a pool has a small cross on its
   tile on Storage, and a "Remove from the dashboard" button in its details. LabKeel then stops showing it,
   checking its health and alerting about it, and it stays removed after Re-check drives and after a refresh.

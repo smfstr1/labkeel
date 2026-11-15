@@ -206,6 +206,11 @@
         <h2>Filesystems</h2>
         <div class="list" id="s-fs"></div>
       </section>
+      <section id="s-cache-sec" class="hidden" aria-labelledby="s-cache-h">
+        <div class="sec-head"><h2 id="s-cache-h">Memory cache</h2><span class="toolbar admin-only" id="s-cache-tools"></span></div>
+        <div class="list" id="s-cache"></div>
+        <p class="st-note s-cache-note">ZFS keeps recently read files in memory so they open faster next time, and gives the memory back when something else needs it. That's why it isn't counted as used memory on the Overview.</p>
+      </section>
     </div>
 
     <!-- ONE POOL -->

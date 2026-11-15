@@ -338,14 +338,16 @@ def system_sampler():
                              "rx_total": c.bytes_recv, "tx_total": c.bytes_sent})
             prev_t, prev_io = now, io
             vm, sw = psutil.virtual_memory(), psutil.swap_memory()
+            mem_used, mem_free, mem_pct, arc = zfscache.memory(vm)  # the ZFS cache isn't "used": it's given back on request
             cpu = sum(per_core) / max(len(per_core), 1)
             current = {
                 "time": now,
                 "cpu": {"percent": round(cpu, 1), "per_core": per_core, "temp": _cpu_temp(),
                         "load": os.getloadavg()},
-                "memory": {"total": vm.total, "used": vm.total - vm.available, "available": vm.available,
+                "memory": {"total": vm.total, "used": mem_used, "available": mem_free,
                            "cached": getattr(vm, "cached", 0) + getattr(vm, "buffers", 0),
-                           "percent": vm.percent, "swap_total": sw.total, "swap_used": sw.used},
+                           "percent": mem_pct, "swap_total": sw.total, "swap_used": sw.used,
+                           "zfs_cache": arc and arc["size"], "zfs_cache_limit": arc and arc["limit"]},
                 "network": {"rx_rate": tot_rx, "tx_rate": tot_tx, "interfaces": nics},
                 "uptime": now - boot,
             }
@@ -355,7 +357,7 @@ def system_sampler():
                 gpus = []
             with _sys_lock:
                 _sys["current"] = current
-                _sys["history"].append({"t": round(now, 2), "cpu": round(cpu, 1), "mem": vm.percent,
+                _sys["history"].append({"t": round(now, 2), "cpu": round(cpu, 1), "mem": mem_pct,
                                         "rx": round(tot_rx), "tx": round(tot_tx), "gpu": gpus})
         except Exception as e:  # keep sampling no matter what
             print("system sampler error:", e, flush=True)
@@ -1855,12 +1857,14 @@ import upkeep  # noqa: E402  (settings, restart schedule, alerts, clean-up, acti
 import metrics  # noqa: E402  (GPU, power and history)
 import drivecare  # noqa: E402  (replacing drives, scrubs, self-tests)
 import zfsmgr  # noqa: E402  (pools, datasets, snapshots)
+import zfscache  # noqa: E402  (the ZFS memory cache and its limit)
 import fileops  # noqa: E402  (changing files from the file browser)
 import passkeys  # noqa: E402  (signing in with Face ID, Touch ID, Windows Hello, a phone or a security key)
 app.include_router(upkeep.router)
 app.include_router(metrics.router)
 app.include_router(drivecare.router)
 app.include_router(zfsmgr.router)
+app.include_router(zfscache.router)
 app.include_router(fileops.router)
 app.include_router(passkeys.router)
 import updates  # noqa: E402  (is a newer image out for each container?)

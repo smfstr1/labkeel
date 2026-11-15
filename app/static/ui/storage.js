@@ -5,6 +5,7 @@
 
 function renderStorage() {
   const d = S.storage;
+  renderCache();
   if (!d || currentView !== "storage") return;
   $("#s-errors").innerHTML = (d.errors || []).map(e => `<div class="banner">${esc(e)}</div>`).join("");
   const fs = d.filesystems
@@ -1137,3 +1138,68 @@ function healthHero(drives, sts, pools, healthy, asleep, unknown) {
     <div class="s-hero-side"><div class="s-lights" aria-label="Drives">${lights}</div>${chips ? `<div class="s-pools">${chips}</div>` : ""}</div>
   </div>`;
 }
+
+/* ---------- the ZFS memory cache: how full it is, and its limit ---------- */
+function renderCache() {
+  const m = S.sys?.memory;
+  const has = !!(m && m.zfs_cache != null && m.zfs_cache_limit);
+  $("#s-cache-sec").classList.toggle("hidden", !has);
+  if (!has || currentView !== "storage") return;
+  const pct = Math.min(100, (m.zfs_cache / m.zfs_cache_limit) * 100);
+  const html = `<div class="usage"><span class="nm">ZFS cache<small>${Math.round((m.zfs_cache / m.total) * 100)}% of this server's memory</small></span>
+    <span class="nums">${fmtBytes(m.zfs_cache, false)} of its ${fmtBytes(m.zfs_cache_limit, false, 0)} limit</span>
+    <span class="bar"><i style="width:${Math.max(pct, 1)}%"></i></span></div>`;
+  if ($("#s-cache").innerHTML !== html) $("#s-cache").innerHTML = html;
+  const tools = S.dc?.zfs?.write
+    ? `<button class="btn small" type="button" id="s-cache-limit">Change limit…</button>`
+    : "";
+  if ($("#s-cache-tools").innerHTML !== tools) $("#s-cache-tools").innerHTML = tools;
+}
+const CacheLimit = {
+  GIB: 1024 ** 3,
+  async open() {
+    let d;
+    try {
+      d = await api("/api/zfs/cache");
+    } catch (e) {
+      return toast(e.message, "bad");
+    }
+    const gb = n => +(n / this.GIB).toFixed(1),
+      lo = Math.ceil(d.smallest / this.GIB),
+      hi = Math.floor(d.largest / this.GIB);
+    Confirm.open({
+      title: "Memory cache limit",
+      ok: "Set limit",
+      safe: true,
+      body: `<p style="margin:0">The cache holds <b>${fmtBytes(d.size, false)}</b> now and may grow to <b>${fmtBytes(d.limit, false, 0)}</b>${d.auto ? " (ZFS chose that itself)" : ""}.</p>
+        <label class="field"><span>Limit</span><select class="input" id="cl-mode"><option value="set">A size I choose</option><option value="auto"${d.auto ? " selected" : ""}>Automatic: let ZFS decide</option></select></label>
+        <label class="field" id="cl-size-wrap"><span>Size in GB (${lo} to ${hi})</span><input class="input" id="cl-size" type="number" inputmode="decimal" min="${lo}" max="${hi}" step="1" value="${gb(d.limit)}"></label>
+        <p class="st-note" style="margin:0">A smaller cache frees memory, and files you open often (photos, databases) are read from the drives more. Playing films isn't affected. It applies straight away, shrinks over a minute or so, and is kept after a restart.</p>
+        ${d.saved != null && d.saved !== d.limit && !d.auto ? `<p class="st-note" style="margin:0">After a restart it's currently set to return to ${fmtBytes(d.saved, false, 0)}. Setting a limit here fixes that.</p>` : ""}`,
+      onOk: async () => {
+        const auto = $("#cl-mode").value === "auto",
+          size = parseFloat($("#cl-size").value);
+        if (!auto && !(size >= lo && size <= hi)) return toast(`Choose a size from ${lo} to ${hi} GB`, "bad");
+        try {
+          const r = await apiSend("/api/zfs/cache", { limit: auto ? 0 : Math.round(size * this.GIB) });
+          toast(
+            r.saved
+              ? `Cache limit set to ${auto ? "automatic" : `${size} GB`}`
+              : "The limit is set for now, but couldn't be saved for the next restart. The activity log says why.",
+            r.saved ? "good" : "bad",
+          );
+          if (S.sys?.memory && r.limit) S.sys.memory.zfs_cache_limit = r.limit; // shown now; the next reading brings the rest
+          renderCache();
+        } catch (e) {
+          if (!e.cancelled) toast(e.message, "bad");
+        }
+      },
+    });
+    const sync = () => $("#cl-size-wrap").classList.toggle("hidden", $("#cl-mode").value === "auto");
+    $("#cl-mode").addEventListener("change", sync);
+    sync();
+  },
+};
+$("#s-cache-tools").addEventListener("click", e => {
+  if (e.target.closest("#s-cache-limit")) CacheLimit.open();
+});

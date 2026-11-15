@@ -77,6 +77,8 @@ The dashboard refuses to export or destroy a pool, delete a dataset or roll one 
 
 Ubuntu's `zfsutils-linux` package already scrubs every pool on the second Sunday of the month (and TRIMs SSD pools on the first Sunday). The Maintenance tab says so when it finds that job; you can keep it, or schedule your own instead.
 
+**Memory cache**, at the foot of Storage: how much memory ZFS is holding for recently read files, against its limit. ZFS gives this memory back when something else needs it, so LabKeel doesn't count it as used; the Overview's memory card shows it separately. **Change limit** sets how big it may grow (or lets ZFS decide), straight away and for every restart after. It asks for your password. A smaller cache frees memory, but files opened often are read from the drives more.
+
 `LABKEEL_ALLOW_ZFS_CHANGES: "0"` makes all of this read-only, drive care's replace, offline and clear buttons included: the pages still show everything, but nothing in ZFS can be changed.
 
 ## Settings
