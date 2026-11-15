@@ -90,7 +90,7 @@ documentation.
 | Check | Example | It's up when… |
 | --- | --- | --- |
 | Web page (the default) | `{ "type": "http", "url": "http://{host}:8096/health" }` | the page answers with anything below an error 500. A login page counts. |
-| Port open | `{ "type": "tcp", "host": "{host}", "port": 25565 }` | something accepts a connection on that port |
+| Port open | `{ "type": "tcp", "host": "{host}", "port": 25565 }` | something accepts a connection on that port. Add `"tls": true` when the port speaks HTTPS: the check then finishes the greeting before hanging up, so the server's log isn't filled with "TLS handshake error" lines. The certificate isn't judged |
 | Minecraft Bedrock | `{ "type": "bedrock", "port": 19132 }` | the server answers, and the tile shows players online |
 | Container only | `{ "type": "none" }` | its `container` is running |
 

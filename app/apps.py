@@ -831,7 +831,7 @@ def service_entries():
         if w:
             e["url"] = f"{w.get('scheme', 'http')}://{w.get('host') or '{host}'}:{w['port']}{w.get('path', '')}"
             if w.get("scheme") == "https":
-                e["check"] = {"type": "tcp", "host": "{host}", "port": w["port"]}
+                e["check"] = {"type": "tcp", "host": "{host}", "port": w["port"], "tls": True}
         out.append(e)
     return out
 
@@ -954,7 +954,7 @@ def _answers(p, say):
                 w = p["web"]
                 url = f"{w['scheme']}://127.0.0.1:{w['port']}{w['path']}"
                 res = M().check_service({"name": p["name"], "url": url,
-                                         "check": {"type": "tcp", "host": "127.0.0.1", "port": w["port"]}
+                                         "check": {"type": "tcp", "host": "127.0.0.1", "port": w["port"], "tls": True}
                                          if w["scheme"] == "https" else {"type": "http", "url": url}})
                 if res.get("state") in ("up", "degraded"):
                     say(f"It answers on port {w['port']}")

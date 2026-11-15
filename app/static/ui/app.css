@@ -213,6 +213,104 @@
   --bad: #ff8a80;
   --off: #8c8c8c;
 }
+:root[data-look="ocean"] {
+  --bg: #0b1a24;
+  --panel: #10232f;
+  --panel-2: #162c3a;
+  --rule: #213b4b;
+  --rule-2: #2f5266;
+  --text: #e2eff5;
+  --muted: #8fb0bf;
+  --faint: #66899a;
+  --focus: #7fd4f0;
+  --s1: #0f7ea3;
+  --cpu: #5cc8ea;
+  --off: #4f6c7a;
+}
+:root[data-look="ember"] {
+  --bg: #1c1512;
+  --panel: #251c17;
+  --panel-2: #2e231d;
+  --rule: #40312a;
+  --rule-2: #57443a;
+  --text: #f3e9e2;
+  --muted: #b8a396;
+  --faint: #8b776b;
+  --focus: #ffb98a;
+  --s1: #b5541c;
+  --cpu: #f59a5c;
+  --off: #6e5a4f;
+}
+:root[data-look="rose"] {
+  --bg: #1d1418;
+  --panel: #271b20;
+  --panel-2: #302229;
+  --rule: #432f39;
+  --rule-2: #5a414d;
+  --text: #f5e8ee;
+  --muted: #bfa0ae;
+  --faint: #907482;
+  --focus: #ffadc9;
+  --s1: #b83d6b;
+  --cpu: #f58fb3;
+  --off: #725a65;
+}
+:root[data-look="terminal"] {
+  --bg: #050805;
+  --panel: #0a100a;
+  --panel-2: #101810;
+  --rule: #1c2b1c;
+  --rule-2: #2b422b;
+  --text: #d6f5d6;
+  --muted: #8fbf8f;
+  --faint: #639163;
+  --focus: #7dff9a;
+  --s1: #1c7a35;
+  --cpu: #5ee07f;
+  --good: #5ee07f;
+  --off: #4a6b4a;
+}
+:root[data-look="mint"] {
+  --bg: #eef5f1;
+  --panel: #ffffff;
+  --panel-2: #f4f9f6;
+  --rule: #d6e4dc;
+  --rule-2: #bccfc4;
+  --text: #14261d;
+  --muted: #4a6155;
+  --faint: #6a8074;
+  --focus: #136c47;
+  --s1: #17794f;
+  --s2: #2f72c9;
+  --cpu: #17794f;
+  --mem: #2f72c9;
+  --good: #1f7a4a;
+  --warn: #8f6200;
+  --bad: #b3372a;
+  --off: #9db0a5;
+}
+:root[data-look="lavender"] {
+  --bg: #f2f0f8;
+  --panel: #ffffff;
+  --panel-2: #f7f5fc;
+  --rule: #dcd8ea;
+  --rule-2: #c4bedb;
+  --text: #1f1a33;
+  --muted: #554e70;
+  --faint: #746d8f;
+  --focus: #5b3fb8;
+  --s1: #6447c4;
+  --cpu: #6447c4;
+  --good: #23764a;
+  --warn: #8f6200;
+  --bad: #b3372a;
+  --off: #a9a3c0;
+}
+/* Settings → Appearance: movement off, whatever the device says */
+:root[data-motion="off"] * {
+  transition: none !important;
+  animation: none !important;
+}
 * {
   box-sizing: border-box;
 }
@@ -447,7 +545,9 @@ body.viewer .st-layout {
 main {
   min-width: 0;
   padding: 28px 32px 60px;
-  max-width: 1480px;
+  max-width: var(--page-max, none); /* fills the screen; Settings → Appearance can hold it to a width */
+  width: 100%;
+  margin-inline: auto;
 }
 .view-head {
   display: flex;
@@ -6614,5 +6714,83 @@ body.viewer #svc-add-app {
   }
   .term-bar select {
     flex: 1 1 130px;
+  }
+}
+
+/* ---------- Settings → Appearance: your own touches ---------- */
+/* icons beside the menu's names on a computer (the phone's tab bar always has them) */
+@media (min-width: 821px) {
+  :root[data-navicons] .nav a[data-view] {
+    justify-content: flex-start;
+    gap: 10px;
+  }
+  :root[data-navicons] .nav .nav-ic {
+    display: block;
+    width: 18px;
+    height: 18px;
+    flex: none;
+  }
+  :root[data-navicons] .nav .nav-lbl {
+    flex: 1;
+  }
+}
+.ap-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.ap-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) 1fr;
+  gap: 6px 20px;
+  align-items: center;
+}
+.ap-row > div:first-child b {
+  display: block;
+  font-weight: 600;
+}
+.ap-row > div:first-child small {
+  color: var(--muted);
+  font-size: 13px;
+}
+.ap-row .seg {
+  justify-self: start;
+}
+.ap-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ap-sw {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px 0 8px;
+  border: 1px solid var(--rule-2);
+  border-radius: 99px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.ap-sw i {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgb(128 128 128 / 0.4);
+}
+.ap-sw:hover {
+  border-color: var(--muted);
+}
+.ap-sw[aria-checked="true"] {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 1px var(--focus);
+  font-weight: 600;
+}
+@media (max-width: 820px) {
+  .ap-row {
+    grid-template-columns: 1fr;
   }
 }

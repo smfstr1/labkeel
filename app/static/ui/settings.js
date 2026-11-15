@@ -708,6 +708,56 @@ const Appearance = {
         : `<span class="th-swatch split"></span>`;
       return `<button type="button" class="th-card" role="radio" aria-checked="${name === now}" data-look="${name}">${sw}<span>${label}<small>${note}</small></span></button>`;
     }).join("");
+    const u = UiPrefs.get(),
+      light = effectiveTheme() === "light";
+    const pick = (key, list) =>
+      `<div class="seg" role="radiogroup">${list.map(([v, t]) => `<button type="button" role="radio" aria-checked="${u[key] === v}" aria-pressed="${u[key] === v}" data-ui="${key}" data-v="${v}">${t}</button>`).join("")}</div>`;
+    const row = (title, note, control) =>
+      `<div class="ap-row"><div><b>${title}</b><small>${note}</small></div>${control}</div>`;
+    $("#ap-rows").innerHTML =
+      row(
+        "Accent colour",
+        "Buttons, links, charts and what's selected.",
+        `<div class="ap-swatches" role="radiogroup" aria-label="Accent colour">${ACCENTS.map(
+          a =>
+            `<button type="button" class="ap-sw" role="radio" aria-checked="${u.accent === a[0]}" data-ui="accent" data-v="${a[0]}"><i style="background:${a[0] === "theme" ? "conic-gradient(#6fa8ee, #5fcf9a, #f0b45a, #f58fb3, #b79cf5, #6fa8ee)" : a[light ? 4 : 2]}"></i>${a[1]}</button>`,
+        ).join("")}</div>`,
+      ) +
+      row(
+        "Page width",
+        "On a big screen: use all of it, or hold pages to a width in the middle.",
+        pick("width", [
+          ["fill", "Fill the screen"],
+          ["wide", "Wide"],
+          ["standard", "Standard"],
+        ]),
+      ) +
+      row(
+        "Lettering",
+        "The typeface for everything but logs and code.",
+        pick("font", [
+          ["labkeel", "LabKeel's"],
+          ["system", "This device's"],
+          ["mono", "Fixed-width"],
+        ]),
+      ) +
+      row(
+        "Menu icons",
+        "A small picture beside each page's name in the menu on a computer.",
+        pick("icons", [
+          ["off", "Names only"],
+          ["on", "Icons and names"],
+        ]),
+      ) +
+      row(
+        "Movement",
+        "Rows gliding in, apps folding, menus easing open. Always off if the device asks for less motion.",
+        pick("motion", [
+          ["on", "On"],
+          ["off", "Off"],
+        ]),
+      );
+    $("#ap-reset").disabled = !stored("hd-ui");
     const viewer = document.body.classList.contains("viewer");
     const { order, hidden } = NavPrefs.get();
     const rows = order
@@ -762,5 +812,16 @@ $("#nv-list").addEventListener("click", e => {
 });
 $("#nv-reset").addEventListener("click", () => {
   NavPrefs.set(NavPrefs.usual, []);
+  Appearance.render();
+});
+$("#ap-rows").addEventListener("click", e => {
+  const b = e.target.closest("[data-ui]");
+  if (!b) return;
+  UiPrefs.set(b.dataset.ui, b.dataset.v);
+  Appearance.render();
+  $(`#ap-rows [data-ui="${b.dataset.ui}"][data-v="${b.dataset.v}"]`).focus();
+});
+$("#ap-reset").addEventListener("click", () => {
+  UiPrefs.reset();
   Appearance.render();
 });

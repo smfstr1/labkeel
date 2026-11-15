@@ -242,7 +242,76 @@ const LOOKS = [
   ["dusk", "Dusk", "Soft purple", "dark", "#1a1626", "#221d32", "#b79cf5", "#ebe7f5"],
   ["paper", "Paper", "Warm and light", "light", "#f4efe6", "#fffdf8", "#99560f", "#2a241b"],
   ["contrast", "High contrast", "Black, white and strong edges", "dark", "#000000", "#000000", "#7fc1ff", "#ffffff"],
+  ["ocean", "Ocean", "Deep blue-green", "dark", "#0b1a24", "#10232f", "#5cc8ea", "#e2eff5"],
+  ["ember", "Ember", "Warm and dark", "dark", "#1c1512", "#251c17", "#f59a5c", "#f3e9e2"],
+  ["rose", "Rose", "Dark, with pink", "dark", "#1d1418", "#271b20", "#f58fb3", "#f5e8ee"],
+  ["terminal", "Terminal", "Green on black", "dark", "#050805", "#0a100a", "#5ee07f", "#d6f5d6"],
+  ["mint", "Mint", "Light and green", "light", "#eef5f1", "#ffffff", "#17794f", "#14261d"],
+  ["lavender", "Lavender", "Light and purple", "light", "#f2f0f8", "#ffffff", "#6447c4", "#1f1a33"],
 ];
+// Your own touches on top of the theme (Settings → Appearance), kept in this browser as "hd-ui".
+// An accent: [name, label, on dark themes: the colour and its lighter focus ring, on light themes: the same two]
+const ACCENTS = [
+  ["theme", "The theme's own"],
+  ["blue", "Blue", "#6fa8ee", "#9cc6ff", "#2863b0", "#1f5aa8"],
+  ["teal", "Teal", "#4fc3c7", "#8be0e3", "#0c6f74", "#0a6166"],
+  ["green", "Green", "#5fcf9a", "#8fe0b5", "#1b7a4e", "#125c39"],
+  ["amber", "Amber", "#f0b45a", "#ffd08a", "#8f5a06", "#6f4504"],
+  ["orange", "Orange", "#f59a5c", "#ffb98a", "#a64a14", "#823808"],
+  ["rose", "Rose", "#f58fb3", "#ffadc9", "#b0325f", "#8a2449"],
+  ["purple", "Purple", "#b79cf5", "#c9b3ff", "#6447c4", "#4c33a0"],
+];
+const UI_CHOICES = {
+  accent: ACCENTS.map(a => a[0]),
+  width: ["fill", "wide", "standard"],
+  font: ["labkeel", "system", "mono"],
+  icons: ["off", "on"],
+  motion: ["on", "off"],
+};
+const UI_WIDTHS = { fill: null, wide: "2000px", standard: "1480px" };
+const UI_FONTS = {
+  labkeel: null,
+  system: 'system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif',
+  mono: 'ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace',
+};
+const UiPrefs = {
+  get() {
+    let d = null;
+    try {
+      d = JSON.parse(stored("hd-ui") || "null");
+    } catch {}
+    const out = {};
+    for (const [k, okay] of Object.entries(UI_CHOICES)) out[k] = okay.includes(d?.[k]) ? d[k] : okay[0];
+    return out;
+  },
+  set(key, value) {
+    const now = { ...this.get(), [key]: value };
+    const usual = Object.entries(UI_CHOICES).every(([k, okay]) => now[k] === okay[0]);
+    store("hd-ui", usual ? null : JSON.stringify(now));
+    applyTheme();
+  },
+  reset() {
+    store("hd-ui", null);
+    applyTheme();
+  },
+  apply() {
+    const u = this.get(),
+      root = document.documentElement,
+      put = (name, v) => (v == null ? root.style.removeProperty(name) : root.style.setProperty(name, v));
+    const a = ACCENTS.find(x => x[0] === u.accent),
+      light = effectiveTheme() === "light";
+    const own = a[0] === "theme";
+    put("--cpu", own ? null : a[light ? 4 : 2]);
+    put("--s1", own ? null : a[light ? 4 : 2]);
+    put("--focus", own ? null : a[light ? 5 : 3]);
+    put("--page-max", UI_WIDTHS[u.width]);
+    put("--sans", UI_FONTS[u.font]);
+    if (u.icons === "on") root.dataset.navicons = "1";
+    else delete root.dataset.navicons;
+    if (u.motion === "off") root.dataset.motion = "off";
+    else delete root.dataset.motion;
+  },
+};
 function stored(key) {
   try {
     return localStorage.getItem(key);
@@ -277,6 +346,7 @@ function paintTheme() {
   else delete root.dataset.theme;
   if (look[3] && look[0] !== look[3]) root.dataset.look = look[0];
   else delete root.dataset.look;
+  UiPrefs.apply();
 }
 function applyTheme() {
   paintTheme();

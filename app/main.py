@@ -1162,6 +1162,23 @@ _PROBE_TLS.verify_mode = ssl.CERT_NONE  # an up/down check: it sends nothing but
 _probe = urllib.request.build_opener(urllib.request.HTTPSHandler(context=_PROBE_TLS))
 
 
+def _knock(host, port, timeout=3, tls=False):
+    """Is something listening there? Raises OSError if nothing accepts the connection. On a port that speaks
+    HTTPS (tls), the greeting is finished before hanging up, so the server's log isn't filled with "TLS handshake
+    error … EOF" every time it's checked. The certificate isn't judged (this asks "is it up?", often by
+    127.0.0.1), and a server that turns out not to speak HTTPS still counts as up: it answered."""
+    with socket.create_connection((host, int(port)), timeout=timeout) as sock:
+        if tls:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE  # nothing is sent or trusted: see above
+            try:
+                with ctx.wrap_socket(sock, server_hostname=None):
+                    pass
+            except (ssl.SSLError, OSError):
+                pass
+
+
 def _http_probe(url, timeout):
     """Up if anything below HTTP 500 answers. If the page itself misbehaves but the port is open
     (some router admin pages do), count it as up rather than down."""
@@ -1179,8 +1196,8 @@ def _http_probe(url, timeout):
         u = urllib.parse.urlsplit(url)
         port = u.port or (443 if u.scheme == "https" else 80)
         try:
-            with socket.create_connection((u.hostname, port), timeout=3):
-                return True, "Reachable (page was slow or unusual)"
+            _knock(u.hostname, port, 3, tls=u.scheme == "https")
+            return True, "Reachable (page was slow or unusual)"
         except OSError:
             raise first
 
@@ -1243,8 +1260,7 @@ def check_service(svc):
         if kind == "http":
             ok, detail = _http_probe(chk.get("url") or url, chk.get("timeout", 6))
         elif kind == "tcp":
-            with socket.create_connection((chk["host"], int(chk["port"])), timeout=chk.get("timeout", 3)):
-                pass
+            _knock(chk["host"], chk["port"], chk.get("timeout", 3), tls=bool(chk.get("tls")))
             ok, detail = True, None
         elif kind == "bedrock":
             host, port = chk.get("host"), chk.get("port")
