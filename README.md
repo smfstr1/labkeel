@@ -22,6 +22,7 @@
 - **Files**: browse, upload, edit, move and delete files, with a Bin you can restore from
 - **Services**: links to everything you run, each with a live up/down check
 - **Apps**: add Jellyfin, Immich, Home Assistant and more in a couple of clicks, as ordinary Docker Compose
+- **Clusters**: name machines you look after together, and see (and, if you turn it on, run) a Docker Swarm across them
 - **Several servers**: your NAS, Raspberry Pi or second server on the same dashboard, through a small agent,
   with their files on the Files page too: copy and move between machines, side by side, every file checked
 - **Alerts**: to ntfy or Discord when something needs attention
@@ -33,11 +34,8 @@ Simple, lightweight, and open-source, LabKeel is a hardware and docker dashboard
 
 LabKeel can restart your server, change ZFS pools and edit files. It needs privileged access
 to the machine to do that, so those features start switched off; turn on only the ones you need.
-
-Keep your information off the open internet, use a VPN!
-
-Only make admin accounts for people you'd trust with full
-control of the server. See [SECURITY.md](SECURITY.md) to take a deeper look on how it's protected.
+Keep it off the open internet, and only make admin accounts for people you'd trust with full
+control of the server. See [SECURITY.md](SECURITY.md) for how it's protected.
 
 ## Screenshots
 ![The Overview page with live CPU, memory, GPU and network stats](images/main.png)
@@ -118,6 +116,7 @@ updating and uninstalling, is in **[INSTALL.md](INSTALL.md)**.
 - [Settings](docs/settings.md): every `docker-compose.yml` setting
 - [Services](docs/services.md): adding your apps to the Services page
 - [Apps](docs/apps.md): adding an app from the catalogue, or your own compose file
+- [Clusters](docs/clusters.md): groups of servers, and Docker Swarm across them
 - [Several servers](docs/servers.md): showing your other machines, with LabKeel's agent
 - [Updates](docs/updates.md): how container and LabKeel updates work
 - [SECURITY.md](SECURITY.md): what LabKeel can do to your machine, and how it's protected
@@ -139,4 +138,4 @@ commands switched off.
 See [LICENSE](LICENSE). The bundled fonts, Hanken Grotesk and JetBrains Mono, are under the
 SIL Open Font License; their licences are in `app/static/fonts`.
 
-'**Lab**' is what it's supporting, and '**Keel**' is like the Keel of a ship! (Google it.)
+'**Lab**' is what it's supporting, '**Keel**' like the Keel of a ship! (Google it.)

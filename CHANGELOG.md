@@ -26,18 +26,68 @@
   layout stay as they are. Docker Compose checks the new file first, and the old one is kept as
   `docker-compose.yml.bak`. **Settings → LabKeel** shows when the file is behind and can do the same after an
   update by hand. See `docs/updates.md`.
-- **Apps.** A catalogue of 18 popular self-hosted apps (Jellyfin, Plex, Immich, Home Assistant, the *arr apps,
+- **Apps.** A catalogue of 19 popular self-hosted apps (Jellyfin, Plex, Immich, Home Assistant, the *arr apps,
   qBittorrent, Nextcloud, Vaultwarden, Pi-hole, Minecraft Bedrock and more), or your own compose file. Fill in a
   folder or two and LabKeel writes the compose file into the app's own folder (`/srv/labkeel/apps/<app>`),
   pulls and starts it, waits until it answers, and adds it to Services. Everything it makes is ordinary Docker
   Compose. Removing an app stops it and keeps its folder and data; adding it again picks them up. Off until
   `LABKEEL_ALLOW_APP_INSTALLS=1`; admins only, password again, every step logged. See `docs/apps.md`.
+- **HTTPS for the apps that need it.** Vaultwarden (your own Bitwarden-compatible password manager) and the new
+  ownCloud (Infinite Scale) are only added over HTTPS, and their plain web port is never opened to the network.
+  Choose Tailscale (its trusted certificate, served with `tailscale serve`, switched off again when you remove
+  the app) or a certificate made here (a small Caddy container in front of the app). The dialog says if
+  Tailscale can't be used and why. See `docs/apps.md`.
+- **Containers page, tidied.** Containers are grouped by the app (compose project) they belong to. Each app's
+  heading shows how many are running and its total CPU and memory, folds away with a click (remembered in the
+  browser, with Collapse all / Expand all), has a tick box that selects all of its containers, and Start,
+  Restart and Stop buttons for the whole app. The row of All / Running / Stopped / Needs attention / Updates
+  buttons is now one **Filter** button that shows what's chosen and how many containers each choice has.
+- **A clearer log.** A container's log is shown as a terminal: dark in every theme, with errors and warnings
+  picked out, your search highlighted, shorter timestamps, a count of lines and errors, and labelled buttons for
+  Live (follow or hold still), Wrap, Copy, Download and Refresh, plus a "Latest" button when you've scrolled up.
+- **Movement.** Rows arrive in turn when a filter or search changes, apps glide open and shut, menus, the
+  selection bar and messages ease in, and buttons respond to a press. All of it is switched off when the device
+  asks for reduced motion.
+- **ownCloud signs you in.** Added over Tailscale, ownCloud could sit on "Logging you in" for ever: signing in,
+  it calls the address you open it by, and from inside Docker that address timed out. Inside its container that
+  address now means the container itself, and the HTTPS in front hands it traffic over HTTPS. An ownCloud added
+  before needs three lines changed by hand: see "ownCloud stuck on Logging you in" in `docs/apps.md`.
+- **Nextcloud installs ready to use.** Adding Nextcloud now brings PostgreSQL, Redis and its background jobs
+  with it, already connected, with a database password made for it and kept in a root-only `.env` (never in
+  the compose file or the dialog). Its first page asks only for the admin's name and password. It's served over
+  HTTPS like Vaultwarden (Tailscale, or a certificate made here) and told its own address, so there is no
+  "untrusted domain" page. It uses the official `nextcloud:apache` image; a Nextcloud added before keeps
+  working as it was. See `docs/apps.md`.
+- **Choose where an app's data is kept.** The Add dialog has a "Where its data is kept" box: LabKeel's apps
+  folder (as before), any mounted ZFS pool or dataset, or another drive, each with its free space. On a pool,
+  LabKeel can make a dataset just for the app, with an optional size limit (a quota) and, if you tick it, that
+  much space set aside (a reservation). The app's folders move there by themselves; its compose file stays with
+  the others. Making a dataset also needs `LABKEEL_ALLOW_ZFS_CHANGES=1`; a folder on a pool or drive doesn't.
+  Removing the app keeps the dataset and its data. See `docs/apps.md`.
+- **Themes.** Settings → Appearance has nine themes: match the device, Dark, Light, Midnight (true black),
+  Graphite, Forest, Dusk, Paper and High contrast. Every account chooses its own, viewers included (a viewer's
+  Settings is this page only). Kept in the browser, so each device can differ.
+- **Your own menu.** On the same page, put the pages in the menu in the order you use them and hide the ones you
+  don't. A hidden page still opens from a link or its address; Settings can't be hidden.
+- **Tidier file controls.** The Files toolbar is one row: filter and search on the left, Upload files and New
+  folder on the right, and the less-used actions (New file, Upload folder, Folder size, Bin, Keyboard shortcuts)
+  under More. The selection bar's Clear button sits apart from the actions, on the right.
+- **Clusters.** A new page for machines you look after together. A **group of servers** is a name for machines
+  LabKeel already knows, shown side by side with their load, containers and problems; nothing is installed or
+  changed on them. **Docker Swarm** shows a Swarm's nodes, services and where each copy runs, whether its managers
+  can still agree ("Can it survive a failure?"), and recent failed tasks. With `LABKEEL_ALLOW_CLUSTER_CHANGES=1`
+  admins can start a Swarm, show the command to join a machine, drain a machine (after seeing what will move and
+  what can't), add, scale, restart and remove services, and leave; every change is admin-only, asks for the
+  password again and is logged, and a join token is never stored or logged. Kubernetes is shown as "later".
+  See `docs/clusters.md`.
 - **Several servers.** Add your other machines (a NAS, a Raspberry Pi, a second server): each runs LabKeel's
   small agent (`agent.compose.yml`), which joins with a one-time code and reports over HTTPS. The Servers page
   shows them all with totals, each has its own page (figures, containers, storage, drive health), a switcher
   sits beside the machine's name, **Containers → All servers** lists every container, and alerts cover them
   too. The agent checks it's talking to your LabKeel before sending anything and opens no port; the
   machine's containers and settings are shown, not changed. See `docs/servers.md`.
+- **Fold a pool away.** The arrow beside a pool's name on the Storage page folds it down to one line
+  (name, health and how full it is). This browser remembers which pools you've folded.
 
 ### Faster and lighter
 - **LabKeel uses about half the CPU it did** (idle, 0.5% of a core instead of 1.1%; with the Overview open,

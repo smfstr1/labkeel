@@ -293,7 +293,7 @@ up in the Files page:
       - /home/you/documents:/browse/docs:ro   # :ro = look, don't touch
 ```
 
-**Choose your powers.** LabKeel starts out careful. These four are off until you switch them on:
+**Choose your powers.** LabKeel starts out careful. These five are off until you switch them on:
 
 | Setting | Set to `1` to let LabKeel… |
 | --- | --- |
@@ -301,6 +301,7 @@ up in the Files page:
 | `LABKEEL_ALLOW_ZFS_CHANGES` | create and change ZFS pools, datasets and snapshots |
 | `LABKEEL_ALLOW_RESTART` | restart and shut down the machine |
 | `LABKEEL_ALLOW_APP_INSTALLS` | add apps from its catalogue, such as Jellyfin or Immich ([docs/apps.md](docs/apps.md)) |
+| `LABKEEL_ALLOW_CLUSTER_CHANGES` | start, join and change a Docker Swarm, such as draining a machine or scaling a service ([docs/clusters.md](docs/clusters.md)) |
 
 Not sure? Leave them at `0`. You can watch everything without them, and switch them on later.
 
