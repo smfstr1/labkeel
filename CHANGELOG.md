@@ -30,6 +30,9 @@
 - **A drive that can't be read is no longer called healthy.** A card reader or enclosure that answers with
   nothing, or doesn't answer at all, now shows as "Unknown" with a plain reason, instead of counting towards
   "All drives healthy" or showing the raw command that timed out. What's mounted on such a drive is still found.
+- **App totals line up on the Containers page.** Each app's CPU and memory now sit under the CPU and Memory
+  headings instead of beside its name, and LabKeel's red Restart and Stop buttons look the same size as the
+  buttons on the other apps.
 - **No more "TLS handshake error … EOF" in an app's log.** The Services check on an app served over HTTPS
   (ownCloud, Vaultwarden, Nextcloud) used to open a connection and hang up, which the app logged as a failed
   handshake every 30 seconds. It now finishes the greeting first. Your own port checks can do the same with

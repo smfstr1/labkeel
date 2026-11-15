@@ -226,11 +226,12 @@ function renderContainers() {
           : ""
         : `<span class="cg-acts">${mine.some(c => c.state !== "running") ? act("start", "Start", ICON_START) : ""}${mine.some(c => c.state === "running") ? act("restart", "Restart", ICON_RESTART) + act("stop", "Stop", ICON_STOP) : ""}</span>`;
     html += `<section class="cg${folded ? " folded" : ""}" data-group="${esc(k)}">
-      <div class="cgroup"><button class="cg-fold" type="button" aria-expanded="${!folded}" aria-label="${esc(k)}: show or hide its containers"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5 8 6l-4 3.5"/></svg></button>
+      <div class="cgroup"><span class="cg-lead"><button class="cg-fold" type="button" aria-expanded="${!folded}" aria-label="${esc(k)}: show or hide its containers"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5 8 6l-4 3.5"/></svg></button>
         <input type="checkbox" class="csel cg-all" aria-label="Select every container in ${esc(k)}"${picked && picked === mine.length ? " checked" : ""}${mine.length ? "" : " disabled"}>
         <b class="cg-name">${esc(k === "Standalone" ? "Standalone containers" : k)}</b>
         <span class="cg-pill ${pill}"><i></i>${up} of ${list.length} running</span>${upd ? `<em class="upd">${upd} update${upd === 1 ? "" : "s"}</em>` : ""}
-        <span class="cg-sum">${up ? `CPU ${cpu.toFixed(1)}% · ${fmtBytes(mem, false)}` : ""}</span>${acts}</div>
+        <span class="cg-sum">${up ? `CPU ${cpu.toFixed(1)}% · ${fmtBytes(mem, false)}` : ""}</span></span>
+        <span class="cg-num cg-cpu">${up ? `${cpu.toFixed(1)}%` : ""}</span><span class="cg-num cg-mem">${up ? fmtBytes(mem, false) : ""}</span>${acts}</div>
       <div class="cg-body"><div class="cg-in">`;
     for (const c of list) {
       const st = c.stats || {},

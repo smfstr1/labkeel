@@ -1250,9 +1250,12 @@ section + section {
   background: var(--panel);
   overflow: hidden;
 }
+.ctable {
+  --ccols: minmax(180px, 2.2fr) 130px 90px minmax(110px, 1fr) minmax(130px, 1.1fr) 140px minmax(90px, 1fr); /* one set of columns for the headings, the app rows and the container rows */
+}
 .crow {
   display: grid;
-  grid-template-columns: minmax(180px, 2.2fr) 130px 90px minmax(110px, 1fr) minmax(130px, 1.1fr) 140px minmax(90px, 1fr);
+  grid-template-columns: var(--ccols);
   gap: 14px;
   align-items: center;
   padding: 10px 16px;
@@ -6813,11 +6816,14 @@ body.viewer #svc-add-app {
 }
 .cg-acts .btn.danger-fill {
   background: var(--bad);
-  border-color: var(--bad);
+  /* the red stops inside the border, so the block reads the same size as the outlined buttons beside it */
+  background-clip: padding-box;
+  border-color: transparent;
   color: #fff;
 }
 .cg-acts .btn.danger-fill:hover {
   background: color-mix(in srgb, var(--bad) 85%, #000);
+  background-clip: padding-box;
 }
 .self-splash {
   position: fixed;
@@ -6893,4 +6899,49 @@ body.viewer #svc-add-app {
 .s-hidden b {
   color: var(--muted);
   font-weight: 600;
+}
+
+/* ---------- Containers: an app's totals sit under the CPU and Memory headings ---------- */
+.cg-lead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.cg-num {
+  display: none;
+}
+@media (min-width: 1101px) {
+  .cgroup {
+    display: grid;
+    grid-template-columns: var(--ccols);
+    gap: 14px;
+    padding: 8px 16px;
+  }
+  .cg-lead {
+    grid-column: 1 / span 3;
+    margin-left: -6px; /* the fold arrow hangs in the row's padding */
+  }
+  .cg-lead .cg-sum {
+    display: none;
+  }
+  .cg-num {
+    display: block;
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .cg-cpu {
+    grid-column: 4;
+  }
+  .cg-mem {
+    grid-column: 5;
+  }
+  .cg-acts {
+    grid-column: 6 / -1;
+    justify-self: end;
+  }
 }
