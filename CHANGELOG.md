@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.5-alpha
+
+### Added
+
+- **Pages fill the screen.** Every page now uses the full width of the window, so a wide or ultrawide monitor
+  isn't left half empty. Settings → Appearance → Page width can hold pages to a width in the middle instead
+  (Wide, 2000 px, or Standard, 1480 px, as before).
+- **Six more themes.** Ocean, Ember, Rose, Terminal (green on black), Mint and Lavender, making fifteen.
+- **Your own touches.** Settings → Appearance also has an accent colour (seven, or the theme's own) for buttons,
+  links and charts; the lettering (LabKeel's, the device's, or fixed-width); icons beside the names in the menu;
+  and a switch for movement. Kept in the browser, per person, with one button to put them all back.
+
+### Fixed
+
+- **No more "TLS handshake error … EOF" in an app's log.** The Services check on an app served over HTTPS
+  (ownCloud, Vaultwarden, Nextcloud) used to open a connection and hang up, which the app logged as a failed
+  handshake every 30 seconds. It now finishes the greeting first. Your own port checks can do the same with
+  `"tls": true` (see `docs/services.md`). Nothing else about the check changes: a port that answers is up.
+
 ## 0.2.2-alpha
 
 ### Added
