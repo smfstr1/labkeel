@@ -215,9 +215,15 @@ function renderContainers() {
     const pill = trouble ? "warn" : up === list.length ? "good" : up ? "" : "off";
     const act = (a, label, icon) =>
       `<button class="btn small" type="button" data-gact="${a}" title="${label} every container in ${esc(k)}">${icon} ${label}</button>`;
-    const acts =
-      viewer || !mine.length
-        ? ""
+    const self = list.find(c => c.is_self && c.state === "running");
+    const selfBtn = (a, label, icon) =>
+      `<button class="btn small danger-fill" type="button" data-selfact="${a}" data-id="${esc(self.id)}" title="${label} the LabKeel dashboard itself">${icon} ${label}</button>`;
+    const acts = viewer
+      ? ""
+      : !mine.length
+        ? self // the app is LabKeel itself: its own buttons, in red
+          ? `<span class="cg-acts">${selfBtn("restart", "Restart", ICON_RESTART)}${selfBtn("stop", "Stop", ICON_STOP)}</span>`
+          : ""
         : `<span class="cg-acts">${mine.some(c => c.state !== "running") ? act("start", "Start", ICON_START) : ""}${mine.some(c => c.state === "running") ? act("restart", "Restart", ICON_RESTART) + act("stop", "Stop", ICON_STOP) : ""}</span>`;
     html += `<section class="cg${folded ? " folded" : ""}" data-group="${esc(k)}">
       <div class="cgroup"><button class="cg-fold" type="button" aria-expanded="${!folded}" aria-label="${esc(k)}: show or hide its containers"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5 8 6l-4 3.5"/></svg></button>
@@ -251,6 +257,8 @@ const cGroupList = el => {
 };
 $("#c-table").addEventListener("click", e => {
   if (e.target.closest("a, input")) return;
+  const own = e.target.closest("[data-selfact]");
+  if (own) return containerAction(own.dataset.id, own.dataset.selfact);
   const act = e.target.closest("[data-gact]");
   if (act) {
     const k = act.closest(".cg").dataset.group;
@@ -646,8 +654,12 @@ const Logs = {
         ? btn("unpause", `${ICON_START} Resume`, " primary") +
           (c.is_self ? "" : btn("stop", `${ICON_STOP} Stop`, " danger"))
         : run
-          ? btn("restart", `${ICON_RESTART} Restart`) +
-            (c.is_self ? "" : btn("pause", "Pause") + btn("stop", `${ICON_STOP} Stop`, " danger"))
+          ? c.is_self // LabKeel's own container: both in red, and both ask first (see containerAction)
+            ? btn("restart", `${ICON_RESTART} Restart LabKeel`, " danger-fill") +
+              btn("stop", `${ICON_STOP} Stop LabKeel`, " danger-fill")
+            : btn("restart", `${ICON_RESTART} Restart`) +
+              btn("pause", "Pause") +
+              btn("stop", `${ICON_STOP} Stop`, " danger")
           : btn("start", `${ICON_START} Start`, " primary") + (c.is_self ? "" : btn("remove", "Remove…", " danger"));
   },
   follow(on) {
@@ -770,10 +782,7 @@ async function containerAction(cid, action) {
     }
     try {
       const r = await apiSend(`/api/containers/${encodeURIComponent(cid)}/action`, { action });
-      if (r.self) {
-        toast("Restarting LabKeel. This page reconnects by itself in a few seconds.");
-        return;
-      }
+      if (r.self) return SelfSplash.show(r.stopped);
       toast(`${words[2]} ${name}`, "good");
       if (action === "remove") {
         Drawer.close();
@@ -790,6 +799,29 @@ async function containerAction(cid, action) {
     }
   };
   if (action === "start" || action === "unpause") return go();
+  if (c.is_self) {
+    // LabKeel's own container: say plainly what's about to happen before anything does
+    const stop = action === "stop";
+    return Confirm.open({
+      title: stop ? "Stop the LabKeel dashboard?" : "Restart the LabKeel dashboard?",
+      ok: stop ? "Stop LabKeel" : "Restart LabKeel",
+      typed: stop ? "stop" : null,
+      typedLabel: "Type stop to confirm",
+      body: `<div class="self-warn" role="alert"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20.5h20L12 3Z"/><path d="M12 10v5M12 18v.01"/></svg>
+        <div><b>This is LabKeel itself.</b> ${
+          stop
+            ? "Stopping it turns this dashboard off for everyone, on every device."
+            : "Restarting it takes this dashboard away for everyone for a few seconds."
+        }</div></div>
+        ${
+          stop
+            ? `<p><b>You can't start it again from here</b>, because there'll be no page to do it from. On the machine, in LabKeel's folder, run:</p><pre class="code-box">sudo docker compose up -d</pre>
+               <p>Your apps and other containers keep running. Alerts, update checks and history stop until LabKeel is back. It asks for your password.</p>`
+            : `<p>This page waits and comes back by itself. Your apps and other containers aren't touched. Anything in progress here (an upload, an app being added, an update) is cut short.</p>`
+        }`,
+      onOk: go,
+    });
+  }
   const p = playersOn(c);
   const busy = p.length
     ? `<p class="tag warn">${p.map(x => `${x.n} player${x.n === 1 ? " is" : "s are"} on ${esc(x.name)}`).join(", ")}. They'll be disconnected.</p>`
@@ -810,6 +842,46 @@ async function containerAction(cid, action) {
     onOk: go,
   });
 }
+
+// The screen left behind when LabKeel has stopped or is restarting itself: it says so, and comes back by itself.
+const SelfSplash = {
+  show(stopped) {
+    Drawer.close();
+    document.querySelector(".self-splash")?.remove();
+    const el = document.createElement("div");
+    el.className = "self-splash";
+    el.setAttribute("role", "alertdialog");
+    el.setAttribute("aria-modal", "true");
+    el.setAttribute("aria-label", stopped ? "LabKeel has stopped" : "LabKeel is restarting");
+    el.innerHTML = stopped
+      ? `<div><span class="self-dot off" aria-hidden="true"></span><h2>LabKeel has stopped</h2>
+           <p>The dashboard is off. Your apps and other containers are still running.</p>
+           <p>To start it again, on the machine, in LabKeel's folder:</p><pre class="code-box">sudo docker compose up -d</pre>
+           <p class="muted">This page comes back by itself once LabKeel is running.</p></div>`
+      : `<div><span class="spin big" aria-hidden="true"></span><h2>LabKeel is restarting</h2>
+           <p>This page comes back by itself, usually within a few seconds.</p>
+           <p class="muted" id="self-wait"></p></div>`;
+    document.body.appendChild(el);
+    el.tabIndex = -1;
+    el.focus();
+    const began = Date.now();
+    let gone = stopped; // a restart: wait until it has actually gone away before watching for it to return
+    const look = async () => {
+      let up = false;
+      try {
+        up = (await fetch("/login", { cache: "no-store", redirect: "manual" })).status < 500;
+      } catch {}
+      if (!up) gone = true;
+      if (up && (gone || Date.now() - began > 20000)) return location.reload();
+      const w = el.querySelector("#self-wait");
+      if (w && Date.now() - began > 45000)
+        w.textContent =
+          "It's taking longer than usual. If it doesn't return, run sudo docker compose up -d in LabKeel's folder.";
+      setTimeout(look, 2000);
+    };
+    setTimeout(look, stopped ? 12000 : 2500);
+  },
+};
 
 let toastTimer = null;
 function toast(msg, kind = "") {

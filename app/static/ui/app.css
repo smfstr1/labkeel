@@ -6794,3 +6794,103 @@ body.viewer #svc-add-app {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- LabKeel stopping or restarting itself ---------- */
+.self-warn {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 1px solid var(--bad);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+  color: var(--text);
+  line-height: 1.5;
+}
+.self-warn svg {
+  flex: none;
+  color: var(--bad);
+}
+.cg-acts .btn.danger-fill {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #fff;
+}
+.cg-acts .btn.danger-fill:hover {
+  background: color-mix(in srgb, var(--bad) 85%, #000);
+}
+.self-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(6px);
+  text-align: center;
+  animation: fade-in 0.25s ease-out;
+}
+.self-splash > div {
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.self-splash h2 {
+  margin: 6px 0 0;
+  font-size: 26px;
+}
+.self-splash p {
+  margin: 0;
+  line-height: 1.5;
+}
+.self-splash .code-box {
+  margin: 4px 0;
+  text-align: left;
+}
+.self-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bad);
+}
+.spin.big {
+  width: 34px;
+  height: 34px;
+  border-width: 3px;
+}
+
+/* ---------- Storage: taking a drive off the dashboard ---------- */
+.dt-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  margin: -4px -6px -4px 0;
+  border-radius: 6px;
+  color: var(--faint);
+  cursor: pointer;
+}
+.dt-remove:hover,
+.dt-remove:focus-visible {
+  background: color-mix(in srgb, var(--bad) 16%, transparent);
+  color: var(--bad);
+}
+.dt-remove:focus-visible {
+  outline: 2px solid var(--focus);
+}
+.s-hidden {
+  margin: 12px 0 0;
+  font-size: 13.5px;
+  text-align: center;
+}
+.s-hidden[hidden] {
+  display: none;
+}
+.s-hidden b {
+  color: var(--muted);
+  font-weight: 600;
+}

@@ -324,19 +324,21 @@ def _display(c):
 
 def act(c, action, force=False):
     """Do one action to one container. Returns a short result; raises ActionRefused with a reason.
-    - LabKeel can restart itself (it answers first, then goes) but never stops, pauses or removes itself,
-      or there'd be nothing left to undo it with.
+    - LabKeel can restart itself, and stop itself (it answers first, then goes). Stopping asks for the password
+      (see the endpoint) because nothing here can start it again: that takes docker compose up -d on the
+      machine. It never pauses or removes itself, and is left alone when several are acted on at once.
     - Stop and restart give the container 30 s to shut down cleanly (game servers save their world).
     - Remove only removes a stopped container unless `force`, in which case it's stopped first. Its volumes
       are kept. A container from a compose project comes back the next time that project is started."""
     name = _display(c)
     is_self = bool(SELF_ID) and c.id == SELF_ID
-    if is_self and action != "restart" and action != "start":
+    if is_self and action not in ("restart", "stop", "start"):
         raise ActionRefused(409, f"LabKeel can't {action} itself, or there'd be no way to undo it from here.")
-    if is_self and action == "restart":
-        U().log("container", f"Restarted {name} (LabKeel itself)")
-        threading.Timer(1.0, lambda: c.restart(timeout=10)).start()  # answer first, then go
-        return {"self": True}
+    if is_self and action in ("restart", "stop"):
+        U().log("container", f"{ACTIONS[action][0]} {name} (LabKeel itself)"
+                             + (". Start it again on the machine with docker compose up -d" if action == "stop" else ""))
+        threading.Timer(1.0, lambda: getattr(c, action)(timeout=10)).start()  # answer first, then go
+        return {"self": True, "stopped": action == "stop"}
     with _action_lock:
         if c.id in _busy:
             raise ActionRefused(409, f"{name} is already busy with something else. Try again in a moment.")
@@ -381,10 +383,13 @@ def _check_action(action, request, body):
 
 @router.post("/api/containers/{cid}/action")
 def api_container_action(cid: str, request: Request, body: dict = Body(...)):
-    """Start, stop, restart, pause, resume ("unpause") or remove one container. Removing asks for the password."""
+    """Start, stop, restart, pause, resume ("unpause") or remove one container. Removing asks for the password,
+    and so does stopping LabKeel itself."""
     action = body.get("action")
     _check_action(action, request, body)
     c = _get(cid)
+    if action == "stop" and SELF_ID and c.id == SELF_ID:
+        sys.modules["security"].confirm_password(request, body.get("password"))   # the page can't undo this one
     try:
         out = act(c, action, force=bool(body.get("force")))
     except ActionRefused as e:

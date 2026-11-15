@@ -45,6 +45,31 @@ function renderDrives() {
 function driveKey(x) {
   return x.serial || x.device || "";
 }
+// A drive can be taken off the dashboard only while nothing uses it: not mounted, and not in a pool.
+function driveRemovable(x) {
+  return !(x.mounts || []).length && !(x.pools || []).length && !mountsOf(x).length;
+}
+function hideDrive(key) {
+  const x = (S.drives?.items || []).find(d => driveKey(d) === key);
+  if (!x) return;
+  const name = driveName(x);
+  Confirm.open({
+    title: `Remove ${name} from the dashboard?`,
+    body: `<p style="margin:0">LabKeel stops showing this drive, checking its health and alerting about it. <b>Nothing on the drive is touched</b>, and it stays connected to the machine.</p>
+      <p style="margin:0">It comes back by itself if it's mounted or added to a pool. You can also show it again from the foot of the drives on this page.</p>`,
+    ok: "Remove from dashboard",
+    onOk: async () => {
+      try {
+        await apiSend("/api/drives/hide", { drive: key });
+        Drawer.close();
+        toast(`Removed ${name} from the dashboard`, "good");
+        await loadDrives();
+      } catch (e) {
+        if (!e.cancelled) toast(e.message, "bad");
+      }
+    },
+  });
+}
 // short label for the pill; the full reason (detail) goes in the summary and the details panel
 function driveStatus(x) {
   const detail = (x.issues || [])[0] || "";
@@ -146,7 +171,11 @@ function tileHtml(x, showUse, z) {
           ${main.size ? `<span class="bar"><i class="${pctClass(main.percent)}" style="width:${Math.max(main.percent, 1)}%"></i></span>` : ""}</span>`;
   }
   return `<button type="button" class="dtile ${st.cls}" data-drive="${esc(key)}" aria-label="${esc(driveName(x))}, ${esc(st.text)}. Show details">
-    <span class="dt-head"><span class="dt-name">${esc(driveName(x))}</span><span class="pill ${st.cls}" title="${esc(st.detail || st.text)}">${esc(st.text)}</span></span>
+    <span class="dt-head"><span class="dt-name">${esc(driveName(x))}</span><span class="pill ${st.cls}" title="${esc(st.detail || st.text)}">${esc(st.text)}</span>${
+      showUse && driveRemovable(x)
+        ? `<span class="dt-remove admin-only" role="button" tabindex="0" data-hide="${esc(key)}" title="Remove ${esc(driveName(x))} from the dashboard" aria-label="Remove ${esc(driveName(x))} from the dashboard"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="m3 3 8 8M11 3l-8 8"/></svg></span>`
+        : ""
+    }</span>
     <span class="dt-sub" title="${esc(sub)}">${esc(sub || "Unknown drive")}</span>
     <span class="dt-stats">${driveStats(x)
       .map(([v, l, c]) => `<span class="${c}"><b title="${esc(v)}">${esc(v)}</b><small>${esc(l)}</small></span>`)
@@ -402,9 +431,22 @@ function renderDriveLayout() {
   renderCases();
   // everything else, with what's on it
   const rest = drives.filter(x => !inPool(x)).sort(byName);
-  $("#s-other-sec").classList.toggle("hidden", !rest.length);
   $("#s-other-title").textContent = poolNames.length ? "Other drives" : "Drives";
   $("#s-other").innerHTML = rest.map(x => tileHtml(x, true)).join("");
+  // the drives you've removed from the dashboard, and the way back
+  const gone = S.drives?.hidden || [];
+  $("#s-other-sec").classList.toggle("hidden", !rest.length && !gone.length);
+  $("#s-hidden").hidden = !gone.length;
+  $("#s-hidden").innerHTML = gone.length
+    ? `${gone.length === 1 ? "1 drive" : `${gone.length} drives`} removed from the dashboard: ${gone
+        .map(
+          h =>
+            `<span class="s-gone"><b>${esc(h.name || h.key)}</b> <button class="linkbtn admin-only" type="button" data-unhide="${esc(h.key)}">Show again</button></span>`,
+        )
+        .join(
+          ", ",
+        )}${gone.length > 1 ? ` <button class="linkbtn admin-only" type="button" data-unhide-all>Show all</button>` : ""}`
+    : "";
   layoutTiles();
 }
 
@@ -464,9 +506,31 @@ $("#view-storage").addEventListener("click", e => {
   if (on) return memberAction(on.dataset.pool, on.dataset.online, "online");
   const r = e.target.closest("[data-replace]");
   if (r) return Replace.open(r.dataset.replace);
+  const hide = e.target.closest("[data-hide]");
+  if (hide) return hideDrive(hide.dataset.hide);
+  const un = e.target.closest("[data-unhide], [data-unhide-all]");
+  if (un) return showDrives(un.dataset.unhide);
   const t = e.target.closest("[data-drive]");
   if (t) openDrive(t.dataset.drive);
 });
+// the remove cross sits inside a tile (itself a button), so it answers the keyboard here
+$("#view-storage").addEventListener("keydown", e => {
+  const hide = e.target.closest?.("[data-hide]");
+  if (hide && (e.key === "Enter" || e.key === " ")) {
+    e.preventDefault();
+    e.stopPropagation();
+    hideDrive(hide.dataset.hide);
+  }
+});
+async function showDrives(key) {
+  try {
+    await apiSend("/api/drives/show", key ? { drive: key } : { all: true });
+    toast(key ? "It's back on the dashboard" : "They're back on the dashboard", "good");
+    await loadDrives();
+  } catch (e) {
+    if (!e.cancelled) toast(e.message, "bad");
+  }
+}
 
 /* ---------- drive care ---------- */
 async function loadDriveCare(force) {
@@ -940,7 +1004,17 @@ function openDrive(key) {
   const body = `<div class="dd">${lead}
     ${x.standby && !x.model ? "" : `<div class="dd-stats">${stats.map(([v, l, c]) => `<div class="dd-stat ${c}"><b>${esc(v)}</b><small>${esc(l)}</small></div>`).join("")}</div>`}
     ${wear != null ? `<div class="dd-wear"><div class="wear-label"><span>Endurance used</span><span>${wear}% of its rated lifetime writes</span></div><div class="bar"><i class="${{ crit: "bad", hot: "warn" }[wearCls(x, wear)] || ""}" style="width:${Math.max(wear, 1)}%"></i></div></div>` : ""}
-    ${sec("Used for", usedRows ? `<div class="list">${usedRows}</div>` : `<p class="dd-note">Not part of a pool and not mounted.</p>`)}
+    ${sec(
+      "Used for",
+      usedRows
+        ? `<div class="list">${usedRows}</div>`
+        : `<p class="dd-note">Not part of a pool and not mounted.</p>${
+            driveRemovable(x)
+              ? `<div class="dd-actions admin-only"><button class="btn small danger" type="button" id="dd-hide">Remove from the dashboard…</button></div>
+                 <p class="dd-note">For an empty card reader or a drive you don't want listed. Nothing on it is touched.</p>`
+              : ""
+          }`,
+    )}
     ${poolSec}
     ${sec("Health", list(health))}
     ${testSec}
@@ -965,6 +1039,7 @@ function openDrive(key) {
       driveDev(x),
     ),
   );
+  $("#dd-hide")?.addEventListener("click", () => hideDrive(key));
   const body2 = $("#drawer-body");
   body2.querySelectorAll("[data-selftest]").forEach(b =>
     b.addEventListener("click", async () => {

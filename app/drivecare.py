@@ -832,7 +832,7 @@ def _selftest_due(dc, st):
 def _run_scheduled_selftests(kind):
     """Start a self-test on every drive that isn't already running one."""
     started, failed = [], []
-    for d in M()._drives["items"]:
+    for d in M().visible_drives():
         if not d.get("device") or (d.get("self_test") or {}).get("running"):
             continue
         ok, msg = start_selftest(d, kind)

@@ -551,6 +551,8 @@ def _lsblk_usage():
         walk(d, acc)
         if d.get("serial"):
             out[d["serial"].strip()] = acc
+        if d.get("path"):
+            out["path:" + d["path"]] = acc      # for a drive that won't say its serial number
     return out
 
 
@@ -685,11 +687,22 @@ def _smart_scan():
         if not name:
             continue
         args = ["smartctl", "-j", "-a", "-n", "standby"] + (["-d", dtype] if dtype else []) + [name]
+        by_path = usage.get("path:" + name) or {}
+
+        def unread(why):
+            """A drive that's there but can't be read: what's on it still counts (it may be mounted)."""
+            return {"device": name, "status": "unknown", "unreadable": True, "issues": [why], "dtype": dtype,
+                    "mounts": by_path.get("mounts", []), "pools": by_path.get("pools", []), "block_path": by_path.get("path"),
+                    "label": labels.get(name)}
         try:
             p = subprocess.run(args, capture_output=True, text=True, timeout=60)
             j = json.loads(p.stdout or "{}")
+        except subprocess.TimeoutExpired:
+            items.append(unread("It didn't answer within a minute when asked for its health. It may be an empty card "
+                                "reader or enclosure, or a drive that's failing to respond."))
+            continue
         except Exception as e:
-            items.append({"device": name, "status": "unknown", "issues": [str(e)]})
+            items.append(unread(f"Its health couldn't be read: {e}"))
             continue
         msgs = " ".join(m.get("string", "") for m in ((j.get("smartctl") or {}).get("messages") or []))
         if "STANDBY" in msgs.upper() and not j.get("serial_number"):
@@ -699,7 +712,12 @@ def _smart_scan():
             continue
         d = _parse_smart(j, limits)
         d["standby"], d["dtype"] = False, dtype
-        u = usage.get((d.get("serial") or "").strip(), {})
+        if not any(d.get(k) is not None for k in ("serial", "model", "capacity", "passed", "temp", "power_on_hours")):
+            # it answered, but said nothing about itself: that isn't "healthy"
+            items.append(unread("It's there, but gave no health reading. It may be an empty card reader or enclosure, "
+                                "or a drive that doesn't report its health."))
+            continue
+        u = usage.get((d.get("serial") or "").strip()) or by_path
         d["mounts"], d["pools"], d["block_path"] = u.get("mounts", []), u.get("pools", []), u.get("path")
         d["label"] = labels.get(d.get("serial") or "") or labels.get(name) or labels.get(u.get("path") or "")
         items.append(d)
@@ -723,12 +741,82 @@ def smart_poller():
         _smart_event.clear()
 
 
+def drive_key(d):
+    return d.get("serial") or d.get("device") or ""
+
+
+def drive_in_use(d):
+    """Mounted somewhere, or part of a ZFS pool: such a drive is always shown."""
+    return bool(d.get("mounts") or d.get("pools"))
+
+
+_hidden_lock = threading.Lock()
+
+
+def hidden_drives():
+    """Drives taken off the dashboard (Storage → a drive → Remove from the dashboard): [{"key", "name", "at"}]."""
+    v = upkeep._read("hidden_drives.json", [])
+    return [h for h in v if isinstance(h, dict) and isinstance(h.get("key"), str)] if isinstance(v, list) else []
+
+
+def visible_drives():
+    """The drives the dashboard shows, checks and alerts about: all but the ones you removed. A removed drive that
+    has since been mounted or joined a pool comes back by itself (and is taken off the removed list)."""
+    hidden = {h["key"] for h in hidden_drives()}
+    if not hidden:
+        return list(_drives["items"])
+    back = {drive_key(d) for d in _drives["items"] if drive_key(d) in hidden and drive_in_use(d)}
+    if back:
+        with _hidden_lock:
+            upkeep._write("hidden_drives.json", [h for h in hidden_drives() if h["key"] not in back])
+        hidden -= back
+    return [d for d in _drives["items"] if drive_key(d) not in hidden]
+
+
 @app.get("/api/drives")
 def api_drives():
-    """Every drive's health, with the names you've given them."""
+    """Every drive's health, with the names you've given them. "hidden" lists the ones removed from the dashboard."""
     names = load_overrides().get("drives", {})
-    items = [dict(d, display=names.get(d.get("serial") or d.get("device") or "")) for d in _drives["items"]]
-    return {**_drives, "items": items}
+    items = [dict(d, display=names.get(drive_key(d))) for d in visible_drives()]
+    return {**_drives, "items": items, "hidden": hidden_drives()}
+
+
+@app.post("/api/drives/hide")
+def api_drive_hide(request: Request, body: dict = Body(...)):
+    """Take a drive off the dashboard: it's no longer shown, checked or alerted about. Only for a drive that
+    isn't mounted and isn't in a pool. Nothing on the drive is touched."""
+    security.require_admin(request)
+    key = body.get("drive")
+    d = next((x for x in _drives["items"] if isinstance(key, str) and key and drive_key(x) == key), None)
+    if not d:
+        raise HTTPException(404, "That drive isn't there any more. Refresh the page.")
+    if drive_in_use(d):
+        where = ("mounted at " + ", ".join(d["mounts"][:3])) if d.get("mounts") else ("part of the pool " + ", ".join(d["pools"][:3]))
+        raise HTTPException(409, f"That drive is in use ({where}), so it stays on the dashboard.")
+    name = load_overrides().get("drives", {}).get(key) or d.get("label") or (d.get("block_path") or d.get("device") or key).replace("/dev/", "")
+    with _hidden_lock:
+        cur = [h for h in hidden_drives() if h["key"] != key]
+        if len(cur) >= 200:
+            raise HTTPException(409, "That's as many removed drives as LabKeel keeps. Show some again first.")
+        upkeep._write("hidden_drives.json", cur + [{"key": key, "name": str(name)[:80], "at": int(time.time())}])
+    upkeep.log("drive", f"Removed the drive {name} from the dashboard (nothing on it was touched)")
+    return {"ok": True}
+
+
+@app.post("/api/drives/show")
+def api_drive_show(request: Request, body: dict = Body(default={})):
+    """Put removed drives back on the dashboard: one ({"drive": key}) or all of them ({"all": true})."""
+    security.require_admin(request)
+    key = body.get("drive")
+    with _hidden_lock:
+        cur = hidden_drives()
+        keep = [] if body.get("all") is True else [h for h in cur if h["key"] != key]
+        if len(keep) == len(cur):
+            raise HTTPException(404, "That drive isn't on the removed list.")
+        upkeep._write("hidden_drives.json", keep)
+    n = len(cur) - len(keep)
+    upkeep.log("drive", f"Put {n} removed drive{'s' if n != 1 else ''} back on the dashboard")
+    return {"ok": True}
 
 
 @app.post("/api/drives/refresh")

@@ -554,7 +554,7 @@ def _conditions(a, active=frozenset(), covered=True):
             _write("state.json", st)
         on_purpose -= running
     if a["drives"]:
-        for d in m._drives["items"]:
+        for d in m.visible_drives():
             if d.get("status") in ("warn", "bad") and not (d.get("serial") and d.get("serial") in case_serials):
                 key = d.get("serial") or d.get("device")
                 nm = names.get("drives", {}).get(key or "") or d.get("label") or \
