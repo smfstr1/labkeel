@@ -83,12 +83,30 @@ class NotAvailable(Exception):
     """Tailscale can't give a certificate here (not installed, not signed in, or HTTPS off for the tailnet)."""
 
 
-def _tailscale():
-    """A trusted certificate for this machine's *.ts.net name, from the host's `tailscale cert`."""
+_ts_cache = {"t": 0.0, "domain": None, "why": None}
+
+
+def tailscale_domain(max_age=60):
+    """This machine's *.ts.net name, from the host's Tailscale. Raises NotAvailable (saying why) if Tailscale isn't
+    installed, isn't signed in, or has HTTPS turned off for the tailnet. Asked at most every `max_age` seconds."""
+    if time.time() - _ts_cache["t"] > max_age:
+        try:
+            _ts_cache.update(domain=_ask_tailscale(), why=None)
+        except NotAvailable as e:
+            _ts_cache.update(domain=None, why=str(e))
+        _ts_cache["t"] = time.time()
+    if not _ts_cache["domain"]:
+        raise NotAvailable(_ts_cache["why"])
+    return _ts_cache["domain"]
+
+
+def _ask_tailscale():
     host = M().host_cmd
     try:
         r = host(["tailscale", "status", "--json"], timeout=15)
     except FileNotFoundError:
+        raise NotAvailable("Tailscale isn't installed on this machine")
+    if r.returncode == 127:
         raise NotAvailable("Tailscale isn't installed on this machine")
     if r.returncode != 0:
         msg = (r.stderr or r.stdout).strip().splitlines()
@@ -100,7 +118,13 @@ def _tailscale():
     domains = [d.rstrip(".") for d in (st.get("CertDomains") or []) if d]
     if not domains:
         raise NotAvailable("HTTPS certificates are turned off for your tailnet. Turn on HTTPS on the DNS page of the Tailscale admin console.")
-    domain = domains[0]
+    return domains[0]
+
+
+def _tailscale():
+    """A trusted certificate for this machine's *.ts.net name, from the host's `tailscale cert`."""
+    host = M().host_cmd
+    domain = tailscale_domain(max_age=0)
     tmp = host(["mktemp", "-d"], timeout=10).stdout.strip()
     if not tmp.startswith("/"):
         raise RuntimeError("couldn't make a temporary folder on the host")
@@ -134,6 +158,25 @@ def _local_names():
             if a.family == socket.AF_INET:
                 ips.add(a.address)
     return sorted(n for n in dns if n), sorted(ips)
+
+
+def make_certificate(dns, ips, days=825):
+    """A new self-signed certificate and key (as PEM text) for these names and addresses, for an app's own
+    HTTPS. Nothing is kept here: the caller writes them where they're needed."""
+    k = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, (list(dns) + list(ips) + ["homelab"])[0]),
+                      x509.NameAttribute(NameOID.ORGANIZATION_NAME, "LabKeel (self-signed)")])
+    now = datetime.now(timezone.utc)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(k.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=days))
+            .add_extension(x509.SubjectAlternativeName([x509.DNSName(n) for n in dns] +
+                                                       [x509.IPAddress(ipaddress.ip_address(i)) for i in ips]), critical=False)
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .sign(k, hashes.SHA256()))
+    return (cert.public_bytes(serialization.Encoding.PEM).decode(),
+            k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                            serialization.NoEncryption()).decode())
 
 
 def _self_signed():

@@ -1,4 +1,4 @@
-// LabKeel dashboard — settings.js (12 of 13; index.html loads them in order).
+// LabKeel dashboard — settings.js (13 of 14; index.html loads them in order).
 // The Settings page: the form and saving, security, the activity log, signing out, and LabKeel updating
 // itself.
 "use strict";
@@ -55,8 +55,10 @@ const Settings = {
       if (currentView === "settings" && !document.hidden) this.load();
     }, 30000);
   },
-  PAGES: ["general", "security", "alerts", "containers", "storage", "server", "activity"],
+  PAGES: ["general", "security", "alerts", "containers", "storage", "server", "activity", "appearance"],
   async open(page) {
+    // a viewer has no settings to change, except how it looks for them
+    if (document.body.classList.contains("viewer")) return this.page("appearance");
     this.init();
     this.page(this.PAGES.includes(page) ? page : this.lastPage || "general");
     await this.load();
@@ -65,6 +67,7 @@ const Settings = {
   // still one form, so unsaved changes on one page are kept while you look at another.
   page(name) {
     this.lastPage = name;
+    if (name === "appearance") Appearance.render();
     $$("#view-settings [data-page]").forEach(el => {
       if (!el.closest("#st-nav")) el.hidden = el.dataset.page !== name;
     });
@@ -692,4 +695,72 @@ $("#lk-check").addEventListener("click", () => SelfUpdate.check());
 $("#lk-install").addEventListener("click", () => SelfUpdate.install());
 $("#lk-body").addEventListener("click", e => {
   if (e.target.closest("#lk-tidy")) SelfUpdate.tidy();
+});
+
+// Settings → Appearance: the theme, and the menu's order. Both are this browser's own (core.js keeps and applies
+// them), so they need no admin and nothing is sent to the server.
+const Appearance = {
+  render() {
+    const now = getLook();
+    $("#th-grid").innerHTML = LOOKS.map(([name, label, note, , bg, panel, accent, text]) => {
+      const sw = bg
+        ? `<span class="th-swatch" style="background:${bg}"><i style="background:${panel};height:100%"></i><i style="background:${accent};height:60%"></i><i style="background:${text};height:30%"></i></span>`
+        : `<span class="th-swatch split"></span>`;
+      return `<button type="button" class="th-card" role="radio" aria-checked="${name === now}" data-look="${name}">${sw}<span>${label}<small>${note}</small></span></button>`;
+    }).join("");
+    const viewer = document.body.classList.contains("viewer");
+    const { order, hidden } = NavPrefs.get();
+    const rows = order
+      .map(v => $(`.nav a[data-view="${v}"]`))
+      .filter(a => !(viewer && (a.dataset.view === "files" || a.classList.contains("admin-only"))));
+    $("#nv-list").innerHTML = rows
+      .map((a, i) => {
+        const v = a.dataset.view,
+          name = esc($(".nav-lbl", a).textContent),
+          off = hidden.includes(v);
+        return `<li class="nv-row ${off ? "off" : ""}"><span class="nv-name">${name}</span>
+          <label><input type="checkbox" data-nv-show="${v}"${off ? "" : " checked"}${v === "settings" ? " disabled" : ""}> Show</label>
+          <button class="btn small" type="button" data-nv-move="${v}" data-by="-1" aria-label="Move ${name} up"${i ? "" : " disabled"}>↑</button>
+          <button class="btn small" type="button" data-nv-move="${v}" data-by="1" aria-label="Move ${name} down"${i < rows.length - 1 ? "" : " disabled"}>↓</button></li>`;
+      })
+      .join("");
+    $("#nv-reset").disabled = order.join() === NavPrefs.usual.join() && !hidden.length;
+  },
+};
+$("#th-grid").addEventListener("click", e => {
+  const b = e.target.closest("[data-look]");
+  if (!b) return;
+  setLook(b.dataset.look);
+  Appearance.render();
+  $(`#th-grid [data-look="${b.dataset.look}"]`).focus();
+});
+$("#nv-list").addEventListener("change", e => {
+  const v = e.target.dataset.nvShow;
+  if (!v) return;
+  const { order, hidden } = NavPrefs.get();
+  NavPrefs.set(order, e.target.checked ? hidden.filter(x => x !== v) : [...hidden, v]);
+  Appearance.render();
+});
+$("#nv-list").addEventListener("click", e => {
+  const b = e.target.closest("[data-nv-move]");
+  if (!b) return;
+  // swap with the neighbour shown in this list (pages this account can't see keep their place around it)
+  const shown = $$("#nv-list [data-nv-show]").map(x => x.dataset.nvShow),
+    v = b.dataset.nvMove,
+    other = shown[shown.indexOf(v) + Number(b.dataset.by)];
+  if (!other) return;
+  const { order, hidden } = NavPrefs.get();
+  const i = order.indexOf(v),
+    j = order.indexOf(other);
+  [order[i], order[j]] = [order[j], order[i]];
+  NavPrefs.set(order, hidden);
+  Appearance.render();
+  (
+    $(`#nv-list [data-nv-move="${v}"][data-by="${b.dataset.by}"]:not([disabled])`) ||
+    $(`#nv-list [data-nv-show="${v}"]`)
+  ).focus();
+});
+$("#nv-reset").addEventListener("click", () => {
+  NavPrefs.set(NavPrefs.usual, []);
+  Appearance.render();
 });

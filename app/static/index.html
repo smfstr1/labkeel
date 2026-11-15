@@ -25,6 +25,7 @@
     </div>
     <nav class="nav" aria-label="Sections">
       <a href="#servers" data-view="servers" class="nav-desk" id="nav-servers-link" hidden><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="14" height="5" rx="1.5"/><rect x="3" y="12" width="14" height="5" rx="1.5"/><circle cx="6" cy="5.5" r=".7" fill="currentColor"/><circle cx="6" cy="14.5" r=".7" fill="currentColor"/></svg><span class="nav-lbl">Servers</span> <span class="count" id="nav-servers"></span></a>
+      <a href="#clusters" data-view="clusters" class="nav-desk"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="4.5" r="2"/><circle cx="4.5" cy="15" r="2"/><circle cx="15.5" cy="15" r="2"/><path d="M9 6.3 5.6 13.2M11 6.3l3.4 6.9M6.5 15h7"/></svg><span class="nav-lbl">Clusters</span> <span class="count" id="nav-clusters"></span></a>
       <a href="#overview" data-view="overview"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg><span class="nav-lbl">Overview</span></a>
       <a href="#containers" data-view="containers"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M10 2.5 17 6v8l-7 3.5L3 14V6z"/><path d="M3 6l7 3.5L17 6M10 9.5v8"/></svg><span class="nav-lbl">Containers</span> <span class="count" id="nav-containers"></span></a>
       <a href="#storage" data-view="storage"><svg class="nav-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="M2.5 11.5h15"/><circle cx="14" cy="13.8" r=".6" fill="currentColor"/></svg><span class="nav-lbl">Storage</span> <span class="count" id="nav-storage"></span></a>
@@ -168,13 +169,11 @@
         <div class="toolbar">
           <select class="input c-scope" id="c-scope" aria-label="Which servers" hidden><option value="this">This server</option><option value="all">All servers</option></select>
           <input class="input" id="c-search" type="search" placeholder="Filter by name or image" aria-label="Filter containers">
-          <div class="seg" role="group" aria-label="Show">
-            <button type="button" data-cf="all" aria-pressed="true">All</button>
-            <button type="button" data-cf="running" aria-pressed="false">Running</button>
-            <button type="button" data-cf="stopped" aria-pressed="false">Stopped</button>
-            <button type="button" data-cf="attention" aria-pressed="false">Needs attention</button>
-            <button type="button" data-cf="updates" aria-pressed="false">Updates</button>
+          <div class="cmenu-wrap">
+            <button class="btn" type="button" id="c-filter" aria-haspopup="menu" aria-expanded="false" aria-controls="c-filter-menu"></button>
+            <div class="cmenu" id="c-filter-menu" role="menu" aria-label="Show" hidden></div>
           </div>
+          <button class="btn" type="button" id="c-fold" hidden></button>
           <button class="btn" type="button" id="c-check">Check for updates</button>
         </div>
       </div>
@@ -182,7 +181,7 @@
       <div class="bulkbar hidden" id="c-bulk" role="region" aria-label="Selected containers"></div>
       <div class="ctable" id="c-table"></div>
       <div id="c-all" hidden></div>
-      <p class="faint" style="font-size:13px;margin-top:10px">CPU is a share of the whole machine. Select a container to read its logs. <span id="c-upd-note"></span></p>
+      <p class="faint" style="font-size:13px;margin-top:10px">Containers are grouped by the app (compose project) they belong to. CPU is a share of the whole machine. Select a container to read its logs. <span id="c-upd-note"></span></p>
     </div>
 
     <!-- STORAGE -->
@@ -237,19 +236,19 @@
               <input class="input" id="f-filter" type="search" placeholder="Filter, or search (Enter)" aria-label="Filter this folder, or press Enter to search it and its subfolders" style="width:230px">
               <button class="btn" id="f-search" type="button" title="Search this folder and everything inside it">Search</button>
               <select class="input" id="f-scope" aria-label="Where to search"><option value="here">In this folder</option><option value="all">On every machine</option></select>
-              <button class="btn fx-more" id="f-size" type="button">Folder size</button>
               <span class="toolbar" id="f-write" hidden>
-                <button class="btn fx-more" type="button" data-fx="mkdir">New folder</button>
-                <button class="btn fx-more" type="button" data-fx="newfile">New file</button>
                 <button class="btn primary" type="button" data-fx="upload">Upload files</button>
-                <button class="btn fx-more" type="button" data-fx="uploaddir">Upload folder</button>
+                <button class="btn fx-more" type="button" data-fx="mkdir">New folder</button>
+                <button class="btn fx-more fx-menu" type="button" data-fx="newfile">New file</button>
+                <button class="btn fx-more fx-menu" type="button" data-fx="uploaddir">Upload folder</button>
                 <button class="btn" type="button" data-fx="paste" id="f-paste" hidden>Paste</button>
                 <input type="file" id="f-upload-input" multiple hidden>
                 <input type="file" id="f-upload-dir" webkitdirectory multiple hidden>
               </span>
-              <button class="btn fx-more" type="button" data-fx="trash" id="f-trash-btn" hidden>Bin</button>
-              <button class="btn fx-more fx-desk" type="button" data-fx="keys" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">⌨</button>
-              <span class="fmore-wrap"><button class="btn" type="button" id="f-more" aria-haspopup="menu" aria-expanded="false" aria-label="More actions">More</button>
+              <button class="btn fx-more fx-menu" id="f-size" type="button">Folder size</button>
+              <button class="btn fx-more fx-menu" type="button" data-fx="trash" id="f-trash-btn" hidden>Bin</button>
+              <button class="btn fx-more fx-menu fx-desk" type="button" data-fx="keys" data-label="Keyboard shortcuts">Keyboard shortcuts</button>
+              <span class="fmore-wrap"><button class="btn" type="button" id="f-more" aria-haspopup="menu" aria-expanded="false" aria-label="More actions">More ▾</button>
                 <span class="fmore-menu" id="f-more-menu" role="menu" hidden></span></span>
             </div>
           </div>
@@ -261,7 +260,7 @@
             <button class="btn small primary" type="button" data-fx="to2copy" hidden>Copy to the other side →</button>
             <button class="btn small" type="button" data-fx="to2move" hidden>Move to the other side →</button>
             <button class="btn small danger" type="button" data-fx="delete">Delete…</button>
-            <button class="btn small" type="button" data-fx="clear">Clear</button></div>
+            <button class="btn small fsel-clear" type="button" data-fx="clear">Clear selection</button></div>
           <div class="fup" id="f-up" hidden></div>
           <div class="fsel" id="f-searchbar" hidden></div>
           <div class="fsel" id="f-unfinished" hidden></div>
@@ -297,8 +296,18 @@
         <a href="#settings:storage" data-page="storage">Drives</a>
         <a href="#settings:server" data-page="server">Restarts and power</a>
         <a href="#settings:activity" data-page="activity">Activity log</a>
+        <a href="#settings:appearance" data-page="appearance">Appearance</a>
       </nav>
       <div class="st-pages">
+      <section class="set" aria-labelledby="th-h" data-page="appearance" hidden>
+        <div class="set-head"><div><h2 id="th-h">Theme</h2><p class="muted set-lede">How LabKeel looks in this browser. Everyone chooses their own; nothing changes for other people.</p></div></div>
+        <div class="set-body"><div class="th-grid" id="th-grid" role="radiogroup" aria-labelledby="th-h"></div></div>
+      </section>
+      <section class="set" aria-labelledby="nv-h" data-page="appearance" hidden>
+        <div class="set-head"><div><h2 id="nv-h">Menu</h2><p class="muted set-lede">Put the pages in the order you use them, and hide the ones you don't. A hidden page still opens from a link or its address. Kept in this browser.</p></div>
+          <button class="btn" type="button" id="nv-reset">Back to the usual order</button></div>
+        <div class="set-body"><ol class="nv-list" id="nv-list"></ol><p class="st-note">Some pages only appear when there's something to show (Servers), or for admins (Files, Apps). Settings can't be hidden.</p></div>
+      </section>
       <section class="set" aria-labelledby="lk-h" data-page="general">
         <div class="set-head"><div><h2 id="lk-h">LabKeel</h2><p class="muted set-lede" id="lk-lede">This dashboard's own version, and updates for it.</p></div>
           <span class="toolbar"><button class="btn" type="button" id="lk-check">Check for an update</button>
@@ -544,6 +553,25 @@
       <div id="sv-body"></div>
     </div>
 
+    <!-- CLUSTERS -->
+    <div class="view hidden" id="view-clusters">
+      <div class="view-head"><h1>Clusters</h1><div class="toolbar"><button class="btn primary admin-only" type="button" id="cl-new">New cluster</button></div></div>
+      <p class="view-sub" id="cl-sub">Machines you look after together, and Docker Swarm for running services across them.</p>
+      <div id="cl-banner"></div>
+      <div class="vitals cl-tiles" id="cl-tiles"></div>
+      <div class="cl-grid" id="cl-grid"><div class="muted">Loading…</div></div>
+    </div>
+
+    <!-- ONE CLUSTER -->
+    <div class="view hidden" id="view-cluster">
+      <p class="cl-back"><a href="#clusters">← Clusters</a></p>
+      <div class="view-head"><div class="pv-head"><h1 id="cv-title">Cluster</h1><span id="cv-pill"></span><span class="muted" id="cv-kind"></span></div>
+        <div class="toolbar admin-only" id="cv-tools"></div></div>
+      <div id="cv-note"></div>
+      <div class="seg tabs" role="tablist" aria-label="Cluster sections" id="cv-tabs"></div>
+      <div id="cv-body" role="tabpanel"><p class="muted">Loading…</p></div>
+    </div>
+
     <!-- SERVICES -->
     <div class="view hidden" id="view-services">
       <div class="view-head">
@@ -622,6 +650,7 @@
   <form method="dialog">
     <h2 id="af-title">App</h2>
     <p class="muted">In <code id="af-dir"></code>. You can change it by hand and run <code>docker compose up -d</code> in that folder.</p>
+    <p class="muted" id="af-data" hidden></p>
     <pre class="code-box" id="af-compose"></pre>
     <div class="toolbar" style="justify-content:space-between"><button class="btn danger" type="button" id="af-remove">Remove</button><button class="btn" type="submit">Close</button></div>
   </form>
@@ -645,6 +674,15 @@
     <div class="toolbar" style="justify-content:flex-end"><button class="btn" type="button" id="srv-cancel">Cancel</button><button class="btn primary" type="submit" id="srv-ok">Make a join code</button></div>
   </form>
 </dialog>
+<dialog id="cl-dlg" class="dlg wide" aria-labelledby="cl-title">
+  <form id="cl-form" method="dialog">
+    <h2 id="cl-title">Cluster</h2>
+    <p class="muted" id="cl-lede" hidden></p>
+    <div id="cl-fields"></div>
+    <p class="banner bad" id="cl-error" role="alert" hidden></p>
+    <div class="toolbar" style="justify-content:flex-end"><button class="btn" type="button" id="cl-cancel">Cancel</button><button class="btn primary" type="submit" id="cl-ok">OK</button></div>
+  </form>
+</dialog>
 <div class="scrim hidden" id="scrim"></div>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <aside class="drawer" id="drawer" hidden aria-labelledby="drawer-title" role="dialog" aria-modal="true">
@@ -664,6 +702,7 @@
 <script src="/ui/services.js"></script>
 <script src="/ui/apps.js"></script>
 <script src="/ui/servers.js"></script>
+<script src="/ui/clusters.js"></script>
 <script src="/ui/files.js"></script>
 <script src="/ui/panes.js"></script>
 <script src="/ui/dialogs.js"></script>

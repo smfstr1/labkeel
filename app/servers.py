@@ -343,6 +343,8 @@ def api_remove(sid: str, request: Request, body: dict = Body(default={})):
             raise HTTPException(404, "There's no server with that name here.")
         _save(d)
         _reports.pop(sid, None)
+    if "clusters" in sys.modules:
+        sys.modules["clusters"].forget(sid)   # and out of any group it was in
     U().log("settings", f"Removed the server {s.get('name')}. Its agent can be stopped and removed on that machine.")
     return {"ok": True}
 

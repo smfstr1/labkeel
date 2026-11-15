@@ -29,6 +29,7 @@ All off by default. Each one is a real power over the machine, so turn on only w
 | `LABKEEL_ALLOW_ZFS_CHANGES` | `0` | Creating, changing and destroying ZFS pools, datasets and snapshots, and replacing drives. |
 | `LABKEEL_ALLOW_RESTART` | `0` | Restarting and shutting down the machine, by hand or on a schedule. |
 | `LABKEEL_ALLOW_APP_INSTALLS` | `0` | Adding and removing apps on the Apps page. An app's containers get whatever its compose file asks for, and a few (Home Assistant, Plex) need the machine's network or full control of it. See [apps.md](apps.md). |
+| `LABKEEL_ALLOW_CLUSTER_CHANGES` | `0` | Starting a Docker Swarm, joining machines to it, draining and removing machines, and adding, scaling, restarting and removing services on the Clusters page. Looking at clusters is always allowed; making a group of servers changes nothing and needs no setting. See [clusters.md](clusters.md). |
 
 ## Sign-in
 

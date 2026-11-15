@@ -1,4 +1,4 @@
-// LabKeel dashboard — core.js (1 of 13; index.html loads them in order).
+// LabKeel dashboard — core.js (1 of 14; index.html loads them in order).
 // The basics everything else uses: $ and esc, api(), number and date formatting, the page state (S), the
 // theme, routing between pages (#overview, #files:...), polling and the loaders that fetch each kind of data.
 //
@@ -223,25 +223,63 @@ const views = [
   "apps",
   "servers",
   "server",
+  "clusters",
+  "cluster",
 ];
 let currentView = "overview";
 
 /* ---------- theme ---------- */
-function getTheme() {
+// Dark or light is "hd-theme", as it always was (the sign-in page reads it too). A named palette on top of one of
+// those is "hd-look". Both are kept in this browser, so every account, viewers included, has its own.
+// [name, label, note, dark or light, then the swatch: page, panel, accent, text]
+const LOOKS = [
+  ["auto", "Match the device", "Dark or light, as the device is set", null],
+  ["dark", "Dark", "LabKeel's own", "dark", "#16202a", "#1d2935", "#6fa8ee", "#e4ecf2"],
+  ["light", "Light", "LabKeel's own", "light", "#eef2f5", "#ffffff", "#2f72c9", "#16202a"],
+  ["midnight", "Midnight", "True black, for OLED screens", "dark", "#000000", "#0c1116", "#6fa8ee", "#e6edf3"],
+  ["graphite", "Graphite", "Neutral greys", "dark", "#18181b", "#212124", "#7fb0ee", "#ececee"],
+  ["forest", "Forest", "Deep green", "dark", "#101a16", "#17241e", "#5fcf9a", "#e3efe8"],
+  ["dusk", "Dusk", "Soft purple", "dark", "#1a1626", "#221d32", "#b79cf5", "#ebe7f5"],
+  ["paper", "Paper", "Warm and light", "light", "#f4efe6", "#fffdf8", "#99560f", "#2a241b"],
+  ["contrast", "High contrast", "Black, white and strong edges", "dark", "#000000", "#000000", "#7fc1ff", "#ffffff"],
+];
+function stored(key) {
   try {
-    return localStorage.getItem("hd-theme");
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
+}
+function store(key, value) {
+  try {
+    if (value == null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {}
+}
+function getTheme() {
+  const t = stored("hd-theme");
+  return t === "dark" || t === "light" ? t : null;
+}
+// The palette in use: a named one, or "dark", "light" or "auto".
+function getLook() {
+  const l = LOOKS.find(x => x[0] === stored("hd-look") && x[3] && x[0] !== x[3]);
+  return l ? l[0] : getTheme() || "auto";
 }
 function effectiveTheme() {
   return (
     document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
   );
 }
-function applyTheme(t) {
-  if (t) document.documentElement.dataset.theme = t;
-  else delete document.documentElement.dataset.theme;
+function paintTheme() {
+  const look = LOOKS.find(x => x[0] === getLook()),
+    root = document.documentElement;
+  if (look[3]) root.dataset.theme = look[3];
+  else delete root.dataset.theme;
+  if (look[3] && look[0] !== look[3]) root.dataset.look = look[0];
+  else delete root.dataset.look;
+}
+function applyTheme() {
+  paintTheme();
   const tt = effectiveTheme() === "dark" ? "Switch to light theme" : "Switch to dark theme";
   $("#theme-btn .tb-text").textContent = tt;
   $("#theme-btn").title = tt;
@@ -251,16 +289,52 @@ function applyTheme(t) {
   drawSparks();
   if (window.historyReady) renderHistory();
 }
+function setLook(name) {
+  const look = LOOKS.find(x => x[0] === name) || LOOKS[0];
+  store("hd-theme", look[3]);
+  store("hd-look", look[3] && look[0] !== look[3] ? look[0] : null);
+  applyTheme();
+}
 $("#theme-btn").addEventListener("click", () => {
-  const next = effectiveTheme() === "dark" ? "light" : "dark";
-  try {
-    localStorage.setItem("hd-theme", next);
-  } catch {}
-  applyTheme(next);
+  setLook(effectiveTheme() === "dark" ? "light" : "dark");
+  if (typeof Appearance !== "undefined") Appearance.render();
 });
 // The saved theme goes on straight away, so the page never flashes the other one; main.js finishes the job
 // (button text, redrawing charts) once every file is loaded.
-if (getTheme()) document.documentElement.dataset.theme = getTheme();
+paintTheme();
+
+/* ---------- the menu: each person's own order, and the pages they've hidden ---------- */
+const NavPrefs = {
+  usual: $$(".nav a[data-view]").map(a => a.dataset.view),
+  get() {
+    let d = null;
+    try {
+      d = JSON.parse(stored("hd-nav") || "null");
+    } catch {}
+    const list = v => (Array.isArray(v) ? v.filter(x => this.usual.includes(x)) : []);
+    const order = [...new Set(list(d?.order))];
+    // anything not in the saved order (a page added by a newer LabKeel) keeps its usual place after the rest
+    return {
+      order: [...order, ...this.usual.filter(v => !order.includes(v))],
+      hidden: list(d?.hidden).filter(v => v !== "settings"),
+    };
+  },
+  set(order, hidden) {
+    const same = order.join() === this.usual.join() && !hidden.length;
+    store("hd-nav", same ? null : JSON.stringify({ order, hidden }));
+    this.apply();
+  },
+  apply() {
+    const { order, hidden } = this.get(),
+      nav = $(".nav");
+    for (const v of order) {
+      const a = $(`.nav a[data-view="${v}"]`);
+      nav.appendChild(a);
+      a.classList.toggle("nav-off", hidden.includes(v));
+    }
+  },
+};
+NavPrefs.apply();
 
 // Touch screens: note when the on-screen keyboard is up (a text box has focus), so the tab bar can step aside
 const TYPING =
@@ -278,7 +352,7 @@ if (matchMedia("(pointer: coarse)").matches) {
 function route() {
   const raw = location.hash.slice(1) || "overview";
   const [v, arg] = raw.split(/:(.*)/s);
-  if (document.body.classList.contains("viewer") && ["files", "settings", "apps"].includes(v)) {
+  if (document.body.classList.contains("viewer") && ["files", "apps"].includes(v)) {
     location.replace("#overview");
     return;
   }
@@ -287,8 +361,15 @@ function route() {
   // leaving a page (the phone's Back button, say) closes its side panel rather than leaving it over the next one
   if (before !== currentView) Drawer.close(true);
   views.forEach(n => $("#view-" + n).classList.toggle("hidden", n !== currentView));
-  // a pool's page sits under Storage, one server's under Servers
-  const navView = currentView === "pool" ? "storage" : currentView === "server" ? "servers" : currentView;
+  // a pool's page sits under Storage, one server's under Servers, one cluster's under Clusters
+  const navView =
+    currentView === "pool"
+      ? "storage"
+      : currentView === "server"
+        ? "servers"
+        : currentView === "cluster"
+          ? "clusters"
+          : currentView;
   $$(".nav a").forEach(a =>
     a.dataset.view === navView ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"),
   );
@@ -309,8 +390,12 @@ function route() {
   if (currentView === "servers" || currentView === "containers") Polls.servers?.now();
   if (currentView === "server") ServerV.open(arg || "");
   else ServerV.stop();
+  if (currentView === "clusters") Polls.clusters?.now();
+  if (currentView === "cluster") ClusterV.open(arg || "");
+  else ClusterV.stop();
   // arriving on a page whose figures were being fetched slowly: bring them up to date, and quicken the pace
   if (currentView === "overview") Polls.system?.now();
+  if (currentView === "containers" && typeof CTable !== "undefined") CTable.fresh(); // the rows arrive, once
   if (currentView === "overview" || currentView === "containers") Polls.containers?.now();
   renderAll();
 }

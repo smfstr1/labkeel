@@ -1773,6 +1773,8 @@ import apps  # noqa: E402  (the Apps page: adding popular apps in a couple of cl
 app.include_router(apps.router)
 import servers  # noqa: E402  (other machines, each reporting in through LabKeel's agent)
 app.include_router(servers.router)
+import clusters  # noqa: E402  (groups of servers, and Docker Swarm)
+app.include_router(clusters.router)
 import remote  # noqa: E402  (their files, through their agents)
 app.include_router(remote.router)
 import crosscopy  # noqa: E402  (copying and moving between machines)

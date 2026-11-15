@@ -1,4 +1,4 @@
-// LabKeel dashboard — files.js (9 of 13; index.html loads them in order).
+// LabKeel dashboard — files.js (10 of 14; index.html loads them in order).
 // The Files page: tree, list, previews and editing, uploads, search, moving and copying (with background
 // jobs), drag and drop, keyboard shortcuts and the Bin.
 "use strict";
@@ -1897,7 +1897,12 @@ function fmtShortDate(t) {
 const FMore = {
   open() {
     const menu = $("#f-more-menu");
-    const items = $$("#view-files .pane-head .fx-more:not(.fx-desk)").filter(b => !b.hidden && !b.closest("[hidden]"));
+    // whatever the toolbar isn't showing at this width: a few things on a computer, most of them on a phone
+    const phone = matchMedia("(max-width: 820px)").matches;
+    const items = $$("#view-files .pane-head .fx-more").filter(
+      b =>
+        !b.hidden && !b.closest("[hidden]") && b.offsetParent === null && !(phone && b.classList.contains("fx-desk")),
+    );
     menu.innerHTML = items
       .map(
         b =>

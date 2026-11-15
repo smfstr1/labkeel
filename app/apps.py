@@ -9,6 +9,10 @@ LabKeel does what you'd do by hand. For an app it:
   3. waits until it answers on its port (or, for an app with no web page, until its container is running)
   4. adds it to the Services page (kept in data/apps.json: your config.json is never rewritten)
 
+An app's data can be kept somewhere other than its folder: on another drive, or in a ZFS dataset of its own
+that LabKeel makes for it, with a size limit (see places() and _storage()). The compose file stays in the app's
+folder either way. Making a dataset also needs LABKEEL_ALLOW_ZFS_CHANGES=1.
+
 Everything it made is ordinary Docker Compose: the folder can be managed by hand afterwards, and removing an
 app from here runs `docker compose down` and leaves the folder and its data alone.
 
@@ -16,6 +20,7 @@ Adding apps can give a container full control of the machine (Home Assistant ask
 unless LABKEEL_ALLOW_APP_INSTALLS=1, admins only, the password again, and every step is in the activity log.
 """
 import contextvars
+import ipaddress
 import json
 import re
 import secrets
@@ -30,6 +35,7 @@ from fastapi import APIRouter, Body, HTTPException, Request
 import containers
 import env
 import selfupdate
+import tls
 
 router = APIRouter()
 
@@ -57,12 +63,24 @@ def U():
 #            web = its web page. fixed = can't be changed (the app needs that number, or uses the machine's
 #            network). follow = the app is told the number, so it's the same inside the container and out.
 #            same_as = the same number as an earlier port (TCP and UDP on one number).
-#   folders: [{"key", "label", "to", "default", "ro"?, "optional"?}]  default: "{dir}" is the app's folder
+#   folders: [{"key", "label", "to", "default", "ro"?, "optional"?, "service"?}]  default: "{dir}" is the app's
+#            folder. service = not for the main container: a helper uses it, as "{folder:<key>}"
+#   env_file: {NAME: value} written to .env in the app's folder (root only) and given to the services that ask for
+#            "{appdir}/.env"; "{secret}" is a new password. Kept when the app is added again, so a database
+#            still opens. In env, "{https_host}", "{https_port}" and "{https_url}" are how it's reached.
+#   owned_by: {"uid", "gid", "folders": [keys]}: folders made for the user the image runs as
 #   fields:  [{"key", "label", "default"?, "secret"?, "optional"?, "help"?}] → environment variables
 #   web_path: added to the link (Plex's page is at /web)
 #   host_network: uses the machine's network directly (finds devices, needs many ports)
 #   extra:   more compose settings for the main service, as they are
 #   detect:  image names meaning it's already running here (added some other way)
+#   https:   the app can only be used over HTTPS (a password manager, a cloud). The dialog asks how: Tailscale (its
+#            trusted certificate, switched on with `tailscale serve`) or a certificate made here (a small Caddy
+#            container in front of it). Either way the app's own plain port isn't open to the network.
+#   url_env: the environment variable that must hold the address you'll open it at (ownCloud's OCIS_URL)
+#   self_https: the app speaks HTTPS itself (its own certificate) and calls its own address. The HTTPS in front
+#            hands traffic to it over HTTPS, and inside the container its address means the container itself
+#   run_as_owner: folder keys it runs as your user for: they're made first, owned by that user
 LS = {"PUID": "{uid}", "PGID": "{gid}", "TZ": "{tz}"}  # what every linuxserver.io image takes
 CATALOGUE = [
     {"id": "jellyfin", "name": "Jellyfin", "category": "Media", "image": "jellyfin/jellyfin:latest",
@@ -167,14 +185,53 @@ CATALOGUE = [
                              "volumes": ["{dir}/redis:/data"]}},
      "detect": ["ghcr.io/paperless-ngx/paperless-ngx", "paperlessngx/paperless-ngx"],
      "next": "Open it to create the first account."},
-    {"id": "nextcloud", "name": "Nextcloud", "category": "Files", "image": "lscr.io/linuxserver/nextcloud:latest",
-     "description": "Your own cloud: files, calendars and contacts, synced to every device.",
-     "web_scheme": "https",
-     "ports": [{"name": "Web page", "container": 443, "default": 8443, "web": True}],
-     "folders": [{"key": "config", "label": "Settings folder", "to": "/config", "default": "{dir}/config"},
-                 {"key": "data", "label": "Files folder", "to": "/data", "default": "{dir}/data"}],
-     "env": LS, "detect": ["lscr.io/linuxserver/nextcloud", "linuxserver/nextcloud", "nextcloud"],
-     "next": "Open it to create the admin account. Its own certificate is self-signed, so your browser will warn once."},
+    {"id": "nextcloud", "name": "Nextcloud", "category": "Files", "image": "nextcloud:apache",
+     "description": "Your own cloud: files, calendars and contacts, synced to every device. Comes with its "
+                    "database (PostgreSQL) and cache (Redis) already connected.",
+     "https": True,
+     "ports": [{"name": "Web page", "container": 80, "default": 8443, "web": True}],
+     "folders": [{"key": "html", "label": "App and settings folder", "to": "/var/www/html", "default": "{dir}/html"},
+                 {"key": "data", "label": "Files folder", "to": "/var/www/html/data", "default": "{dir}/data"},
+                 {"key": "db", "label": "Database folder (on a local drive, not a network share)", "service": True,
+                  "default": "{dir}/postgres"}],
+     # Nextcloud's image sets itself up from these: with the database given, its first page asks only for the
+     # admin's name and password. It sits behind the HTTPS in front of it, so it's told its real address.
+     "env": {"POSTGRES_HOST": "db", "REDIS_HOST": "redis", "NEXTCLOUD_TRUSTED_DOMAINS": "{https_host}",
+             "OVERWRITEPROTOCOL": "https", "OVERWRITEHOST": "{https_host}:{https_port}",
+             "OVERWRITECLIURL": "{https_url}", "TRUSTED_PROXIES": "172.16.0.0/12 192.168.0.0/16", "TZ": "{tz}"},
+     # the database's name and password, shared by Nextcloud and PostgreSQL, in a file only root can read
+     "env_file": {"POSTGRES_DB": "nextcloud", "POSTGRES_USER": "nextcloud", "POSTGRES_PASSWORD": "{secret}"},
+     "owned_by": {"uid": 33, "gid": 33, "folders": ["html", "data"]},     # www-data inside the image
+     "extra": {"depends_on": ["db", "redis"], "env_file": ["{appdir}/.env"]},
+     "services": {
+         "db": {"image": "postgres:17-alpine", "restart": "unless-stopped", "env_file": ["{appdir}/.env"],
+                "volumes": ["{folder:db}:/var/lib/postgresql/data"]},
+         "redis": {"image": "redis:7-alpine", "restart": "unless-stopped"},
+         "cron": {"image": "nextcloud:apache", "restart": "unless-stopped", "entrypoint": "/cron.sh",
+                  "depends_on": ["db", "redis"],
+                  "volumes": ["{folder:html}:/var/www/html", "{folder:data}:/var/www/html/data"]}},
+     "detect": ["nextcloud", "lscr.io/linuxserver/nextcloud", "linuxserver/nextcloud"],
+     "next": "Open it and choose the admin's name and password. That's all: its database and cache are already "
+             "connected. Open it by the same address every time; the apps on your phone and computer need "
+             "exactly that address."},
+    {"id": "owncloud", "name": "ownCloud", "category": "Files", "image": "owncloud/ocis:latest",
+     "description": "Your own cloud: files synced to every device, shared by link, with a fast modern web page "
+                    "(ownCloud Infinite Scale).",
+     "https": True, "url_env": "OCIS_URL", "run_as_owner": ["config", "data"], "self_https": True,
+     "ports": [{"name": "Web page", "container": 9200, "default": 9200, "web": True, "follow": True}],
+     "folders": [{"key": "config", "label": "Settings folder", "to": "/etc/ocis", "default": "{dir}/config"},
+                 {"key": "data", "label": "Files folder", "to": "/var/lib/ocis", "default": "{dir}/data"}],
+     # Signing in, ownCloud asks itself questions at the address you open it by. From inside a container that
+     # address can be out of reach (Tailscale's, or behind a firewall), so it's pointed back at the container
+     # (self_https), where ownCloud answers with its own certificate. OCIS_INSECURE lets it accept that
+     # certificate from itself; your browser still gets the trusted one in front.
+     "env": {"PROXY_TLS": "true", "PROXY_HTTP_ADDR": "0.0.0.0:{https_port}", "OCIS_INSECURE": "true",
+             "IDM_CREATE_DEMO_USERS": "false", "OCIS_LOG_LEVEL": "warn"},
+     "extra": {"entrypoint": "/bin/sh", "command": ["-c", "ocis init || true; ocis server"]},
+     "detect": ["owncloud/ocis"],
+     "next": "Sign in as admin. Its first password is in its log (Containers → owncloud → Logs, near the top): "
+             "change it straight away. Open it by the same address every time: the apps on your phone and "
+             "computer need exactly that address."},
     {"id": "syncthing", "name": "Syncthing", "category": "Files", "image": "lscr.io/linuxserver/syncthing:latest",
      "description": "Keeps folders in step between your computers and phones, without a cloud in the middle.",
      "ports": [{"name": "Web page", "container": 8384, "default": 8384, "web": True},
@@ -185,11 +242,12 @@ CATALOGUE = [
                  {"key": "data", "label": "Folder to sync", "to": "/data1", "default": ""}],
      "env": LS, "detect": ["lscr.io/linuxserver/syncthing", "linuxserver/syncthing", "syncthing/syncthing"]},
     {"id": "vaultwarden", "name": "Vaultwarden", "category": "Tools", "image": "vaultwarden/server:latest",
-     "description": "A small password manager server for the Bitwarden apps and browser extensions.",
+     "description": "Your own Bitwarden-compatible password manager. Works with the Bitwarden apps and browser extensions.",
      "ports": [{"name": "Web page", "container": 80, "default": 8222, "web": True}],
      "folders": [{"key": "data", "label": "Data folder", "to": "/data", "default": "{dir}/data"}],
-     "detect": ["vaultwarden/server"],
-     "next": "Browsers only let it work over HTTPS: reach it through a reverse proxy or Tailscale before you use it."},
+     "https": True, "detect": ["vaultwarden/server"],
+     "next": "Open it over HTTPS to create your account. In the Bitwarden app or browser extension, choose "
+             "self-hosted and enter the same address."},
     {"id": "uptime-kuma", "name": "Uptime Kuma", "category": "Tools", "image": "louislam/uptime-kuma:2",
      "description": "Watches websites and services, and tells you when one goes down.",
      "ports": [{"name": "Web page", "container": 3001, "default": 3001, "web": True}],
@@ -304,6 +362,140 @@ def _port(value, label):
     return p
 
 
+def Z():
+    return sys.modules.get("zfsmgr")
+
+
+# --------------------------------------------------------------------------- where an app's data is kept
+NEW_DS_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$")   # a new dataset's own name (it's also a folder name)
+_places = {"t": 0.0, "v": None}
+
+
+def places(fresh=False):
+    """Where an app's data can go: LabKeel's apps folder, each mounted ZFS dataset, and each other drive.
+    {"places": [{id, kind: default | zfs | drive, path, free, ...}], "zfs_write": bool}. Read at most every 15 s."""
+    if _places["v"] is not None and not fresh and time.time() - _places["t"] < 15:
+        return _places["v"]
+    try:
+        fs = M()._storage_raw().get("filesystems") or []
+    except Exception:
+        fs = []
+
+    def free_at(path):
+        best = max((f for f in fs if path == f["mount"] or path.startswith(f["mount"].rstrip("/") + "/")),
+                   key=lambda f: len(f["mount"]), default=None)
+        return best["free"] if best else None
+    out = [{"id": "default", "kind": "default", "path": APPS_DIR, "free": free_at(APPS_DIR)}]
+    z, zmounts = Z(), set()
+    try:
+        pools = sorted(z.pool_list()) if z and z.tools()["available"] else []
+    except Exception:
+        pools = []
+    for pool in pools:
+        try:
+            dss = z.datasets(pool, fresh=fresh)
+        except Exception:
+            continue
+        for d in dss[:200]:
+            mp = d.get("mountpoint") or ""
+            zmounts.add(mp)
+            if (d.get("type") != "filesystem" or d.get("mounted") != "yes" or d.get("readonly") == "on"
+                    or not SAFE_PATH_RE.match(mp) or _bad_dir(mp, allow_parent=True) or not NEW_DS_RE.match(pool)):
+                continue
+            out.append({"id": f"zfs:{d['name']}", "kind": "zfs", "dataset": d["name"], "pool": pool, "path": mp,
+                        "free": d.get("avail"), "quota": d.get("quota") or None})
+    for f in fs:
+        mp = f.get("mount") or ""
+        if (f.get("type") == "zfs" or mp in zmounts or not SAFE_PATH_RE.match(mp) or _bad_dir(mp, allow_parent=True)
+                or mp == APPS_DIR or APPS_DIR.startswith(mp.rstrip("/") + "/")):
+            continue   # the system's own drive is the first choice already
+        out.append({"id": f"dir:{mp}", "kind": "drive", "path": mp, "fstype": f.get("type"), "free": f.get("free"),
+                    "size": f.get("size")})
+    _places.update(t=time.time(), v={"places": out, "zfs_write": bool(z and z.WRITE)})
+    return _places["v"]
+
+
+def _storage(values, slug):
+    """Your choice of where the app's data goes, checked. {"kind": default | folder | dataset, "base": the folder},
+    and for a new dataset its full name, pool, size limit and whether that space is set aside."""
+    s = values.get("storage")
+    if not isinstance(s, dict) or s.get("place") in (None, "", "default"):
+        return {"kind": "default", "base": f"{APPS_DIR}/{slug}"}
+    pl = next((x for x in places()["places"] if x["id"] == s.get("place")), None) if isinstance(s.get("place"), str) else None
+    if not pl:
+        raise Invalid("That place to keep it isn't there any more. Choose where its data goes again.")
+    root = pl["path"].rstrip("/")
+    if pl["kind"] != "zfs" or not s.get("new"):
+        return {"kind": "folder", "base": _path(f"{root}/{slug}", "Where its data is kept"), "place": pl["id"]}
+    name = str(s.get("name") or slug).strip()
+    if not NEW_DS_RE.match(name):
+        raise Invalid("Name the dataset with letters, numbers, dots, dashes and underscores (up to 40).")
+    quota = _limit(s.get("size"))
+    if s.get("reserve") and not quota:
+        raise Invalid("Give a size limit to set that much space aside.")
+    return {"kind": "dataset", "base": _path(f"{root}/{name}", "Where its data is kept"), "dataset": f"{pl['dataset']}/{name}",
+            "pool": pl["pool"], "quota": quota and quota[0], "quota_text": quota and quota[1],
+            "reserve": bool(s.get("reserve")), "place": pl["id"]}
+
+
+LIMIT_RE = re.compile(r"^(\d{1,7}(?:\.\d{1,3})?)\s*([MGT])B?$", re.I)
+
+
+def _limit(v):
+    """A size limit from the dialog ("200G", "1.5 TB") as (bytes for ZFS, words for people), or None for no
+    limit. In the same units as the rest of LabKeel shows sizes (1 GB = 1000 MB), so 200 GB reads as 200 GB."""
+    v = str(v if v is not None else "").strip()
+    if not v:
+        return None
+    m = LIMIT_RE.match(v)
+    if not m:
+        raise Invalid("Give the size limit as a number of MB, GB or TB, like 200 GB.")
+    unit = m.group(2).upper()
+    n = int(float(m.group(1)) * 1000 ** (2 + "MGT".index(unit)))
+    if not 100 * 1000 ** 2 <= n <= 10 ** 17:
+        raise Invalid("A size limit is between 100 MB and 100,000 TB.")
+    return str(n), f"{m.group(1)} {unit}B"
+
+
+def _dataset_problem(p):
+    """Why the dataset an app asked for can't be made, or None. Sets storage["exists"] when it's the one this app
+    had before it was removed (it's used again, as it is)."""
+    st = p.get("storage") or {}
+    if st.get("kind") != "dataset":
+        return None
+    z = Z()
+    if not z or not z.WRITE:
+        return ("Making a dataset needs pool changes turned on (LABKEEL_ALLOW_ZFS_CHANGES=1 in LabKeel's "
+                "docker-compose.yml). Or untick \"Make a dataset for it\" to keep it in a folder there instead.")
+    try:
+        exists = any(d["name"] == st["dataset"] for d in z.datasets(st["pool"], fresh=True))
+    except HTTPException as e:
+        return f"Couldn't read the pool {st['pool']}: {e.detail}"
+    if exists:
+        was = (_load().get("removed") or {}).get(p["slug"]) or {}
+        if was.get("dataset") == st["dataset"]:
+            st["exists"] = True
+            return None
+        return f"{st['dataset']} already exists. Choose it from the list instead, or give the new dataset another name."
+    return z.mount_problem(st["base"])
+
+
+def _make_dataset(st, say):
+    z = Z()
+    opts = []
+    if st.get("quota"):
+        opts += ["-o", f"quota={st['quota']}"] + (["-o", f"reservation={st['quota']}"] if st.get("reserve") else [])
+    try:
+        with z.changing():
+            z.zdo(["zfs", "create"] + opts + [st["dataset"]])
+    except HTTPException as e:
+        raise RuntimeError(f"Couldn't make the dataset {st['dataset']}: {e.detail}") from None
+    _places.update(v=None)
+    how = (f", limited to {st['quota_text']}" + (" and with that much set aside" if st.get("reserve") else "")) if st.get("quota") else ""
+    z.log(f"Created dataset {st['dataset']} for an app{how}")
+    say(f"Made the dataset {st['dataset']} at {st['base']}{how}")
+
+
 def slugify(name):
     s = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")[:40].strip("-")
     return s
@@ -369,11 +561,70 @@ def _owner():
     return _owner_cache["v"]
 
 
+def _default_address():
+    """The address to offer for a certificate made here: this machine's first real network address."""
+    try:
+        dns, ips = tls._local_names()
+        return next((i for i in ips if not i.startswith("127.")), None) or (dns[-1] if dns else "")
+    except Exception:
+        return ""
+
+
 def _tz():
     try:
         return U().tz().key or "Etc/UTC"
     except Exception:
         return "Etc/UTC"
+
+
+HTTPS_MODES = ("tailscale", "self-signed")
+HOST_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$")
+
+
+def https_choices():
+    """For the dialog: the machine's Tailscale name if its trusted certificate can be used, or why not."""
+    try:
+        return {"tailscale": tls.tailscale_domain(), "why": None}
+    except tls.NotAvailable as e:
+        return {"tailscale": None, "why": str(e)}
+
+
+def _secure(values, port):
+    """How an app that needs HTTPS is reached, from your choices: {mode, port, address, and for a certificate made
+    here, the names and numbers on it}. Tailscale if it's there (its certificate is trusted by every device),
+    otherwise a certificate made here. Raises Invalid."""
+    mode = values.get("https")
+    if mode in (None, ""):
+        mode = "tailscale" if https_choices()["tailscale"] else "self-signed"
+    if mode not in HTTPS_MODES:
+        raise Invalid("Choose how to secure it: with Tailscale, or with a certificate made here.")
+    if mode == "tailscale":
+        try:
+            return {"mode": mode, "port": port, "address": tls.tailscale_domain()}
+        except tls.NotAvailable as e:
+            raise Invalid(f"{str(e).rstrip('.')}. Or choose the certificate made here.")
+    dns, ips = tls._local_names()
+    address = _text(values.get("address"), "Address", limit=253)
+    if not address:
+        address = next((i for i in ips if not i.startswith("127.")), None) or (dns[-1] if dns else "localhost")
+    if not HOST_RE.match(address):
+        raise Invalid("\"Address\" must be a name or number you'll open it at, like homelab.local or 192.168.1.20.")
+    try:
+        ipaddress.ip_address(address)
+        ips = sorted(set(ips) | {address})
+    except ValueError:
+        dns = sorted(set(dns) | {address.lower()})
+    return {"mode": mode, "port": port, "address": address, "dns": dns, "ips": ips}
+
+
+def _caddyfile(slug, port, inner, self_https=False):
+    """The small web server in front of an app: it speaks HTTPS on one port and hands the traffic to the app
+    (over HTTPS too, without checking the certificate, when the app only has one it made itself)."""
+    to = (f"reverse_proxy https://{slug}:{inner} {{\n\t\ttransport http {{\n\t\t\ttls_insecure_skip_verify\n\t\t}}\n\t}}"
+          if self_https else f"reverse_proxy {slug}:{inner}")
+    return ("# Made by LabKeel. It only adds HTTPS in front of the app; the app itself has no port open to the network.\n"
+            "{\n\tadmin off\n\tauto_https off\n}\n"
+            f":{port} {{\n\ttls /certs/cert.pem /certs/key.pem\n\t{to}\n}}\n")
 
 
 def plan(app_id, values, adding=True):
@@ -389,9 +640,10 @@ def plan(app_id, values, adding=True):
         raise Invalid("Give it a name with some letters or numbers in it.")
     if adding and a.get("eula") and not values.get("eula"):
         raise Invalid("Tick the box to accept the game's licence (EULA) first.")
-    d = f"{APPS_DIR}/{slug}"
+    d = f"{APPS_DIR}/{slug}"          # the compose file's folder, always
+    st = _storage(values, slug)       # its data: the same folder unless you chose somewhere else
     uid, gid = _owner()
-    sub = {"{dir}": d, "{tz}": _tz(), "{uid}": str(uid), "{gid}": str(gid)}
+    sub = {"{dir}": st["base"], "{tz}": _tz(), "{uid}": str(uid), "{gid}": str(gid)}
 
     def fill(s):
         for k, v in sub.items():
@@ -412,22 +664,33 @@ def plan(app_id, values, adding=True):
         given = (values.get("folders") or {}).get(f["key"]) if isinstance(values.get("folders"), dict) else None
         default = fill(f["default"])
         folders[f["key"]] = _path(given if given is not None else default, f["label"], required=not f.get("optional"))
+    sub["{appdir}"] = d
+    for k, v in folders.items():
+        sub[f"{{folder:{k}}}"] = v
     envs = {k: fill(v) for k, v in (a.get("env") or {}).items()}
     for fld in a.get("fields", []):
         given = (values.get("fields") or {}).get(fld["key"]) if isinstance(values.get("fields"), dict) else None
         v = _text(given if given is not None else fld.get("default", ""), fld["label"], required=not fld.get("optional"))
         if v:
             envs[fld["key"]] = v
-    web = None
+    web, sec = None, None
     for i, p in enumerate(a["ports"]):
         if p.get("web"):
             web = {"port": ports[i], "path": a.get("web_path", ""), "scheme": a.get("web_scheme", "http")}
+            if a.get("https"):
+                sec = _secure(values, ports[i])
+                web.update(scheme="https", host=sec["address"])
+                if a.get("url_env"):
+                    envs[a["url_env"]] = f"https://{sec['address']}:{ports[i]}"
+                sub.update({"{https_host}": sec["address"], "{https_port}": str(ports[i]),
+                            "{https_url}": f"https://{sec['address']}:{ports[i]}"})
+                envs = {k: fill(v) for k, v in envs.items()}
             break
 
     if a.get("upstream") == "immich":
         files = {".env": _immich_env(folders, ports[0], values)}
         return {"slug": slug, "name": name, "dir": d, "app": a["id"], "files": files, "web": web,
-                "upstream": IMMICH_FILES, "ports": ports}
+                "upstream": IMMICH_FILES, "ports": ports, "storage": st}
 
     main = {"image": a["image"], "container_name": slug, "restart": "unless-stopped"}
     if a.get("host_network"):
@@ -436,12 +699,31 @@ def plan(app_id, values, adding=True):
         main["ports"] = []
         for i, p in enumerate(a["ports"]):
             inside = ports[i] if p.get("follow") else p["container"]
+            if sec and p.get("web"):
+                if sec["mode"] == "tailscale":   # only this machine can reach it: Tailscale serves it over HTTPS
+                    main["ports"].append(f"127.0.0.1:{ports[i]}:{inside}")
+                continue                         # a certificate made here: only the HTTPS container opens a port
             main["ports"].append(f"{ports[i]}:{inside}" + ("/udp" if p.get("proto") == "udp" else ""))
+        if not main["ports"]:
+            del main["ports"]
+    own = None
+    if a.get("run_as_owner"):
+        main["user"] = f"{uid}:{gid}"
+        own = {"uid": uid, "gid": gid, "dirs": [folders[k] for k in a["run_as_owner"] if folders.get(k)]}
+    elif a.get("owned_by"):
+        o = a["owned_by"]
+        own = {"uid": o["uid"], "gid": o["gid"], "dirs": [folders[k] for k in o["folders"] if folders.get(k)]}
     if envs:
         main["environment"] = envs
+    if sec and a.get("self_https"):
+        sec["self_https"] = True
+        try:
+            ipaddress.ip_address(sec["address"])     # a number can't be pointed elsewhere: it goes by the machine
+        except ValueError:
+            main["extra_hosts"] = [f"{sec['address']}:127.0.0.1"]
     vols = [f"{folders[f['key']]}:{f['to']}" + (":ro" if f.get("ro") else "")
-            for f in a.get("folders", []) if folders.get(f["key"])]
-    extra = json.loads(json.dumps(a.get("extra") or {}))
+            for f in a.get("folders", []) if folders.get(f["key"]) and not f.get("service")]
+    extra = json.loads(fill(json.dumps(a.get("extra") or {})))
     vols += extra.pop("volumes", [])
     if vols:
         main["volumes"] = vols
@@ -453,15 +735,34 @@ def plan(app_id, values, adding=True):
         services[k] = sv
     services = {"app": main, **services} if services else {"app": main}
     services = {(slug if k == "app" else k): v for k, v in services.items()}
+    files = {}
+    if sec and sec["mode"] == "self-signed":
+        inner = next(sec["port"] if p.get("follow") else p["container"] for p in a["ports"] if p.get("web"))
+        services[f"{slug}-https"] = {
+            "image": "caddy:2-alpine", "container_name": f"{slug}-https", "restart": "unless-stopped",
+            "ports": [f"{sec['port']}:{sec['port']}"], "depends_on": [slug],
+            "volumes": [f"{d}/https/Caddyfile:/etc/caddy/Caddyfile:ro", f"{d}/https/certs:/certs:ro"],
+            "read_only": True, "tmpfs": ["/tmp", "/config", "/data"],
+            "cap_drop": ["ALL"], "cap_add": ["NET_BIND_SERVICE"], "security_opt": ["no-new-privileges:true"]}
+        files["https/Caddyfile"] = _caddyfile(slug, sec["port"], inner, bool(a.get("self_https")))
     compose = {"name": slug, "services": services}
     head = (f"# {a['name']}, added from LabKeel's Apps page. You can change this file by hand and run\n"
             f"# docker compose up -d in this folder; LabKeel will keep showing it.\n")
-    return {"slug": slug, "name": name, "dir": d, "app": a["id"], "files": {"compose.yaml": head + to_yaml(compose) + "\n"},
-            "web": web, "ports": ports}
+    files = {"compose.yaml": head + to_yaml(compose) + "\n", **files}
+    if a.get("env_file"):
+        files[".env"] = (f"# {a['name']}'s own settings, made by LabKeel and shared by its containers. Kept out of compose.yaml\n"
+                         "# so the password isn't on show; only root can read this file.\n"
+                         + "".join(f"{k}={_secret() if v == '{secret}' else fill(v)}\n" for k, v in a["env_file"].items()))
+    return {"slug": slug, "name": name, "dir": d, "app": a["id"], "files": files, "web": web, "ports": ports,
+            "https": sec, "own": own, "storage": st}
+
+
+def _secret():
+    return "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(24))
 
 
 def _immich_env(folders, port, values):
-    pw = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(24))
+    pw = _secret()
     lines = ["# Immich, added from LabKeel's Apps page. See https://immich.app/docs/install/environment-variables",
              f'UPLOAD_LOCATION="{folders["UPLOAD_LOCATION"]}"', f'DB_DATA_LOCATION="{folders["DB_DATA_LOCATION"]}"',
              f'TZ="{_tz()}"', "IMMICH_VERSION=release", f"DB_PASSWORD={pw}", "DB_USERNAME=postgres",
@@ -528,7 +829,7 @@ def service_entries():
              "description": (BY_ID.get(a.get("app")) or {}).get("category"), "from_apps": True}
         w = a.get("web")
         if w:
-            e["url"] = f"{w.get('scheme', 'http')}://{{host}}:{w['port']}{w.get('path', '')}"
+            e["url"] = f"{w.get('scheme', 'http')}://{w.get('host') or '{host}'}:{w['port']}{w.get('path', '')}"
             if w.get("scheme") == "https":
                 e["check"] = {"type": "tcp", "host": "{host}", "port": w["port"]}
         out.append(e)
@@ -565,7 +866,7 @@ def catalogue():
                                   for f in a.get("folders", [])],
                       "fields": [{k: f.get(k) for k in ("key", "label", "default", "secret", "optional", "help")}
                                  for f in a.get("fields", [])],
-                      "host_network": bool(a.get("host_network")),
+                      "host_network": bool(a.get("host_network")), "https": bool(a.get("https")),
                       "added": a["id"] in mine, "running_as": found["name"] if found else None})
     return out
 
@@ -663,6 +964,26 @@ def _answers(p, say):
             "check its log in Containers.") if p.get("web") else "Its containers didn't start."
 
 
+def _serve_ports():
+    """The HTTPS ports Tailscale already serves on this machine (None if it can't tell)."""
+    try:
+        r = M().host_cmd(["tailscale", "serve", "status", "--json"], 20)
+        st = json.loads(r.stdout or "{}") if r.returncode == 0 else None
+    except (OSError, ValueError):
+        return None
+    if not isinstance(st, dict):
+        return None
+    return {int(k) for k in (st.get("TCP") or {}) if str(k).isdigit()}
+
+
+def _write_certificate(p):
+    """A certificate made here for the names it'll be opened at, beside the app's other files."""
+    sec = p["https"]
+    crt, key = tls.make_certificate(sec["dns"], sec["ips"])
+    _host_write(f"{p['dir']}/https/certs/cert.pem", crt, "644")
+    _host_write(f"{p['dir']}/https/certs/key.pem", key, "600")
+
+
 def _run_add(p):
     job = _jobs[p["slug"]]
     t0 = time.time()
@@ -675,13 +996,30 @@ def _run_add(p):
         again = _host_exists(compose)
         if again and not _removed_here(p):
             raise RuntimeError(_FOREIGN.format(dir=p["dir"]))
+        sec = p.get("https")
+        if sec and sec["mode"] == "tailscale" and sec["port"] in (_serve_ports() or ()):
+            raise RuntimeError(f"Tailscale is already serving something on HTTPS port {sec['port']}. Switch that off "
+                               f"(tailscale serve --https={sec['port']} off) or add this app on another port.")
+        st = p.get("storage") or {}
+        if st.get("kind") == "dataset":
+            if st.get("exists"):
+                say(f"Its dataset {st['dataset']} is still here from before: used again as it is")
+            else:
+                _make_dataset(st, say)
         files = _fetch_upstream(p) if p.get("upstream") else p["files"]
         if again:
             _host_write(compose + ".old", _host_read(compose))
         for name, text in files.items():
-            if again and name != "compose.yaml" and _host_exists(f"{p['dir']}/{name}"):
+            if again and name == ".env" and _host_exists(f"{p['dir']}/{name}"):
                 continue  # Immich's .env: its database already has that password
             _host_write(f"{p['dir']}/{name}", text, "600" if name == ".env" else "644")
+        if sec and sec["mode"] == "self-signed":
+            _write_certificate(p)
+            say("Made its certificate")
+        for folder in (p.get("own") or {}).get("dirs", []):
+            r = host(["install", "-d", "-o", str(p["own"]["uid"]), "-g", str(p["own"]["gid"]), "--", folder], 20)
+            if r.returncode != 0:
+                raise RuntimeError(f"Couldn't make {folder}: {selfupdate._err(r)[0]}")
         say(f"Wrote the compose file to {p['dir']}" + (
             " (it was here before: its settings and data are used again, and its last compose file is kept as "
             "compose.yaml.old)" if again else ""))
@@ -707,10 +1045,24 @@ def _run_add(p):
         problem = _answers(p, say)
         if problem:
             raise RuntimeError(problem)
+        if sec and sec["mode"] == "tailscale":
+            to = "https+insecure" if sec.get("self_https") else "http"   # (the app's own certificate, on this machine only)
+            r = M().host_cmd(["tailscale", "serve", "--bg", f"--https={sec['port']}", f"{to}://127.0.0.1:{sec['port']}"], 60)
+            if r.returncode != 0:
+                raise RuntimeError(f"Tailscale couldn't switch on HTTPS: {selfupdate._err(r)[0]} "
+                                   "(this needs Tailscale 1.52 or newer)")
+            if sec["port"] not in (_serve_ports() or {sec["port"]}):
+                raise RuntimeError("Tailscale didn't start serving it. Check `tailscale serve status` on the machine.")
+            say(f"Tailscale serves it over HTTPS at https://{sec['address']}:{sec['port']}")
+        elif sec:
+            say(f"It answers over HTTPS at https://{sec['address']}:{sec['port']}")
         with _lock:
             d = _load()
             d.setdefault("apps", {})[p["slug"]] = {
                 "name": p["name"], "app": p["app"], "dir": p["dir"], "web": p.get("web"), "added": time.time(),
+                "data": st.get("base") if st.get("kind") in ("folder", "dataset") else None,
+                "dataset": st.get("dataset"), "quota": st.get("quota_text"),
+                "https": ({k: sec[k] for k in ("mode", "port", "address")} if sec else None),
                 "by": (job.get("by") or None), "container": p.get("container") or (
                     "immich_server" if p["app"] == "immich" else p["slug"])}
             (d.get("removed") or {}).pop(p["slug"], None)
@@ -718,7 +1070,7 @@ def _run_add(p):
         main_services_changed()
         say("Added to Services, with update checks like your other containers")
         job.update(state="done")
-        U().log("container", f"Added the app {p['name']} ({p['dir']})")
+        U().log("container", f"Added the app {p['name']} ({p['dir']})" + (f", its data in {st['base']}" if st.get("kind") in ("folder", "dataset") else ""))
     except Exception as e:
         job.update(state="failed", detail=str(e))
         say(f"Stopped: {e}")
@@ -743,16 +1095,24 @@ def _run_remove(slug, a):
         r = selfupdate.host(_compose_cmd(p, "down"), UP_TIMEOUT)
         if r.returncode != 0:
             raise RuntimeError(f"docker compose down failed: {selfupdate._err(r)[0]}")
+        h = a.get("https") or {}
+        if h.get("mode") == "tailscale" and h.get("port"):
+            r = M().host_cmd(["tailscale", "serve", f"--https={int(h['port'])}", "off"], 30)
+            if r.returncode != 0:
+                job["steps"].append({"t": time.time(), "text": f"Tailscale is still serving port {h['port']}. Switch it "
+                                     f"off with: tailscale serve --https={int(h['port'])} off"})
         with _lock:
             d = _load()
             (d.get("apps") or {}).pop(slug, None)
             # its folder stays, so it can be added again over it (see _removed_here)
-            d.setdefault("removed", {})[slug] = {"dir": a["dir"], "name": a.get("name"), "removed": time.time()}
+            d.setdefault("removed", {})[slug] = {"dir": a["dir"], "name": a.get("name"), "removed": time.time(),
+                                                 "dataset": a.get("dataset")}
             _save(d)
         main_services_changed()
         job.update(state="done")
+        kept = f" So is its data in {a['data']}" + (f" (the dataset {a['dataset']})" if a.get("dataset") else "") + "." if a.get("data") else ""
         job["steps"].append({"t": time.time(), "text": f"Stopped and removed its containers. Its folder {a['dir']} "
-                                                        "and everything in it are still there."})
+                                                        f"and everything in it are still there.{kept}"})
         U().log("container", f"Removed the app {a.get('name') or slug} (its folder {a['dir']} was kept)")
     except Exception as e:
         job.update(state="failed", detail=str(e))
@@ -795,14 +1155,16 @@ def api_apps():
     w = why_not()
     jobs = {k: v for k, v in _jobs.items() if v["state"] == "running" or time.time() - (v.get("finished") or 0) < 600}
     return {"catalogue": catalogue(), "categories": CATEGORIES, "added": added(), "jobs": jobs,
-            "apps_dir": APPS_DIR, "available": w is None, "why_not": w, "suggest_folders": suggest_folders()}
+            "apps_dir": APPS_DIR, "available": w is None, "why_not": w, "suggest_folders": suggest_folders(),
+            "https": https_choices(), "https_default_address": _default_address(), "storage": places()}
 
 
 @router.post("/api/apps/preview")
 def api_preview(body: dict = Body(...)):
     """What adding an app would write, for the dialog: the compose file and its folder."""
     p = plan(body.get("app"), body.get("values"), adding=False)
-    files = dict(p["files"])
+    files = {n: re.sub(r"(?m)^(\w*PASSWORD\w*=).*$", r"\1(a new password, made when you add it)", t) if n == ".env" else t
+             for n, t in p["files"].items()}
     if p.get("upstream"):
         files["compose.yaml"] = ("# Immich's own compose file, downloaded from its latest release when you add it\n"
                                  "# (as Immich's instructions say), with its port set to " + str(p["ports"][0]) + ".\n")
@@ -814,8 +1176,12 @@ def api_preview(body: dict = Body(...)):
     folder = _folder_state(p)
     if folder == "foreign":
         warn.insert(0, _FOREIGN.format(dir=p["dir"]))
+    st = p["storage"]
+    problem = _dataset_problem(p)
+    if problem:
+        warn.insert(0, problem)
     return {"slug": p["slug"], "dir": p["dir"], "files": files, "warnings": warn,
-            "again": folder == "again"}
+            "again": folder == "again", "storage": {k: st.get(k) for k in ("kind", "base", "dataset", "quota_text", "reserve", "exists")}}
 
 
 @router.post("/api/apps/add")
@@ -834,8 +1200,14 @@ def api_add(request: Request, body: dict = Body(...)):
             raise HTTPException(409, f"Port {port} is already in use on this machine. Choose another.")
     if _folder_state(p) == "foreign":
         raise HTTPException(409, _FOREIGN.format(dir=p["dir"]))
+    problem = _dataset_problem(p)
+    if problem:
+        raise HTTPException(409, problem)
     sys.modules["security"].confirm_password(request, body.get("password"))
-    U().log("container", f"Adding the app {p['name']} into {p['dir']}")
+    st = p.get("storage") or {}
+    U().log("container", f"Adding the app {p['name']} into {p['dir']}" + (
+        f", with its data in {st['base']}" + (f" (a new dataset, {st['dataset']})" if st.get("kind") == "dataset" and not st.get("exists") else "")
+        if st.get("kind") in ("folder", "dataset") else ""))
     _start(p["slug"], _run_add, p, name=p["name"])
     return {"ok": True, "slug": p["slug"]}
 

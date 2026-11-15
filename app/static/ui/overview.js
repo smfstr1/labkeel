@@ -1,4 +1,4 @@
-// LabKeel dashboard — overview.js (2 of 13; index.html loads them in order).
+// LabKeel dashboard — overview.js (2 of 14; index.html loads them in order).
 // The Overview page: the live tiles, sparklines, attention list, busiest programs, GPUs, power, and the
 // history charts (drawn as SVG).
 "use strict";
@@ -14,6 +14,7 @@ function renderAll() {
   renderServices();
   renderAttention();
   renderServers();
+  renderClusters();
 }
 
 setInterval(() => {

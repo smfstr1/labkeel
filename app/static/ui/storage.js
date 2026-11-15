@@ -1,4 +1,4 @@
-// LabKeel dashboard — storage.js (4 of 13; index.html loads them in order).
+// LabKeel dashboard — storage.js (4 of 14; index.html loads them in order).
 // The Storage page: drives and pools as tiles, drive care (self-tests, cases), replacing a drive, and a
 // drive's own drawer.
 "use strict";
@@ -273,9 +273,10 @@ function poolPanel(p, tiles, count, dp) {
     p.frag != null ? `${p.frag}% fragmented` : null,
     p.usable ? `${fmtBytes(p.size)} raw, including parity` : null,
   ].filter(Boolean);
-  return `<article class="pool ${hc === "good" ? "" : hc}" aria-label="Pool ${esc(p.name)}">
-    <div class="pool-head"><div class="pool-title">${dp ? `<a class="pool-name" style="text-decoration:none" href="#pool:${esc(encodeURIComponent(p.name))}">${esc(p.name)}</a>` : `<span class="pool-name">${esc(p.name)}</span>`}<span class="pool-kind">${esc(kind)}</span>
-      <span class="pill ${hc}">${esc(p.health.charAt(0) + p.health.slice(1).toLowerCase())}</span></div>${poolActions(dp)}</div>
+  const folded = S.poolFolded.has(p.name);
+  return `<article class="pool ${hc === "good" ? "" : hc}${folded ? " folded" : ""}" aria-label="Pool ${esc(p.name)}">
+    <div class="pool-head"><div class="pool-title"><button class="pool-fold" data-fold="${esc(p.name)}" aria-expanded="${!folded}" aria-label="${folded ? "Show" : "Hide"} ${esc(p.name)}'s details" title="${folded ? "Show details" : "Hide details"}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>${dp ? `<a class="pool-name" style="text-decoration:none" href="#pool:${esc(encodeURIComponent(p.name))}">${esc(p.name)}</a>` : `<span class="pool-name">${esc(p.name)}</span>`}<span class="pool-kind">${esc(kind)}</span>
+      <span class="pill ${hc}">${esc(p.health.charAt(0) + p.health.slice(1).toLowerCase())}</span><span class="pool-brief">${fmtBytes(u.used)} of ${fmtBytes(u.size)} · ${Math.round(u.pct)}%</span></div>${poolActions(dp)}</div>
     <div class="pool-usage"><span class="pool-big">${fmtBytes(u.used)}<small>used of ${fmtBytes(u.size)}</small></span>
       <span class="pool-free">${fmtBytes(u.free)} free · ${Math.round(u.pct)}%</span></div>
     <div class="bar pool-bar"><i class="${pctClass(u.pct)}" style="width:${Math.max(u.pct, 0.5)}%"></i></div>
@@ -287,6 +288,16 @@ function poolPanel(p, tiles, count, dp) {
   </article>`;
 }
 S.poolOpen = new Set();
+// pools folded down to one line, remembered in this browser
+S.poolFolded = new Set(
+  (() => {
+    try {
+      return JSON.parse(localStorage.getItem("lk-pools-folded") || "[]");
+    } catch {
+      return [];
+    }
+  })(),
+);
 
 // The Storage page's pools and drives, drawn from storage, drive care and SMART together
 function renderDriveLayout() {
@@ -429,6 +440,21 @@ $("#s-pools").addEventListener(
   },
   true,
 );
+$("#s-pools").addEventListener("click", e => {
+  const b = e.target.closest("[data-fold]");
+  if (!b) return;
+  const name = b.dataset.fold,
+    art = b.closest(".pool"),
+    folded = !S.poolFolded.has(name);
+  folded ? S.poolFolded.add(name) : S.poolFolded.delete(name);
+  art.classList.toggle("folded", folded);
+  b.setAttribute("aria-expanded", String(!folded));
+  b.title = folded ? "Show details" : "Hide details";
+  b.setAttribute("aria-label", `${folded ? "Show" : "Hide"} ${name}'s details`);
+  try {
+    localStorage.setItem("lk-pools-folded", JSON.stringify([...S.poolFolded]));
+  } catch {}
+});
 $("#view-storage").addEventListener("click", e => {
   const pt = e.target.closest("[data-pooltool]");
   if (pt) return pt.dataset.pooltool === "new" ? NewPool.open() : ImportV.open();

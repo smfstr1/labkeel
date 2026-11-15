@@ -1,4 +1,4 @@
-// LabKeel dashboard — panes.js (10 of 13; index.html loads them in order).
+// LabKeel dashboard — panes.js (11 of 14; index.html loads them in order).
 // Two panes on the Files page: a second folder beside the usual one, on any machine, for copying and moving
 // between them. On one machine that's Move and Copy; between two, a checked copy (crosscopy.py on the server).
 "use strict";

@@ -1,4 +1,4 @@
-// LabKeel dashboard — servers.js (8 of 13; index.html loads them in order).
+// LabKeel dashboard — servers.js (8 of 14; index.html loads them in order).
 // Several servers: the Servers page, one server's page, the switcher behind the host name, adding a server,
 // and the Containers page's "All servers". Other machines report in through LabKeel's agent (app/servers.py).
 "use strict";
@@ -125,7 +125,7 @@ function renderSrvMenu() {
   $("#srv-menu").innerHTML =
     row(d.this, "#overview", true) +
     (d.servers || []).map(s => row(s, `#server:${encodeURIComponent(s.id)}`)).join("") +
-    `<hr>${d.servers?.length ? `<a role="menuitem" href="#servers">All servers</a>` : ""}<a role="menuitem" href="#servers" class="admin-only" data-srv-add>Add a server…</a>`;
+    `<hr>${d.servers?.length ? `<a role="menuitem" href="#servers">All servers</a>` : ""}<a role="menuitem" href="#clusters">Clusters</a><a role="menuitem" href="#servers" class="admin-only" data-srv-add>Add a server…</a>`;
 }
 function toggleSrvMenu(open = $("#srv-menu").hidden) {
   $("#srv-menu").hidden = !open;

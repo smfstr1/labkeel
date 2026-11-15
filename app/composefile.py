@@ -38,6 +38,7 @@ LISTED = [
     ("LABKEEL_ALLOW_ZFS_CHANGES", "0", "1 = create, change and destroy ZFS pools, datasets and snapshots"),
     ("LABKEEL_ALLOW_RESTART", "0", "1 = restart and shut down the machine"),
     ("LABKEEL_ALLOW_APP_INSTALLS", "0", "1 = add and remove apps on the Apps page (docs/apps.md)"),
+    ("LABKEEL_ALLOW_CLUSTER_CHANGES", "0", "1 = start, join and change a Docker Swarm on the Clusters page (docs/clusters.md)"),
 ]
 NEW_NAME = {old: new for new, old in env.RENAMED.items()}
 _lock = threading.Lock()
