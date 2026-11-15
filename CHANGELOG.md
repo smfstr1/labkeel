@@ -12,8 +12,24 @@
   links and charts; the lettering (LabKeel's, the device's, or fixed-width); icons beside the names in the menu;
   and a switch for movement. Kept in the browser, per person, with one button to put them all back.
 
+- **Stop or restart LabKeel from the Containers page.** LabKeel's own container now has red Restart and Stop
+  buttons, on its app heading and in its drawer. Each opens a warning first that this is the dashboard itself.
+  Stopping also has you type "stop" and give your password, because nothing on the page can start it again:
+  that takes `sudo docker compose up -d` in LabKeel's folder. Afterwards a full-page message says what happened
+  and the page returns by itself once LabKeel is back. LabKeel is still skipped when several containers are
+  acted on at once, and still can't pause or remove itself.
+
+- **Remove a drive from the dashboard.** A drive that isn't mounted and isn't in a pool has a small cross on its
+  tile on Storage, and a "Remove from the dashboard" button in its details. LabKeel then stops showing it,
+  checking its health and alerting about it, and it stays removed after Re-check drives and after a refresh.
+  Nothing on the drive is touched. Removed drives are listed under the drive tiles with "Show again", and one
+  comes back by itself if it's later mounted or added to a pool. Admins only; it's written to the activity log.
+
 ### Fixed
 
+- **A drive that can't be read is no longer called healthy.** A card reader or enclosure that answers with
+  nothing, or doesn't answer at all, now shows as "Unknown" with a plain reason, instead of counting towards
+  "All drives healthy" or showing the raw command that timed out. What's mounted on such a drive is still found.
 - **No more "TLS handshake error … EOF" in an app's log.** The Services check on an app served over HTTPS
   (ownCloud, Vaultwarden, Nextcloud) used to open a connection and hang up, which the app logged as a failed
   handshake every 30 seconds. It now finishes the greeting first. Your own port checks can do the same with
