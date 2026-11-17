@@ -26,3 +26,17 @@ def test_unsafe_links_are_dropped():
         assert main.app_links({"name": "X", "app": bad}) is None, bad
     got = main.app_links({"name": "X", "app": {"android": "myapp://x", "android_package": "com.x;S.evil=1"}})
     assert got == {"android": "myapp://x"}       # a package name that isn't one is left out
+
+
+def test_owncloud_opens_its_own_app():
+    oc = main.app_links({"name": "ownCloud"})
+    assert oc == {"ios": "owncloud://", "android": "owncloud://", "android_package": "com.owncloud.android"}
+    assert main.app_links({"name": "OwnCloud - Sam"}) == oc
+    assert main.app_links({"name": "Files", "logo": "owncloud"}) == oc
+
+
+def test_an_added_apps_open_button_uses_its_phone_app():
+    from pathlib import Path
+    js = Path(main.__file__).parent / "static" / "ui"
+    assert 'data-app-open="${esc(slug)}"' in (js / "apps.js").read_text()
+    assert "a[data-app-open]" in (js / "services.js").read_text()

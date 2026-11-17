@@ -63,11 +63,36 @@ def test_unknown_container_and_bad_input(client, docker_cl):
 def test_never_acts_on_itself(client, ticker, monkeypatch):
     c = ticker()
     monkeypatch.setattr(containers, "SELF_ID", c.id)
-    for action in ("stop", "pause"):
-        r = _act(client, c.name, action)
-        assert r.status_code == 409 and "itself" in r.text
+    r = _act(client, c.name, "pause")
+    assert r.status_code == 409 and "itself" in r.text
     assert _act(client, c.name, "remove", password=PASSWORD, force=True).status_code == 409
     assert _status(c) == "running"
+
+
+def test_stopping_itself_asks_for_the_password_and_answers_first(client, ticker, monkeypatch):
+    """LabKeel can stop its own container, but the page can't start it again: so the password, and a log line
+    saying how to bring it back. It answers before it goes."""
+    c = ticker()
+    monkeypatch.setattr(containers, "SELF_ID", c.id)
+    assert _act(client, c.name, "stop").status_code == 428
+    assert _act(client, c.name, "stop", password="wrong").status_code == 403
+    assert _status(c) == "running"
+    r = _act(client, c.name, "stop", password=PASSWORD)
+    assert r.status_code == 200 and r.json() == {"ok": True, "self": True, "stopped": True}
+    assert _status(c) == "running"                                   # still here to send the answer
+    end = time.time() + 30
+    while _status(c) == "running" and time.time() < end:
+        time.sleep(0.5)
+    assert _status(c) == "exited"
+    log = client.get("/api/events", params={"q": "LabKeel itself"}).json()
+    assert log and "docker compose up -d" in log[0]["text"]
+
+
+def test_restarting_itself_says_so(client, ticker, monkeypatch):
+    c = ticker()
+    monkeypatch.setattr(containers, "SELF_ID", c.id)
+    r = _act(client, c.name, "restart")
+    assert r.status_code == 200 and r.json() == {"ok": True, "self": True, "stopped": False}
 
 
 # --------------------------------------------------------------------------- several at once
@@ -141,3 +166,50 @@ def test_poll_reports_docker_trouble(monkeypatch):
     monkeypatch.setattr(containers, "dclient", broken)
     with pytest.raises(ConnectionError):
         containers.poll_once()
+
+
+# --------------------------------------------------------------------------- LabKeel's own container (no Docker needed)
+class _Own:
+    """Stands in for LabKeel's own container."""
+    id, name, status, attrs = "f" * 64, "labkeel", "running", {}
+
+    def __init__(self):
+        self.did = []
+
+    def stop(self, timeout=None):
+        self.did.append(("stop", timeout))
+
+    def restart(self, timeout=None):
+        self.did.append(("restart", timeout))
+
+
+@pytest.mark.parametrize("action,stopped", [("stop", True), ("restart", False)])
+def test_labkeel_answers_then_stops_or_restarts_itself(monkeypatch, action, stopped):
+    c = _Own()
+    monkeypatch.setattr(containers, "SELF_ID", c.id)
+    fired = []
+    monkeypatch.setattr(containers.threading, "Timer", lambda delay, fn: type("T", (), {"start": lambda self: fired.append((delay, fn))})())
+    assert containers.act(c, action) == {"self": True, "stopped": stopped}
+    assert not c.did and fired[0][0] == 1.0                           # nothing yet: the answer goes out first
+    fired[0][1]()
+    assert c.did == [(action, 10)]
+
+
+@pytest.mark.parametrize("action", ["pause", "remove", "unpause"])
+def test_labkeel_never_pauses_or_removes_itself(monkeypatch, action):
+    c = _Own()
+    monkeypatch.setattr(containers, "SELF_ID", c.id)
+    with pytest.raises(containers.ActionRefused):
+        containers.act(c, action)
+    assert not c.did
+
+
+def test_stopping_labkeel_needs_the_password(client, monkeypatch):
+    c = _Own()
+    monkeypatch.setattr(containers, "SELF_ID", c.id)
+    monkeypatch.setattr(containers, "_get", lambda cid: c)
+    monkeypatch.setattr(containers.threading, "Timer", lambda delay, fn: type("T", (), {"start": lambda self: None})())
+    assert _act(client, "labkeel", "stop").status_code == 428
+    assert _act(client, "labkeel", "stop", password="wrong").status_code == 403
+    assert _act(client, "labkeel", "stop", password=PASSWORD).json() == {"ok": True, "self": True, "stopped": True}
+    assert _act(client, "labkeel", "restart").json() == {"ok": True, "self": True, "stopped": False}

@@ -33,14 +33,32 @@
   Nothing on the drive is touched. Removed drives are listed under the drive tiles with "Show again", and one
   comes back by itself if it's later mounted or added to a pool. Admins only; it's written to the activity log.
 
+- **Network traffic history.** Click the Network card on the Overview for download and upload over the last
+  hour, day, week or month, how much was downloaded and uploaded, the busiest moments, and each network card now.
+  LabKeel records network traffic from this version on.
+- **Each network card in detail.** In that panel, every network card is a button showing whether it's connected
+  and its speed now. Tap one for its addresses (IPv4, IPv6, router, hardware address), its connection (type,
+  link speed, MTU, driver), packets, errors and dropped packets since the server started, and for Wi-Fi the
+  network's name, band, signal strength and link rates. A Back button returns to the traffic history.
+- **ownCloud opens in its phone app.** On a phone, ownCloud in Services, and an added app's Open button on the Apps
+  page, open the ownCloud app when it's installed, as Plex and Immich already did.
+
 ### Fixed
 
+- **The Power card's graph survives a refresh.** It was drawn only from what the page had seen since it opened, so
+  it started empty after every reload. The server now keeps it, like the other cards.
+- **Tidier wording.** "Other drives" on Storage is now "Non-RAID drives", and the explanations under the Containers
+  table, under the memory cache and the "Measured:" line on the Power chart are gone.
 - **A drive that can't be read is no longer called healthy.** A card reader or enclosure that answers with
   nothing, or doesn't answer at all, now shows as "Unknown" with a plain reason, instead of counting towards
   "All drives healthy" or showing the raw command that timed out. What's mounted on such a drive is still found.
 - **App totals line up on the Containers page.** Each app's CPU and memory now sit under the CPU and Memory
   headings instead of beside its name, and LabKeel's red Restart and Stop buttons look the same size as the
   buttons on the other apps.
+- **A pool's page works on a phone.** Dataset names, the apps using them and their limits were cut to a few
+  letters. Each dataset now shows its full name and size, its labels in full beneath, and where it's mounted.
+  Snapshots show their whole name, dataset and date; the five tabs fit the screen; and a dataset's settings sit
+  one to a line so every choice can be read.
 - **No more "TLS handshake error … EOF" in an app's log.** The Services check on an app served over HTTPS
   (ownCloud, Vaultwarden, Nextcloud) used to open a connection and hang up, which the app logged as a failed
   handshake every 30 seconds. It now finishes the greeting first. Your own port checks can do the same with

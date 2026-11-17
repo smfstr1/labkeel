@@ -144,3 +144,50 @@ def test_display_names(client):
     assert r.status_code == 200
     assert main.load_overrides()["services"]["Router"] == "Main router"
     assert client.put("/api/names", json={"kind": "bogus", "key": "a", "name": "b"}).status_code == 400
+
+
+def test_a_port_check_on_https_finishes_the_greeting(tmp_path):
+    """A check that connects and hangs up fills an HTTPS server's log with handshake errors. With "tls" it
+    completes the handshake (without judging the certificate), and still counts a plain port as up."""
+    import socket
+    import ssl
+    import threading
+    import tls
+    crt, key = tls.make_certificate(["localhost"], ["127.0.0.1"])
+    (tmp_path / "c.pem").write_bytes(crt if isinstance(crt, bytes) else crt.encode())
+    (tmp_path / "k.pem").write_bytes(key if isinstance(key, bytes) else key.encode())
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(tmp_path / "c.pem", tmp_path / "k.pem")
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(5)
+    port, seen = srv.getsockname()[1], []
+
+    def serve():
+        for _ in range(2):
+            conn, _addr = srv.accept()
+            try:
+                with ctx.wrap_socket(conn, server_side=True):
+                    seen.append("handshake")
+            except (ssl.SSLError, OSError) as e:
+                seen.append(f"error: {type(e).__name__}")
+    t = threading.Thread(target=serve, daemon=True)
+    t.start()
+    chk = {"type": "tcp", "host": "127.0.0.1", "port": port}
+    assert main.check_service({"name": "a", "check": {**chk, "tls": True}})["state"] == "up"
+    assert main.check_service({"name": "a", "check": chk})["state"] == "up"          # the old way: up, but rude
+    t.join(5)
+    srv.close()
+    assert seen[0] == "handshake" and seen[1].startswith("error")
+    # a port that doesn't speak HTTPS at all still counts: it answered
+    plain = socket.socket()
+    plain.bind(("127.0.0.1", 0))
+    plain.listen(1)
+    threading.Thread(target=lambda: plain.accept()[0].close(), daemon=True).start()
+    assert main.check_service({"name": "b", "check": {"type": "tcp", "host": "127.0.0.1", "port": plain.getsockname()[1], "tls": True}})["state"] == "up"
+    plain.close()
+    closed = socket.socket()
+    closed.bind(("127.0.0.1", 0))
+    gone = closed.getsockname()[1]
+    closed.close()
+    assert main.check_service({"name": "c", "check": {"type": "tcp", "host": "127.0.0.1", "port": gone, "tls": True}})["state"] == "down"
