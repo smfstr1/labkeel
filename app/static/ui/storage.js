@@ -432,7 +432,7 @@ function renderDriveLayout() {
   renderCases();
   // everything else, with what's on it
   const rest = drives.filter(x => !inPool(x)).sort(byName);
-  $("#s-other-title").textContent = poolNames.length ? "Other drives" : "Drives";
+  $("#s-other-title").textContent = poolNames.length ? "Non-RAID drives" : "Drives";
   $("#s-other").innerHTML = rest.map(x => tileHtml(x, true)).join("");
   // the drives you've removed from the dashboard, and the way back
   const gone = S.drives?.hidden || [];

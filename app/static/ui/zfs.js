@@ -368,11 +368,11 @@ const PoolV = {
             : "",
         ].join("");
         return `<div class="dsrow item" role="button" tabindex="0" data-ds="${esc(x.name)}" aria-label="${esc(x.name)}. Show settings">
-        <span class="dsn" style="padding-left:${depth * 18}px"><b title="${esc(x.name)}">${esc(label)}</b>${tags}</span>
+        <span class="dsn" style="--depth:${depth}"><b title="${esc(x.name)}">${esc(label)}</b>${tags ? `<span class="dstags">${tags}</span>` : ""}</span>
         <span class="r">${fmtBytes(x.used)}</span><span class="r">${fmtBytes(x.avail)}</span>
         <span class="r c-snap">${x.snapshots ? `${x.snapshots} · ${fmtBytes(x.usedbysnapshots)}` : "–"}</span>
         <span class="r c-comp">${x.compressratio ? `${x.compressratio.toFixed(2)}×` : "–"} <span class="faint">${esc(x.compression || "")}</span></span>
-        <span class="mp" title="${esc(x.mountpoint)}">${x.type === "volume" ? "volume (block device)" : x.mounted === "yes" ? esc(x.mountpoint) : "not mounted"}</span></div>`;
+        <span class="mp" style="--depth:${depth}" title="${esc(x.mountpoint)}">${x.type === "volume" ? "volume (block device)" : x.mounted === "yes" ? esc(x.mountpoint) : "not mounted"}</span></div>`;
       })
       .join("");
     return `<div class="sec-head"><span class="muted" style="font-size:13.5px;white-space:normal">Datasets are folders with their own settings, limits and snapshots. They all share the pool's free space.</span>

@@ -96,8 +96,8 @@
           <div class="vital-sub" id="ov-st-sub"></div>
           <div class="bar tile-bar"><i id="ov-st-bar"></i></div>
         </div>
-        <div class="vital" data-tile="net">
-          <div class="vital-label"><span>Network</span></div>
+        <div class="vital click" data-tile="net" data-open="net" tabindex="0" role="button" aria-label="Network. Show traffic history">
+          <div class="vital-label"><span>Network<i class="chev" aria-hidden="true">›</i></span></div>
           <div class="netpair" style="margin-top:8px">
             <div><span class="k key-rx">↓</span><span class="v" id="ov-rx">–</span><span class="u" id="ov-rx-u"></span></div>
             <div><span class="k key-tx">↑</span><span class="v" id="ov-tx">–</span><span class="u" id="ov-tx-u"></span></div>
@@ -122,7 +122,7 @@
         </div>
         <div class="hist-grid">
           <article class="ccard" aria-labelledby="pw-h">
-            <div class="cc-head"><h3 id="pw-h">Power</h3><span class="cc-sub" id="pw-sources"></span></div>
+            <div class="cc-head"><h3 id="pw-h">Power</h3><span class="cc-sub"></span></div>
             <div class="pw-now"><span class="hero" id="pw-now">–</span><span class="muted">now</span></div>
             <div class="cc-stats" id="pw-stats"></div>
             <div class="chart" id="ch-power"></div>
@@ -181,7 +181,7 @@
       <div class="bulkbar hidden" id="c-bulk" role="region" aria-label="Selected containers"></div>
       <div class="ctable" id="c-table"></div>
       <div id="c-all" hidden></div>
-      <p class="faint" style="font-size:13px;margin-top:10px">Containers are grouped by the app (compose project) they belong to. CPU is a share of the whole machine. Select a container to read its logs. <span id="c-upd-note"></span></p>
+      <p class="faint" style="font-size:13px;margin-top:10px" id="c-upd-wrap"><span id="c-upd-note"></span></p>
     </div>
 
     <!-- STORAGE -->
@@ -198,7 +198,7 @@
         <div id="s-pools"></div>
       </section>
       <section id="s-other-sec">
-        <h2 id="s-other-title">Other drives</h2>
+        <h2 id="s-other-title">Non-RAID drives</h2>
         <div class="tile-grid" id="s-other"></div>
         <p class="faint s-hidden" id="s-hidden" hidden></p>
       </section>
@@ -209,7 +209,6 @@
       <section id="s-cache-sec" class="hidden" aria-labelledby="s-cache-h">
         <div class="sec-head"><h2 id="s-cache-h">Memory cache</h2><span class="toolbar admin-only" id="s-cache-tools"></span></div>
         <div class="list" id="s-cache"></div>
-        <p class="st-note s-cache-note">ZFS keeps recently read files in memory so they open faster next time, and gives the memory back when something else needs it. That's why it isn't counted as used memory on the Overview.</p>
       </section>
     </div>
 

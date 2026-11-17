@@ -571,7 +571,7 @@ def confirm_password(request: Request, password):
 # settings, the activity log, or anything that lists drives that could be wiped.
 VIEWER_GET = re.compile(r"^/api/(system|meta|containers|updates|storage|drives|services|attention|gpu|history|health|security|"
                         r"drivecare|login-info|account|passkeys|services/logo/[a-z0-9._-]+|zfs/pool/[^/]+(/(datasets|snapshots|history))?|"
-                        r"servers|servers/[0-9a-f]{12}|clusters|clusters/(swarm|[0-9a-f]{12}))$")
+                        r"servers|servers/[0-9a-f]{12}|clusters|clusters/(swarm|[0-9a-f]{12})|network/nic/[A-Za-z0-9_.:@-]{1,32})$")
 VIEWER_POST = {"/api/logout", "/api/account/password", "/api/passkeys/register/options", "/api/passkeys/register/verify",
                "/api/passkeys/rename", "/api/passkeys/delete", "/api/passkeys/confirm/options", "/api/passkeys/confirm"}
 

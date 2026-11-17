@@ -221,9 +221,9 @@ def _settings():
 
 
 # --------------------------------------------------------------------------- history store
-# Only what the charts draw. Older versions also kept network, temperatures and more, which age out of
+# Only what the charts draw. Older versions also kept temperatures and more, which age out of
 # the database by themselves (2 days for one-minute rows, 35 for ten-minute ones); this skips them meanwhile.
-WANTED = "(k IN ('p_meas', 'cpu', 'mem') OR k GLOB 'g[0-9]*_util')"
+WANTED = "(k IN ('p_meas', 'cpu', 'mem', 'n_rx_bps', 'n_tx_bps') OR k GLOB 'g[0-9]*_util')"
 RANGES = {"hour": (3600, 60, "m1"), "day": (86400, 300, "m1"), "week": (7 * 86400, 1800, "m10"), "month": (30 * 86400, 7200, "m10")}
 _db = None
 _db_lock = threading.Lock()
@@ -342,10 +342,11 @@ def sample_loop():
             measured = sum(measured_parts) if measured_parts else None
             power.update(available=measured is not None, measured=measured, cpu=cpu_w, dram=dram_w, gpu=gpu_w, rest=rest,
                          total=(measured + rest) if measured is not None else None, sources=sources, updated=now)
-            # only what the Overview charts draw is kept: power, CPU, memory and each GPU's load
+            # only what the Overview charts draw is kept: power, CPU, memory, network (bytes a second) and each GPU's load
             cur = M()._sys.get("current") or {}
+            net = cur.get("network") or {}
             values = {"cpu": (cur.get("cpu") or {}).get("percent"), "mem": (cur.get("memory") or {}).get("percent"),
-                      "p_meas": measured}
+                      "p_meas": measured, "n_rx_bps": net.get("rx_rate"), "n_tx_bps": net.get("tx_rate")}
             for g in gpus:
                 values[f"g{g['index']}_util"] = g.get("util")
             recorder.add(now, values, weight)
@@ -644,5 +645,7 @@ def api_history(range: str = Query("day", pattern="^(hour|day|week|month)$")):
                "month_cost": round(avg_w * 730 / 1000 * price, 2) if price and avg_w is not None else None,
                "price": price or None, "currency": st.get("currency", "£"), "rest_w": rest}
     gpus = [{"index": g["index"], "name": g["name"]} for g in gpu["items"]]
-    return {"range": range, "step": step, "start": start, "end": now, "series": series, "power": summary,
+    # data moved in the range: each bucket's average rate times its length
+    moved = {k: round(sum(v for _, v, _ in series.get(k, [])) * step) for k in ("n_rx_bps", "n_tx_bps")}
+    return {"range": range, "net": {"rx_bytes": moved["n_rx_bps"], "tx_bytes": moved["n_tx_bps"]}, "step": step, "start": start, "end": now, "series": series, "power": summary,
             "gpus": gpus, "gaps": gaps_between(start, now), "collecting_since": min(x for x in (oldest, oldest10) if x is not None) if (oldest or oldest10) else None}

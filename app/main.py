@@ -231,6 +231,18 @@ def _is_physical(nic):
     return hit
 
 
+_kinds = {"t": 0.0, "nics": {}}
+
+
+def _nic_kind(nic):
+    """Wi-Fi, Ethernet, Tailscale and so on, for the Network panel's list. Rechecked once a minute."""
+    if time.time() - _kinds["t"] > 60:
+        _kinds.update(t=time.time(), nics={})
+    if nic not in _kinds["nics"]:
+        _kinds["nics"][nic] = nics.kind(nic)
+    return _kinds["nics"][nic]
+
+
 def _skip_nic(nic):
     """Virtual network cards (loopback, Docker bridges, VPN plumbing) that aren't listed or counted."""
     return nic == "lo" or nic.startswith(("veth", "br-", "docker", "virbr", "cali", "flannel", "cni"))
@@ -323,7 +335,7 @@ def system_sampler():
                 except Exception:
                     nic_up = {}
             dt = max(now - prev_t, 0.001)
-            nics, tot_rx, tot_tx = [], 0.0, 0.0
+            nics_, tot_rx, tot_tx = [], 0.0, 0.0
             for name, c in io.items():
                 if _skip_nic(name):
                     continue
@@ -334,7 +346,7 @@ def system_sampler():
                 if phys:
                     tot_rx += rx
                     tot_tx += tx
-                nics.append({"name": name, "physical": phys, "up": nic_up.get(name, True), "rx_rate": rx, "tx_rate": tx,
+                nics_.append({"name": name, "physical": phys, "kind": _nic_kind(name), "up": nic_up.get(name, True), "rx_rate": rx, "tx_rate": tx,
                              "rx_total": c.bytes_recv, "tx_total": c.bytes_sent})
             prev_t, prev_io = now, io
             vm, sw = psutil.virtual_memory(), psutil.swap_memory()
@@ -348,7 +360,7 @@ def system_sampler():
                            "cached": getattr(vm, "cached", 0) + getattr(vm, "buffers", 0),
                            "percent": mem_pct, "swap_total": sw.total, "swap_used": sw.used,
                            "zfs_cache": arc and arc["size"], "zfs_cache_limit": arc and arc["limit"]},
-                "network": {"rx_rate": tot_rx, "tx_rate": tot_tx, "interfaces": nics},
+                "network": {"rx_rate": tot_rx, "tx_rate": tot_tx, "interfaces": nics_},
                 "uptime": now - boot,
             }
             try:  # GPU load too, so its small graph survives a page reload like the others
@@ -357,8 +369,10 @@ def system_sampler():
                 gpus = []
             with _sys_lock:
                 _sys["current"] = current
+                pw = metrics.power.get("total")  # the Power card's line, so it survives a reload too
                 _sys["history"].append({"t": round(now, 2), "cpu": round(cpu, 1), "mem": mem_pct,
-                                        "rx": round(tot_rx), "tx": round(tot_tx), "gpu": gpus})
+                                        "rx": round(tot_rx), "tx": round(tot_tx), "gpu": gpus,
+                                        "pw": round(pw, 1) if pw is not None else None})
         except Exception as e:  # keep sampling no matter what
             print("system sampler error:", e, flush=True)
 
@@ -1438,6 +1452,7 @@ def find_logo(s_or_slug):
 APP_LINKS = {
     "plex": {"ios": "plex://", "android": "plex://", "android_package": "com.plexapp.android"},
     "immich": {"ios": "immich://", "android": "immich://", "android_package": "app.alextran.immich"},
+    "owncloud": {"ios": "owncloud://", "android": "owncloud://", "android_package": "com.owncloud.android"},
     "home-assistant": {"ios": "homeassistant://navigate/lovelace", "android": "homeassistant://navigate/lovelace",
                        "android_package": "io.homeassistant.companion.android"},
 }
@@ -1858,6 +1873,7 @@ import metrics  # noqa: E402  (GPU, power and history)
 import drivecare  # noqa: E402  (replacing drives, scrubs, self-tests)
 import zfsmgr  # noqa: E402  (pools, datasets, snapshots)
 import zfscache  # noqa: E402  (the ZFS memory cache and its limit)
+import nics  # noqa: E402  (one network card in detail)
 import fileops  # noqa: E402  (changing files from the file browser)
 import passkeys  # noqa: E402  (signing in with Face ID, Touch ID, Windows Hello, a phone or a security key)
 app.include_router(upkeep.router)
@@ -1865,6 +1881,7 @@ app.include_router(metrics.router)
 app.include_router(drivecare.router)
 app.include_router(zfsmgr.router)
 app.include_router(zfscache.router)
+app.include_router(nics.router)
 app.include_router(fileops.router)
 app.include_router(passkeys.router)
 import updates  # noqa: E402  (is a newer image out for each container?)

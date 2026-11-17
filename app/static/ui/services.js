@@ -260,6 +260,13 @@ const AppLinks = {
   },
 };
 document.addEventListener("click", e => {
+  // Apps → an added app's Open button: the same, for an app that has a phone app (ownCloud, Immich, Plex…)
+  const o = e.target.closest("a[data-app-open]");
+  if (o && AppLinks.on() && !(e.metaKey || e.ctrlKey || e.shiftKey)) {
+    const a = Apps.data?.added?.[o.dataset.appOpen];
+    if (a?.phone_app && AppLinks.open({ name: a.name, url: o.href, app: a.phone_app })) e.preventDefault();
+    return;
+  }
   const a = e.target.closest("a[data-svc]");
   if (!a || !AppLinks.on() || e.metaKey || e.ctrlKey || e.shiftKey) return;
   const s = (S.services?.items || []).find(x => x.name === a.dataset.svc);

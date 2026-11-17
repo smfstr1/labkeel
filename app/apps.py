@@ -1154,7 +1154,8 @@ def suggest_folders():
 def api_apps():
     w = why_not()
     jobs = {k: v for k, v in _jobs.items() if v["state"] == "running" or time.time() - (v.get("finished") or 0) < 600}
-    return {"catalogue": catalogue(), "categories": CATEGORIES, "added": added(), "jobs": jobs,
+    mine = {k: {**a, "phone_app": M().app_links({"name": a.get("name", ""), "logo": a.get("app", "")})} for k, a in added().items()}
+    return {"catalogue": catalogue(), "categories": CATEGORIES, "added": mine, "jobs": jobs,
             "apps_dir": APPS_DIR, "available": w is None, "why_not": w, "suggest_folders": suggest_folders(),
             "https": https_choices(), "https_default_address": _default_address(), "storage": places()}
 

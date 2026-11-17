@@ -50,7 +50,7 @@ const Apps = {
           <span class="${upd ? "tag warn" : "muted"}" style="margin-left:6px">${esc(st)}${upd ? " · update available" : ""} · added ${fmtShortDate(a.added)}</span></span>
           <button class="btn" type="button" data-app-files="${esc(slug)}">Details</button>
           ${upd && ctr ? `<button class="btn" type="button" data-app-update="${esc(ctr.id)}">Update</button>` : ""}
-          ${url ? `<a class="btn" href="${esc(url)}" target="_blank" rel="noopener">Open</a>` : ""}</div>`;
+          ${url ? `<a class="btn" href="${esc(url)}" target="_blank" rel="noopener" data-app-open="${esc(slug)}">Open</a>` : ""}</div>`;
       })
       .join("");
     // categories and the catalogue
@@ -219,7 +219,7 @@ const Apps = {
         <select class="input" name="storage.place">${st.places
           .filter(p => p.kind === "default")
           .map(opt)
-          .join("")}${group("ZFS pools and datasets", "zfs")}${group("Other drives", "drive")}</select></label>
+          .join("")}${group("ZFS pools and datasets", "zfs")}${group("Non-RAID drives", "drive")}</select></label>
       <div id="app-store-zfs" hidden>
         <label class="check"><input type="checkbox" name="storage.new"> Make a dataset for it, so it has its own snapshots and size limit</label>
         <div class="fields" id="app-store-new">

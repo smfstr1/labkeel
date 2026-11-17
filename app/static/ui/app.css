@@ -2611,6 +2611,13 @@ body.viewer #c-check {
   display: flex;
   align-items: center;
   gap: 6px;
+  padding-left: calc(var(--depth, 0) * 18px);
+}
+.dsrow .dstags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 .dsrow .dsn b {
   font-weight: 600;
@@ -2857,18 +2864,86 @@ body.viewer #c-check {
   .vleaf .io:not(.st) {
     display: none;
   }
+  /* a phone: each dataset is a small card. Its name and size, then what uses it in full, then where it's mounted */
   .dsrow {
-    grid-template-columns: minmax(0, 1fr) 84px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 4px;
+    padding: 11px 14px;
   }
   .dsrow > :nth-child(n + 3) {
     display: none;
   }
+  .dsrow .dsn {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding-left: calc(var(--depth, 0) * 12px);
+  }
+  .dsrow .dsn b {
+    font-size: 15px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .dsrow .dstags {
+    flex: 0 0 100%;
+    flex-wrap: wrap;
+  }
+  .dsrow .ctag {
+    max-width: 100%;
+  }
+  .dsrow > .r:nth-child(2) {
+    align-self: start;
+    line-height: 1.5;
+  }
+  .dsrow.item > .mp {
+    display: block;
+    grid-column: 1 / -1;
+    padding-left: calc(var(--depth, 0) * 12px);
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .tabs {
+    display: flex;
+  }
+  .tabs button {
+    flex: 1 1 auto;
+    padding: 7px 5px;
+    font-size: 12.5px;
+  }
+  /* a phone: a snapshot's whole name, then its dataset, then when it was taken, what it holds and Roll back */
   .snrow {
     grid-template-columns: 22px minmax(0, 1fr) auto auto;
+    row-gap: 3px;
+    padding: 10px 14px;
   }
-  .snrow > .ds,
-  .snrow > .when {
+  .snrow > input {
+    grid-row: 1 / span 3;
+    align-self: start;
+    margin-top: 3px;
+  }
+  .snrow .nm,
+  .snrow .ds {
+    grid-column: 2 / -1;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .snrow .when {
+    grid-column: 2;
+    align-self: center;
+  }
+  .snrow.head > input {
+    grid-row: auto;
+    margin-top: 0;
+  }
+  .snrow.head > :nth-child(n + 3) {
     display: none;
+  }
+  #pv-body .li .grow {
+    white-space: normal;
+    overflow: visible;
+  }
+  /* a dataset's settings: one to a line, so every choice can be read */
+  .dd .fields > .field {
+    flex: 1 1 100%;
   }
   .policy {
     grid-template-columns: 1fr 1fr;
@@ -6956,7 +7031,66 @@ body.viewer #svc-add-app {
 #s-cache .usage {
   border-bottom: 0;
 }
-.s-cache-note {
-  max-width: 86ch;
-  margin: 10px 0 0;
+
+/* ---------- Overview: network traffic panel ---------- */
+.nv-avg {
+  margin: 8px 0 0;
+}
+#nv-nics {
+  display: grid;
+  gap: 8px;
+}
+.nic {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto 14px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.nic:hover {
+  border-color: var(--rule-2);
+  background: var(--panel-2);
+}
+.nic:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.nic-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.nic-name b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nic-name small {
+  color: var(--muted);
+  font-size: 13px;
+}
+.nic-rates {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 13.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.nic-rates i {
+  font-style: normal;
+}
+.nic .chev {
+  color: var(--faint);
+  font-style: normal;
+  font-size: 20px;
 }

@@ -106,6 +106,7 @@ function renderSystem() {
   renderGpuTile();
   renderPowerNow();
   renderHistoryLive();
+  NetView.nics();
   const cores = $("#ov-cores");
   $("#ov-cores-wrap").hidden = d.cpu.per_core.length < 2; // one thread says nothing the CPU tile doesn't
   if (cores.children.length !== d.cpu.per_core.length)
@@ -310,6 +311,7 @@ function openVital(kind) {
   else if (kind === "gpu") GpuView.open();
   else if (kind === "ctr") location.hash = "#containers";
   else if (kind === "storage") location.hash = "#storage";
+  else if (kind === "net") NetView.open();
 }
 $(".vitals").addEventListener("click", e => {
   const v = e.target.closest("[data-open]");
@@ -321,6 +323,247 @@ $(".vitals").addEventListener("keydown", e => {
     e.preventDefault();
     openVital(v.dataset.open);
   }
+});
+
+// Network traffic history, opened by clicking the Network card: download and upload over an hour, day, week or
+// month, how much moved, and each network card now
+const NetView = {
+  range: (() => {
+    try {
+      return localStorage.getItem("hd-range") || "day";
+    } catch {
+      return "day";
+    }
+  })(),
+  data: null,
+  timer: null,
+  open() {
+    Drawer.open(
+      "Network traffic",
+      "",
+      `<div class="seg" role="group" aria-label="Time range" id="nv-range">${[
+        ["hour", "Hour"],
+        ["day", "Day"],
+        ["week", "Week"],
+        ["month", "Month"],
+      ]
+        .map(([k, l]) => `<button type="button" data-range="${k}" aria-pressed="${k === this.range}">${l}</button>`)
+        .join("")}</div>`,
+      `<div class="dd" id="nv-body"><p class="dd-note">Loading the history…</p></div>`,
+      () => {
+        clearTimeout(this.timer);
+        this.timer = null;
+      },
+    );
+    $("#nv-range").addEventListener("click", e => {
+      const b = e.target.closest("[data-range]");
+      if (!b || b.dataset.range === this.range) return;
+      this.range = b.dataset.range;
+      $$("#nv-range button").forEach(x => x.setAttribute("aria-pressed", x === b));
+      this.load();
+    });
+    this.load();
+  },
+  async load() {
+    clearTimeout(this.timer);
+    try {
+      this.data = await api(`/api/history?range=${this.range}`);
+      if ($("#nv-body")) this.render();
+    } catch (e) {
+      if ($("#nv-body") && e.message !== "Signed out")
+        $("#nv-body").innerHTML = `<div class="banner bad">Couldn't load the history: ${esc(e.message)}</div>`;
+    }
+    if ($("#nv-body")) this.timer = setTimeout(() => this.load(), 60000);
+  },
+  render() {
+    const d = this.data,
+      body = $("#nv-body");
+    if (!d || !body) return;
+    const RL = { hour: "the last hour", day: "the last 24 hours", week: "the last 7 days", month: "the last 30 days" }[
+      d.range
+    ];
+    const rx = d.series.n_rx_bps || [],
+      tx = d.series.n_tx_bps || [];
+    const avg = pts => pts.reduce((a, q) => a + q[1], 0) / pts.length,
+      peak = pts => Math.max(...pts.map(q => q[2]));
+    const stats = rx.length
+      ? [
+          ["Downloaded", fmtBytes(d.net?.rx_bytes || 0)],
+          ["Uploaded", fmtBytes(d.net?.tx_bytes || 0)],
+          ["Busiest download", fmtBits(peak(rx))],
+          ["Busiest upload", fmtBits(peak(tx.length ? tx : [[0, 0, 0]]))],
+        ]
+      : null;
+    body.innerHTML = `
+      ${
+        stats
+          ? `<div class="dd-stats">${stats.map(([l, v]) => `<div class="dd-stat"><b>${esc(v)}</b><small>${esc(l)}</small></div>`).join("")}</div>`
+          : `<p class="dd-note">No traffic recorded in ${RL} yet. LabKeel keeps network history from this version on.</p>`
+      }
+      <section class="dd-sec"><div class="legend"><span><i style="background:${cssVar("--rx")}"></i>Download</span><span><i style="background:${cssVar("--tx")}"></i>Upload</span></div>
+        <div class="chart" id="ch-net"></div>
+        ${rx.length ? `<p class="muted small nv-avg">On average ↓ ${esc(fmtBits(avg(rx)))} and ↑ ${esc(fmtBits(tx.length ? avg(tx) : 0))} over ${RL}.</p>` : ""}</section>
+      <section class="dd-sec"><h3>Network cards now</h3><div id="nv-nics"></div></section>`;
+    drawChart($("#ch-net"), {
+      range: d.range,
+      start: d.start,
+      end: d.end,
+      step: d.step,
+      fmt: v => fmtBits(v),
+      gaps: d.gaps || [],
+      series: [
+        { name: "Download", color: cssVar("--rx"), area: true, points: rx },
+        { name: "Upload", color: cssVar("--tx"), points: tx },
+      ],
+    });
+    this.nics();
+  },
+  // the live part, redrawn with every reading while the panel is open: one button per card, opening its details
+  nics() {
+    const el = $("#nv-nics"),
+      n = S.sys?.network;
+    if (!el || !n) return;
+    const list = n.interfaces
+      .filter(x => x.physical || x.name.startsWith("tailscale"))
+      .sort((a, b) => b.rx_total + b.tx_total - (a.rx_total + a.tx_total));
+    const html = list.length
+      ? list
+          .map(
+            x => `<button class="nic" type="button" data-nic="${esc(x.name)}" aria-label="${esc(x.name)}: show details">
+            <span class="dot ${x.up === false ? "bad" : "good"}" aria-hidden="true"></span>
+            <span class="nic-name"><b>${esc(x.name)}</b><small>${esc(x.kind || "")}${x.up === false ? " · down" : ""}</small></span>
+            <span class="nic-rates"><span><i class="key-rx">↓</i> ${esc(fmtBits(x.rx_rate))}</span><span><i class="key-tx">↑</i> ${esc(fmtBits(x.tx_rate))}</span></span>
+            <i class="chev" aria-hidden="true">›</i></button>`,
+          )
+          .join("")
+      : `<p class="dd-note">No network cards found.</p>`;
+    if (el.innerHTML !== html) el.innerHTML = html;
+  },
+};
+
+// One network card in detail, opened from the Network traffic panel. Its figures refresh every few seconds;
+// Back returns to the traffic history.
+const NicView = {
+  name: null,
+  timer: null,
+  open(name) {
+    this.name = name;
+    Drawer.open(
+      name,
+      "",
+      `<button class="btn" type="button" id="nic-back">‹ Network traffic</button>`,
+      `<div class="dd" id="nic-body"><p class="dd-note">Reading ${esc(name)}…</p></div>`,
+      () => {
+        clearTimeout(this.timer);
+        this.timer = null;
+      },
+    );
+    $("#nic-back").addEventListener("click", () => NetView.open());
+    this.load();
+  },
+  async load() {
+    clearTimeout(this.timer);
+    try {
+      const d = await api(`/api/network/nic/${encodeURIComponent(this.name)}`);
+      if ($("#nic-body")) this.render(d);
+    } catch (e) {
+      if ($("#nic-body") && e.message !== "Signed out")
+        $("#nic-body").innerHTML = `<div class="banner bad">Couldn't read ${esc(this.name)}: ${esc(e.message)}</div>`;
+    }
+    if ($("#nic-body")) this.timer = setTimeout(() => this.load(), 3000);
+  },
+  render(d) {
+    const row = (k, v, cls = "") => (v == null || v === "" ? "" : `<dt>${k}</dt><dd class="${cls}">${v}</dd>`);
+    const sec = (title, rows) =>
+      rows.trim() ? `<section class="dd-sec"><h3>${title}</h3><dl class="dd-list">${rows}</dl></section>` : "";
+    const num = v => (v == null ? null : Number(v).toLocaleString());
+    const speed = m => (m >= 1000 ? `${+(m / 1000).toFixed(1)} Gb/s` : `${Math.round(m)} Mb/s`);
+    const bitrate = t => {
+      const m = /^([\d.]+) MBit\/s$/.exec(t || ""); // as iw writes it
+      return m ? speed(+m[1]) : t;
+    };
+    const w = d.wifi,
+      c = d.counters || {};
+    const bars = dbm => (dbm >= -55 ? "Excellent" : dbm >= -67 ? "Good" : dbm >= -75 ? "Fair" : "Weak");
+    const band = f => (f >= 5925 ? "6 GHz" : f >= 4900 ? "5 GHz" : f >= 2400 ? "2.4 GHz" : `${f} MHz`);
+    const trouble = (c.rx_errors || 0) + (c.tx_errors || 0);
+    const stats = [
+      [fmtBits(d.rx_rate), "Downloading now"],
+      [fmtBits(d.tx_rate), "Uploading now"],
+      [
+        w?.signal_dbm != null ? `${w.signal_dbm} dBm` : d.speed_mbps ? speed(d.speed_mbps) : "–",
+        w?.signal_dbm != null ? `Signal · ${bars(w.signal_dbm)}` : "Link speed",
+      ],
+      [fmtBytes(c.rx_bytes + c.tx_bytes || 0), "Moved since the server started"],
+    ];
+    $("#nic-body").innerHTML = `
+      <p class="dd-note ${d.up ? "good" : ""}">${d.up ? `${esc(d.kind)}, connected` : `${esc(d.kind)}, not connected`}${d.gateway ? ". This is how the server reaches the internet." : "."}</p>
+      <div class="dd-stats">${stats.map(([v, l]) => `<div class="dd-stat"><b>${esc(v)}</b><small>${esc(l)}</small></div>`).join("")}</div>
+      ${
+        w
+          ? sec(
+              "Wi-Fi",
+              row("Network", w.ssid ? esc(w.ssid) : null) +
+                row("Band", w.freq_mhz ? `${band(w.freq_mhz)} <span class="muted">(${w.freq_mhz} MHz)</span>` : null) +
+                row("Signal", w.signal_dbm != null ? `${w.signal_dbm} dBm · ${bars(w.signal_dbm)}` : null) +
+                row("Link quality", w.quality != null ? `${w.quality}%` : null) +
+                row("Sending at", w.tx_bitrate ? esc(bitrate(w.tx_bitrate)) : null) +
+                row("Receiving at", w.rx_bitrate ? esc(bitrate(w.rx_bitrate)) : null),
+            )
+          : ""
+      }
+      ${sec(
+        "Addresses",
+        d.ipv4
+          .map(a =>
+            row(
+              "IPv4",
+              `${esc(a.address)}${a.prefix != null ? `<span class="muted">/${a.prefix}</span>` : ""}`,
+              "mono",
+            ),
+          )
+          .join("") +
+          row("Router", d.gateway ? esc(d.gateway) : null, "mono") +
+          d.ipv6
+            .filter(a => !a.local)
+            .map(a => row("IPv6", esc(a.address), "mono"))
+            .join("") +
+          d.ipv6
+            .filter(a => a.local)
+            .map(a => row("IPv6 (this network only)", esc(a.address), "mono"))
+            .join("") +
+          row("Hardware (MAC)", d.mac ? esc(d.mac) : null, "mono"),
+      )}
+      ${sec(
+        "Connection",
+        row("Type", esc(d.kind)) +
+          row("State", esc(d.operstate || (d.up ? "up" : "down"))) +
+          (w
+            ? ""
+            : row(
+                "Speed",
+                d.speed_mbps ? `${speed(d.speed_mbps)}${d.duplex ? `, ${esc(d.duplex)} duplex` : ""}` : null,
+              )) +
+          row("Largest packet (MTU)", d.mtu ? `${num(d.mtu)} bytes` : null) +
+          row("Driver", d.driver ? esc(d.driver) : null, "mono"),
+      )}
+      ${
+        d.counters
+          ? sec(
+              `Since the server started <span class="muted small">(${esc(fmtDate(d.since_boot))})</span>`,
+              row("Downloaded", `${fmtBytes(c.rx_bytes)} <span class="muted">· ${num(c.rx_packets)} packets</span>`) +
+                row("Uploaded", `${fmtBytes(c.tx_bytes)} <span class="muted">· ${num(c.tx_packets)} packets</span>`) +
+                row("Errors", `↓ ${num(c.rx_errors)} · ↑ ${num(c.tx_errors)}`, trouble ? "warn" : "") +
+                row("Dropped", `↓ ${num(c.rx_dropped)} · ↑ ${num(c.tx_dropped)}`),
+            )
+          : ""
+      }
+      ${trouble ? `<p class="dd-note">Errors usually mean a poor cable, a weak Wi-Fi signal or a failing card. A few over a long time are normal.</p>` : ""}`;
+  },
+};
+$("#drawer").addEventListener("click", e => {
+  const b = e.target.closest("#nv-nics [data-nic]");
+  if (b) NicView.open(b.dataset.nic);
 });
 
 // The busiest programs on the server, opened by clicking the CPU or memory card
@@ -509,15 +752,11 @@ function renderPowerNow() {
   renderPowerTile(p);
   if (!p.available) {
     $("#pw-now").textContent = "–";
-    $("#pw-sources").textContent = "";
     $("#pw-break").innerHTML = `<span>This machine doesn't report its power use.</span>`;
     return;
   }
   const [v, u] = fmtW(p.total).split(" ");
   $("#pw-now").innerHTML = `${esc(v)}<small>${esc(u)}</small>`;
-  const src = p.sources.map((x, i) => (i ? x.toLowerCase().replace("gpus", "GPUs").replace("cpu", "CPU") : x));
-  $("#pw-sources").textContent =
-    `Measured: ${src.length > 1 ? `${src.slice(0, -1).join(", ")} and ${src[src.length - 1]}` : src[0] || ""}${p.rest ? ", plus your allowance" : ""}`;
   const parts = [
     ["CPU", p.cpu],
     ["Memory", p.dram],
@@ -1006,14 +1245,13 @@ function renderPowerTile(p) {
     ["GPUs", p.gpu],
   ].filter(([, w]) => w != null);
   $("#ov-pw-sub").textContent = parts.map(([n, w]) => `${n} ${fmtW(w)}`).join(" · ");
-  const now = Date.now() / 1000;
-  S.pwHist = (S.pwHist || []).filter(x => x.t > now - SPARK_WINDOW);
-  S.pwHist.push({ t: now, w: p.total });
+  // the server keeps the last few minutes, like the other cards, so the line survives a reload
+  const ph = S.hist.filter(h => h.pw != null);
   spark(
     $("#sp-pw"),
-    [{ values: S.pwHist.map(x => x.w), color: hexOf(cssVar("--s1")), fill: true }],
+    [{ values: ph.map(h => h.pw), color: hexOf(cssVar("--s1")), fill: true }],
     null,
-    S.pwHist.map(x => x.t),
+    ph.map(h => h.t),
   );
 }
 

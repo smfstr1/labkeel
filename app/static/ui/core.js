@@ -520,7 +520,8 @@ async function loadSystem() {
   if (d.refresh_ms && d.refresh_ms !== S.refreshMs) applyRefresh(d.refresh_ms);
   if (Array.isArray(d.history) && d.history.length) {
     for (const h of d.history)
-      if (h.t > lastT()) S.hist.push({ t: h.t, cpu: h.cpu, mem: h.mem, rx: h.rx, tx: h.tx, gpu: h.gpu || [] });
+      if (h.t > lastT())
+        S.hist.push({ t: h.t, cpu: h.cpu, mem: h.mem, rx: h.rx, tx: h.tx, gpu: h.gpu || [], pw: h.pw ?? null });
   } else if (d.time && d.time > lastT() + 0.05) {
     // a server without history: fall back to the live reading
     S.hist.push({
@@ -530,6 +531,7 @@ async function loadSystem() {
       rx: d.network.rx_rate,
       tx: d.network.tx_rate,
       gpu: (d.gpu?.items || []).map(g => g.util),
+      pw: d.power?.total ?? null,
     });
   }
   const cut = lastT() - SPARK_WINDOW;
